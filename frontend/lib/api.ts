@@ -1,0 +1,179 @@
+"use client";
+
+import { getDemoDashboard, isDemoFallbackEnabled } from "./demo";
+import { isDemoTaskId, normalizeDashboard, normalizeStudyAction, type ApiIdentifier, type DashboardData, type UserResponse } from "./types";
+import { parseLoginResponse, parseUserResponse, parseUserSession, parseIntegrationArray } from "./schemas";
+import type { IntegrationRead } from "./types";
+
+const API_PREFIX = "/api/backend";
+
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+export interface ApiRequestOptions extends Omit<RequestInit, "body"> {
+  body?: BodyInit | null;
+  redirectOnUnauthorized?: boolean;
+}
+
+function endpoint(path: string) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${API_PREFIX}${normalizedPath}`;
+}
+
+function responseMessage(payload: unknown, fallback: string) {
+  if (typeof payload === "object" && payload !== null && "detail" in payload && typeof payload.detail === "string") {
+    return payload.detail;
+  }
+  if (typeof payload === "object" && payload !== null && "message" in payload && typeof payload.message === "string") {
+    return payload.message;
+  }
+  return fallback;
+}
+
+function redirectToLogin() {
+  if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+    window.location.replace("/login?next=%2F");
+  }
+}
+
+export function canUseDemoFallback(error: unknown) {
+  return isDemoFallbackEnabled() && error instanceof ApiError && (error.status === 0 || error.status === 503);
+}
+
+export async function apiRequest(path: string, options: ApiRequestOptions = {}): Promise<unknown> {
+  if (typeof window === "undefined") {
+    throw new ApiError("API-Anfragen sind nur im Browser verfügbar.", 0);
+  }
+
+  const { redirectOnUnauthorized = true, body, headers: suppliedHeaders, ...fetchOptions } = options;
+  const headers = new Headers(suppliedHeaders);
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json");
+  }
+  if (body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint(path), {
+      ...fetchOptions,
+      body,
+      headers,
+      cache: fetchOptions.cache ?? "no-store",
+      credentials: fetchOptions.credentials ?? "include",
+      redirect: fetchOptions.redirect ?? "manual",
+    });
+  } catch {
+    throw new ApiError("Die Verbindung zum Lernraum konnte nicht hergestellt werden.", 0);
+  }
+
+  const payload = response.status === 204 ? undefined : await response.json().catch(() => undefined);
+
+  if (!response.ok) {
+    if (response.status === 401 && redirectOnUnauthorized) {
+      redirectToLogin();
+    }
+    throw new ApiError(responseMessage(payload, `Die Anfrage ist fehlgeschlagen (${response.status}).`), response.status);
+  }
+
+  return payload;
+}
+
+export interface LoginCredentials {
+  username: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  user: UserResponse;
+  access_token?: string;
+  token_type?: string;
+}
+
+export async function login(credentials: LoginCredentials) {
+  const payload = parseLoginResponse(await apiRequest("/v1/auth/login", {
+    method: "POST",
+    body: JSON.stringify(credentials),
+    redirectOnUnauthorized: false,
+  }));
+  return "user" in payload ? payload : { user: payload };
+}
+
+export async function getSession() {
+  try {
+    const payload = parseUserSession(await apiRequest("/v1/auth/me", { redirectOnUnauthorized: false }));
+    if (payload === null) {
+      return null;
+    }
+    if ("authenticated" in payload && payload.authenticated === false) {
+      return null;
+    }
+    if ("user" in payload) {
+      return parseUserResponse(payload.user);
+    }
+    return parseUserResponse(payload);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      return null;
+    }
+    if (canUseDemoFallback(error)) {
+      return { id: "demo-user", username: "Demo-Lernende", email: null };
+    }
+    throw error;
+  }
+}
+
+export async function getDashboard(): Promise<DashboardData> {
+  try {
+    return normalizeDashboard(await apiRequest("/v1/dashboard"));
+  } catch (error) {
+    if (canUseDemoFallback(error)) {
+      return normalizeDashboard(getDemoDashboard());
+    }
+    throw error;
+  }
+}
+
+function studyTaskPath(taskId: ApiIdentifier, action: "start" | "stop" | "complete") {
+  if (!String(taskId).trim()) {
+    throw new ApiError("Die Lernaufgabe ist ungültig.", 422);
+  }
+  if (isDemoTaskId(taskId)) {
+    throw new ApiError("Demo-Aufgaben können nicht als echte Lernsessions gestartet werden.", 422);
+  }
+  return `/v1/study/tasks/${encodeURIComponent(String(taskId))}/${action}`;
+}
+
+async function studyAction(taskId: ApiIdentifier, action: "start" | "stop" | "complete") {
+  const payload = await apiRequest(studyTaskPath(taskId, action), {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return normalizeStudyAction(payload, taskId);
+}
+
+export async function getIntegrations(): Promise<IntegrationRead[]> {
+  const payload = await apiRequest('/v1/integrations');
+  return parseIntegrationArray(payload);
+}
+
+
+export function startStudyTask(taskId: ApiIdentifier) {
+  return studyAction(taskId, "start");
+}
+
+export function stopStudyTask(taskId: ApiIdentifier) {
+  return studyAction(taskId, "stop");
+}
+
+export function completeStudyTask(taskId: ApiIdentifier) {
+  return studyAction(taskId, "complete");
+}

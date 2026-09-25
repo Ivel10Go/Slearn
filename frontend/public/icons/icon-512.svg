@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Lernraum">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#818cf8" />
+      <stop offset="1" stop-color="#4f46e5" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#bg)" />
+  <path d="M139 168c0-20.597 16.703-37.333 37.333-37.333h159.334C356.297 130.667 373 147.403 373 168v176c0 20.597-16.703 37.333-37.333 37.333H176.333C155.703 381.333 139 364.597 139 344V168Z" fill="#fff" fill-opacity=".96" />
+  <path d="M186 200h139M186 251h101M186 302h75" stroke="#4f46e5" stroke-linecap="round" stroke-width="25" />
+  <circle cx="366" cy="316" r="48" fill="#fbbf24" />
+  <path d="m366 290 9.3 18.7 20.7 3-15 14.3 3.5 20.7-18.5-9.7-18.5 9.7 3.5-20.7-15-14.3 20.7-3L366 290Z" fill="#fff" />
+</svg>

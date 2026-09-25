@@ -1,0 +1,194 @@
+name: school-assistant
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.1-pg15-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:?POSTGRES_USER must be set in .env}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}"
+      POSTGRES_DB: "${POSTGRES_DB:?POSTGRES_DB must be set in .env}"
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - type: bind
+        source: ./postgres/init
+        target: /docker-entrypoint-initdb.d
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    stop_grace_period: 30s
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/opt/school-assistant/backend-entrypoint.sh"]
+    environment:
+      DATABASE_URL: "${DATABASE_URL:?DATABASE_URL must be set in .env}"
+      APP_ENV: "${APP_ENV:-development}"
+      DEBUG: "${DEBUG:-false}"
+      SECRET_KEY: "${SECRET_KEY:?SECRET_KEY must be set in .env}"
+      ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set in .env}"
+      BOOTSTRAP_ON_STARTUP: "${BOOTSTRAP_ON_STARTUP:-true}"
+      AUTH_ENABLED: "${AUTH_ENABLED:-true}"
+      DEMO_MODE: "${DEMO_MODE:-false}"
+      SESSION_COOKIE_NAME: "${SESSION_COOKIE_NAME:-school_session}"
+      SESSION_MAX_AGE_SECONDS: "${SESSION_MAX_AGE_SECONDS:-604800}"
+      SESSION_COOKIE_SECURE: "${SESSION_COOKIE_SECURE:-false}"
+      SESSION_COOKIE_HTTPONLY: "${SESSION_COOKIE_HTTPONLY:-true}"
+      SESSION_COOKIE_SAMESITE: "${SESSION_COOKIE_SAMESITE:-lax}"
+      SESSION_COOKIE_DOMAIN: "${SESSION_COOKIE_DOMAIN:-}"
+      LOGIN_RATE_LIMIT: "${LOGIN_RATE_LIMIT:-5}"
+      LOGIN_RATE_WINDOW_SECONDS: "${LOGIN_RATE_WINDOW_SECONDS:-60}"
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:3000}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      SCHOOL_TIMEZONE: "${SCHOOL_TIMEZONE:-Europe/Berlin}"
+      AI_BASE_URL: "${AI_BASE_URL:-}"
+      AI_API_KEY: "${AI_API_KEY:-}"
+      AI_MODEL: "${AI_MODEL:-}"
+      AI_TIMEOUT_SECONDS: "${AI_TIMEOUT_SECONDS:-60}"
+      AI_MAX_TOKENS: "${AI_MAX_TOKENS:-2048}"
+      WEBUNTIS_BASE_URL: "${WEBUNTIS_BASE_URL:-}"
+      WEBUNTIS_SCHOOL: "${WEBUNTIS_SCHOOL:-}"
+      WEBUNTIS_USERNAME: "${WEBUNTIS_USERNAME:-}"
+      WEBUNTIS_PASSWORD: "${WEBUNTIS_PASSWORD:-}"
+      ICAL_CALENDAR_URL: "${ICAL_CALENDAR_URL:-}"
+      CALENDAR_REFRESH_INTERVAL_SECONDS: "${CALENDAR_REFRESH_INTERVAL_SECONDS:-900}"
+      DOCUMENT_STORAGE_PATH: "/var/lib/school-assistant/documents"
+      IMPORT_STORAGE_PATH: "/var/lib/school-assistant/imports"
+      BACKUP_STORAGE_PATH: "/var/lib/school-assistant/backups"
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - type: bind
+        source: ./backend-entrypoint.sh
+        target: /opt/school-assistant/backend-entrypoint.sh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${DOCUMENTS_HOST_PATH:-./data/documents}"
+        target: /var/lib/school-assistant/documents
+        read_only: false
+        bind:
+          create_host_path: true
+      - type: bind
+        source: "${BACKUPS_HOST_PATH:-./data/backups}"
+        target: /var/lib/school-assistant/backups
+        read_only: false
+        bind:
+          create_host_path: true
+      - type: bind
+        source: "${IMPORTS_HOST_PATH:-./data/imports}"
+        target: /var/lib/school-assistant/imports
+        read_only: false
+        bind:
+          create_host_path: true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    stop_grace_period: 30s
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    restart: unless-stopped
+    init: true
+    read_only: true
+    user: "10001:10001"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "${DATABASE_URL:?DATABASE_URL must be set in .env}"
+      APP_ENV: "${APP_ENV:-development}"
+      SCHOOL_TIMEZONE: "${SCHOOL_TIMEZONE:-Europe/Berlin}"
+      WORKER_POLL_INTERVAL_SECONDS: "${WORKER_POLL_INTERVAL_SECONDS:-300}"
+      WORKER_HEARTBEAT_INTERVAL_SECONDS: "${WORKER_HEARTBEAT_INTERVAL_SECONDS:-30}"
+      WORKER_HEALTH_MAX_AGE_SECONDS: "${WORKER_HEALTH_MAX_AGE_SECONDS:-120}"
+      WORKER_STATUS_PATH: "/var/lib/school-assistant/worker-status/worker-status.json"
+      DOCUMENT_STORAGE_PATH: "/var/lib/school-assistant/documents"
+      IMPORT_STORAGE_PATH: "/var/lib/school-assistant/imports"
+      BACKUP_STORAGE_PATH: "/var/lib/school-assistant/backups"
+    volumes:
+      - type: volume
+        source: worker-status
+        target: /var/lib/school-assistant/worker-status
+        read_only: false
+      - type: bind
+        source: "${DOCUMENTS_HOST_PATH:-./data/documents}"
+        target: /var/lib/school-assistant/documents
+        read_only: true
+        bind:
+          create_host_path: true
+      - type: bind
+        source: "${BACKUPS_HOST_PATH:-./data/backups}"
+        target: /var/lib/school-assistant/backups
+        read_only: true
+        bind:
+          create_host_path: true
+      - type: bind
+        source: "${IMPORTS_HOST_PATH:-./data/imports}"
+        target: /var/lib/school-assistant/imports
+        read_only: true
+        bind:
+          create_host_path: true
+    healthcheck:
+      test: ["CMD", "python", "-m", "worker.healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 15s
+    stop_grace_period: 30s
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      BACKEND_INTERNAL_URL: "http://backend:8000"
+      NEXT_PUBLIC_ENABLE_DEMO_FALLBACK: "${NEXT_PUBLIC_ENABLE_DEMO_FALLBACK:-false}"
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/').then((response) => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    stop_grace_period: 30s
+
+volumes:
+  pgdata:
+  worker-status:
