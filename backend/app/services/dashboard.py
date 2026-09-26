@@ -1,20 +1,18 @@
 from collections.abc import Mapping
-from datetime import datetime, time, timedelta
+from datetime import datetime
 from typing import Any, cast
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import Settings
-from app.core.time import as_utc, utc_now
+from app.core.time import as_utc, day_window, resolve_timezone_name, utc_now, zone_or_utc
 from app.db.entities import (
     CalendarEvent,
     Exam,
     Homework,
     Lesson,
     StudyPlanTask,
-    Subject,
     Topic,
 )
 from app.schemas.dashboard import (
@@ -28,27 +26,7 @@ from app.schemas.dashboard import (
     DashboardTopic,
 )
 from app.schemas.study import StudyTaskStatus
-
-
-def _timezone(name: str) -> ZoneInfo:
-    try:
-        return ZoneInfo(name)
-    except ZoneInfoNotFoundError:
-        return ZoneInfo("UTC")
-
-
-def _timezone_name(name: str, fallback: str) -> str:
-    try:
-        ZoneInfo(name)
-    except ZoneInfoNotFoundError:
-        return fallback
-    return name
-
-
-def _subject_values(subject: Subject | None) -> tuple[str, str]:
-    if subject is None:
-        return "Unbekannt", "#64748B"
-    return subject.name, subject.color
+from app.services.academic import lesson_teacher_name, subject_values
 
 
 def serialize_dashboard_payload(payload: Mapping[str, Any]) -> DashboardResponse:
@@ -63,11 +41,10 @@ def serialize_dashboard(
     user_timezone: str | None = None,
 ) -> DashboardResponse:
     current = as_utc(now or utc_now())
-    timezone_name = _timezone_name(user_timezone or settings.timezone, settings.timezone)
-    local_zone = _timezone(timezone_name)
+    timezone_name = resolve_timezone_name(user_timezone or settings.timezone, settings.timezone)
+    local_zone = zone_or_utc(timezone_name)
     local_now = current.astimezone(local_zone)
-    day_start = as_utc(datetime.combine(local_now.date(), time.min, tzinfo=local_zone))
-    day_end = as_utc(datetime.combine(local_now.date() + timedelta(days=1), time.min, tzinfo=local_zone))
+    day_start, day_end = day_window(local_now.date(), local_zone)
     lessons = list(
         db.scalars(
             select(Lesson)
@@ -139,28 +116,27 @@ def serialize_dashboard(
 
     dashboard_lessons: list[DashboardLesson] = []
     for lesson in lessons:
-        subject_name, subject_color = _subject_values(lesson.subject)
-        teacher_name = lesson.teacher.name if lesson.teacher else None
-        if teacher_name is None and lesson.subject is not None and lesson.subject.teacher is not None:
-            teacher_name = lesson.subject.teacher.name
+        subject_name, subject_color = subject_values(lesson.subject)
         dashboard_lessons.append(
             DashboardLesson(
                 id=lesson.id,
                 subject_id=lesson.subject_id,
                 subject_name=subject_name,
+                subject_short_name=lesson.subject.short_name if lesson.subject else None,
                 subject_color=subject_color,
-                teacher_name=teacher_name,
+                teacher_name=lesson_teacher_name(lesson),
                 room_name=lesson.room.name if lesson.room else None,
                 title=lesson.title,
                 start_time=as_utc(lesson.start_time),
                 end_time=as_utc(lesson.end_time),
                 is_current=as_utc(lesson.start_time) <= current < as_utc(lesson.end_time),
+                is_cancelled=lesson.is_cancelled,
             )
         )
 
     dashboard_exams: list[DashboardExam] = []
     for exam in exams:
-        subject_name, subject_color = _subject_values(exam.subject)
+        subject_name, subject_color = subject_values(exam.subject)
         exam_date = as_utc(exam.date)
         dashboard_exams.append(
             DashboardExam(
@@ -179,8 +155,8 @@ def serialize_dashboard(
         DashboardHomework(
             id=item.id,
             subject_id=item.subject_id,
-            subject_name=_subject_values(item.subject)[0],
-            subject_color=_subject_values(item.subject)[1],
+            subject_name=subject_values(item.subject)[0],
+            subject_color=subject_values(item.subject)[1],
             title=item.title,
             description=item.description,
             due_date=as_utc(item.due_date),
@@ -192,7 +168,7 @@ def serialize_dashboard(
     dashboard_tasks: list[DashboardStudyTask] = []
     for task in study_tasks:
         subject = task.topic.subject if task.topic else None
-        subject_name, subject_color = _subject_values(subject)
+        subject_name, subject_color = subject_values(subject)
         dashboard_tasks.append(
             DashboardStudyTask(
                 id=task.id,

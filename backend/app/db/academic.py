@@ -41,6 +41,7 @@ class Lesson(Base):
     title: Mapped[str | None] = mapped_column(String(240), nullable=True)
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_cancelled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     source: Mapped[str] = mapped_column(String(64), nullable=False, default="manual", server_default="manual")
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

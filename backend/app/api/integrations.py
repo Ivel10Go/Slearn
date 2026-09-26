@@ -6,33 +6,31 @@ from sqlalchemy.orm import Session
 from app.api.deps import AppSettings, CurrentUser, DatabaseSession
 from app.api.helpers import owned_or_404
 from app.core.config import require_integration_encryption_key
-from app.core.crypto import CredentialDecryptionError, encrypt_credentials
+from app.core.crypto import CredentialDecryptionError, decrypt_credentials, encrypt_credentials
 from app.core.time import utc_now
 from app.db.entities import SyncSource
 from app.schemas.common import MessageResponse
 from app.schemas.integrations import (
     IntegrationCreate,
     IntegrationRead,
+    IntegrationSyncResult,
     IntegrationTestResult,
     IntegrationUpdate,
 )
 from app.services.integrations import (
     INTEGRATION_KINDS,
     INTEGRATION_SPECS,
+    IntegrationConnectionError,
     IntegrationValidationError,
+    check_integration_connection,
     integration_read,
     missing_fields,
     normalize_config,
     normalize_credentials,
+    sync_integration,
 )
 
 router = APIRouter(prefix="/api/v1/integrations", tags=["integrations"])
-
-_ADAPTER_PENDING = {
-    "webuntis": "WebUntis",
-    "ai_provider": "KI-Provider",
-    "documents": "Dokumentordner",
-}
 
 
 def _encryption_key(settings: AppSettings) -> str:
@@ -219,17 +217,113 @@ def test_integration(
             missing_fields=integration.missing_fields,
         )
 
-    label = _ADAPTER_PENDING.get(source.source_type, source.source_type)
-    source.status = "pending"
+    label = INTEGRATION_SPECS[source.source_type].label
+    if not source.enabled:
+        source.status = "disabled"
+        source.last_error = None
+        db.commit()
+        return IntegrationTestResult(
+            ok=False,
+            status="disabled",
+            message=f"{label} ist deaktiviert, es wurde keine Verbindung getestet.",
+            missing_fields=[],
+        )
+
+    key = _encryption_key(settings)
+    credentials = decrypt_credentials(source.credentials, key) if source.credentials else {}
+    try:
+        message = check_integration_connection(
+            kind=source.source_type,
+            config=integration.config,
+            credentials=credentials,
+            document_storage_path=settings.document_storage_path,
+            timeout_seconds=settings.integration_timeout_seconds,
+        )
+    except IntegrationConnectionError as exc:
+        source.status = "error"
+        source.last_error = str(exc)
+        db.commit()
+        return IntegrationTestResult(ok=False, status="error", message=str(exc), missing_fields=[])
+
+    source.status = "connected"
     source.last_error = None
     db.commit()
-    return IntegrationTestResult(
-        ok=False,
-        status="pending",
-        message=(
-            f"Die Angaben für {label} sind vollständig gespeichert. "
-            "Der Adapter für die echte Verbindung ist noch nicht implementiert, "
-            "es wurde also keine Verbindung zu {label} getestet."
-        ).replace("{label}", label),
-        missing_fields=[],
+    return IntegrationTestResult(ok=True, status="connected", message=message, missing_fields=[])
+
+
+@router.post("/{integration_id}/sync", response_model=IntegrationSyncResult)
+def sync_integration_endpoint(
+    integration_id: int,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    settings: AppSettings,
+) -> IntegrationSyncResult:
+    """Holt Daten aus der Integration und speichert sie lokal.
+
+    Bewusst kein automatischer Import beim Start: der Abruf dauert mehrere
+    Sekunden und braucht eine bestehende Sitzung beim Schulportal, also muss
+    ihn die Oberfläche anstoßen.
+    """
+    source = _owned_integration(db, integration_id, current_user.id)
+    integration = _read(source, settings)
+
+    if integration.missing_fields:
+        source.status = "error"
+        source.last_error = f"Fehlende Angaben: {', '.join(integration.missing_fields)}"
+        db.commit()
+        return IntegrationSyncResult(
+            ok=False,
+            status="error",
+            message=source.last_error,
+            missing_fields=integration.missing_fields,
+        )
+
+    label = INTEGRATION_SPECS[source.source_type].label
+    if not source.enabled:
+        source.status = "disabled"
+        source.last_error = None
+        db.commit()
+        return IntegrationSyncResult(
+            ok=False,
+            status="disabled",
+            message=f"{label} ist deaktiviert, es wurden keine Daten geholt.",
+        )
+
+    key = _encryption_key(settings)
+    credentials = decrypt_credentials(source.credentials, key) if source.credentials else {}
+    try:
+        outcome = sync_integration(
+            db=db,
+            source=source,
+            config=integration.config,
+            credentials=credentials,
+            timezone_name=current_user.timezone or settings.timezone,
+            timeout_seconds=settings.integration_timeout_seconds,
+        )
+    except IntegrationConnectionError as exc:
+        db.rollback()
+        source = _owned_integration(db, integration_id, current_user.id)
+        source.status = "error"
+        source.last_error = str(exc)
+        db.commit()
+        return IntegrationSyncResult(ok=False, status="error", message=str(exc))
+    except SQLAlchemyError:
+        db.rollback()
+        raise
+
+    message = outcome.describe()
+    if outcome.skipped_entries:
+        message += f" {outcome.skipped_entries} unvollständige Einträge wurden übersprungen."
+    return IntegrationSyncResult(
+        ok=True,
+        status="connected",
+        message=message,
+        imported_lessons=outcome.imported_lessons,
+        subjects=outcome.subjects,
+        teachers=outcome.teachers,
+        rooms=outcome.rooms,
+        skipped_entries=outcome.skipped_entries,
+        window_start=outcome.window_start,
+        window_end=outcome.window_end,
+        last_sync_at=source.last_sync_at,
     )

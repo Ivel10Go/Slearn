@@ -16,6 +16,7 @@ class DashboardLesson(UTCResponseModel):
     id: int
     subject_id: int | None = None
     subject_name: str
+    subject_short_name: str | None = None
     subject_color: str
     teacher_name: str | None = None
     room_name: str | None = None
@@ -23,6 +24,7 @@ class DashboardLesson(UTCResponseModel):
     start_time: datetime
     end_time: datetime
     is_current: bool
+    is_cancelled: bool = False
 
 
 class DashboardExam(UTCResponseModel):

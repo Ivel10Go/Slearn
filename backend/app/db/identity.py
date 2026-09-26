@@ -154,6 +154,7 @@ class Subject(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     teacher_id: Mapped[int | None] = mapped_column(ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
+    short_name: Mapped[str | None] = mapped_column(String(20), nullable=True)
     color: Mapped[str] = mapped_column(String(20), nullable=False, default="#3B82F6", server_default="#3B82F6")
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String(64), nullable=False, default="manual", server_default="manual")

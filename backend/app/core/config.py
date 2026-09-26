@@ -48,6 +48,12 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("INTEGRATION_ENCRYPTION_KEY", "integration_encryption_key"),
     )
+    integration_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        le=120,
+        validation_alias=AliasChoices("INTEGRATION_TIMEOUT_SECONDS", "integration_timeout_seconds"),
+    )
     document_storage_path: str = Field(
         default="/var/lib/school-assistant/documents",
         validation_alias=AliasChoices("DOCUMENT_STORAGE_PATH", "document_storage_path"),

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api import auth, calendar, dashboard, exams, health, homework, study, subjects
+from app.api import auth, calendar, dashboard, exams, greeting, health, homework, lessons, study, subjects
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, log_event
 from app.db.entities import User
@@ -68,6 +68,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(health.router)
     application.include_router(auth.router)
     application.include_router(dashboard.router)
+    application.include_router(lessons.router)
+    application.include_router(greeting.router)
     application.include_router(subjects.router)
     application.include_router(homework.router)
     application.include_router(exams.router)

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import Field, field_validator
@@ -79,3 +79,20 @@ class IntegrationTestResult(UTCResponseModel):
     status: IntegrationStatus
     message: str
     missing_fields: list[str] = Field(default_factory=list)
+
+
+class IntegrationSyncResult(UTCResponseModel):
+    """Ergebnis eines Datenabrufs, in Zahlen und als deutschen Satz."""
+
+    ok: bool
+    status: IntegrationStatus
+    message: str
+    missing_fields: list[str] = Field(default_factory=list)
+    imported_lessons: int = 0
+    subjects: int = 0
+    teachers: int = 0
+    rooms: int = 0
+    skipped_entries: int = 0
+    window_start: date | None = None
+    window_end: date | None = None
+    last_sync_at: datetime | None = None

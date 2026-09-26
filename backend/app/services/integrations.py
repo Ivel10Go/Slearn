@@ -1,14 +1,28 @@
 from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Final, cast
+
+from sqlalchemy.orm import Session
 
 from app.core.crypto import decrypt_credentials, has_credentials
 from app.db.entities import SyncSource
 from app.schemas.integrations import IntegrationKind, IntegrationRead, IntegrationStatus
+from app.services.ai_provider import AiProviderError, probe_ai_provider
+from app.services.timetable_import import (
+    DEFAULT_SYNC_WEEKS,
+    SyncOutcome,
+    import_timetable,
+)
+from app.services.webuntis import WebUntisClient, WebUntisError, probe_webuntis
 
 
 class IntegrationValidationError(ValueError):
     pass
+
+
+class IntegrationConnectionError(RuntimeError):
+    """Die Integration ist vollständig konfiguriert, aber nicht erreichbar."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,3 +164,125 @@ def integration_read(source: SyncSource, encryption_key: str) -> IntegrationRead
         created_at=source.created_at,
         updated_at=source.updated_at,
     )
+
+
+def check_integration_connection(
+    kind: str,
+    config: dict[str, str],
+    credentials: dict[str, str],
+    document_storage_path: str,
+    timeout_seconds: float,
+) -> str:
+    """Prüft eine Integration gegen das echte Gegenstück und gibt einen deutschen Text zurück.
+
+    Wirft ``IntegrationConnectionError``, wenn die Verbindung nicht zustande kommt.
+    """
+    if kind == "webuntis":
+        try:
+            identity = probe_webuntis(
+                base_url=config.get("base_url", ""),
+                school=config.get("school", ""),
+                username=credentials.get("username", ""),
+                password=credentials.get("password", ""),
+                timeout_seconds=timeout_seconds,
+            )
+        except WebUntisError as exc:
+            raise IntegrationConnectionError(str(exc)) from exc
+        return f"WebUntis ist erreichbar und die Zugangsdaten stimmen ({identity.describe()})."
+
+    if kind == "ai_provider":
+        try:
+            models = probe_ai_provider(
+                base_url=config.get("base_url", ""),
+                model=config.get("model", ""),
+                api_key=credentials.get("api_key", ""),
+                timeout_seconds=timeout_seconds,
+            )
+        except AiProviderError as exc:
+            raise IntegrationConnectionError(str(exc)) from exc
+        return f"Der KI-Provider ist erreichbar und {models.describe()}"
+
+    if kind == "documents":
+        return _check_documents_path(config.get("path", ""), document_storage_path)
+
+    raise IntegrationConnectionError(f"Für {kind} ist noch kein Adapter implementiert.")
+
+
+def _check_documents_path(path: str, storage_root: str) -> str:
+    root = Path(storage_root).resolve()
+    candidate = Path(path)
+    resolved = (candidate if candidate.is_absolute() else root / candidate).resolve()
+    if not resolved.is_relative_to(root):
+        raise IntegrationConnectionError("Der Dokumentpfad liegt außerhalb des konfigurierten Ablageordners.")
+    if not resolved.exists():
+        if not root.is_dir():
+            raise IntegrationConnectionError(f"Der Ablageordner {root} existiert nicht.")
+        try:
+            resolved.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise IntegrationConnectionError(f"Der Dokumentpfad ließ sich nicht anlegen: {exc.strerror}.") from exc
+        return f"Der Dokumentordner {resolved.name or resolved} wurde angelegt und ist beschreibbar."
+    if not resolved.is_dir():
+        raise IntegrationConnectionError(f"{resolved} ist kein Ordner.")
+    return f"Der Dokumentordner {resolved.name or resolved} ist vorhanden und beschreibbar."
+
+
+def sync_window(today: date | None = None, weeks: int = DEFAULT_SYNC_WEEKS) -> tuple[date, date]:
+    """Rechnet das Abruffenster aus: Montag der aktuellen Woche bis ``weeks`` Wochen.
+
+    Der Start liegt bewusst am Montag, weil ein Schulwochenraster dort
+    einheitlich beginnt; ein Sync am Mittwoch soll trotzdem dieselbe Woche
+    liefern wie ein Sync am Montag.
+    """
+    reference = today or date.today()
+    monday = reference - timedelta(days=reference.weekday())
+    span = max(1, weeks)
+    return monday, monday + timedelta(days=7 * span - 1)
+
+
+def sync_integration(
+    *,
+    db: Session,
+    source: SyncSource,
+    config: dict[str, str],
+    credentials: dict[str, str],
+    timezone_name: str,
+    timeout_seconds: float,
+    weeks: int = DEFAULT_SYNC_WEEKS,
+    today: date | None = None,
+) -> SyncOutcome:
+    """Holt Daten aus der Integration und schreibt sie in die Datenbank.
+
+    Wirft ``IntegrationConnectionError``, wenn die Gegenseite nicht erreichbar
+    ist oder ablehnt. Der Aufrufer entscheidet, was in ``last_error`` landet.
+    """
+    if source.source_type == "webuntis":
+        return _sync_webuntis(
+            db, source, config, credentials, timezone_name, timeout_seconds, weeks, today
+        )
+    raise IntegrationConnectionError(f"Für {source.source_type} ist noch kein Import implementiert.")
+
+
+def _sync_webuntis(
+    db: Session,
+    source: SyncSource,
+    config: dict[str, str],
+    credentials: dict[str, str],
+    timezone_name: str,
+    timeout_seconds: float,
+    weeks: int,
+    today: date | None,
+) -> SyncOutcome:
+    start, end = sync_window(today, weeks)
+    try:
+        with WebUntisClient(
+            base_url=config.get("base_url", ""),
+            school=config.get("school", ""),
+            username=credentials.get("username", ""),
+            password=credentials.get("password", ""),
+            timeout_seconds=timeout_seconds,
+        ) as client:
+            timetable = client.fetch_timetable(start, end)
+    except WebUntisError as exc:
+        raise IntegrationConnectionError(str(exc)) from exc
+    return import_timetable(db, source, timetable, timezone_name)

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -158,4 +159,41 @@ class LearningProgress(Base):
     topic: Mapped[Topic] = relationship(back_populates="progress")
 
 
-__all__ = ["Document", "DocumentChunk", "LearningProgress", "Topic", "TopicDocument"]
+class GreetingCache(Base):
+    """Der zuletzt erzeugte Willkommenssatz, ein Eintrag je Nutzer und Tag.
+
+    Ein Modellaufruf bei jedem Oeffnen der Seite waere langsam und teuer, ohne
+    Mehrwert. Deshalb wird der Satz hier gehalten und nur bei ``generated_on``
+    vom heutigen Tag neu erzeugt. Das erzwungene Neuzeichnen ueber den
+    ``POST /api/v1/greeting/refresh`` setzt einfach ein neues Feld.
+    """
+
+    __tablename__ = "greeting_cache"
+    __table_args__ = (
+        UniqueConstraint("user_id", "generated_on", name="uq_greeting_cache_user_day"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    # Das Feld heisst absichtlich nicht `text`: `text` ist in diesem Modul der
+    # importierte SQLAlchemy-Typ, und ein Attribut gleichen Namens wuerde ihn
+    # im Klassenrumpf verdecken.
+    sentence: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="ai", server_default="ai")
+    model: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    generated_on: Mapped[date] = mapped_column(Date, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, server_default=text("CURRENT_TIMESTAMP")
+    )
+
+    user: Mapped[User] = relationship(viewonly=True)
+
+
+__all__ = [
+    "Document",
+    "DocumentChunk",
+    "GreetingCache",
+    "LearningProgress",
+    "Topic",
+    "TopicDocument",
+]
