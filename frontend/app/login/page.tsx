@@ -62,11 +62,10 @@ function LoginContent() {
 
   return (
     <main className="app-surface relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-8 sm:px-6">
-      <div className="surface-grid pointer-events-none absolute inset-0 opacity-30" aria-hidden="true" />
       <div className="relative grid w-full max-w-5xl items-center gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-20">
         <section className="hidden lg:block">
           <div className="mb-8 flex items-center gap-3">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+            <span className="flex h-12 w-12 items-center justify-center bg-primary text-primary-foreground">
               <Sparkles className="h-6 w-6" aria-hidden="true" />
             </span>
             <div>
@@ -83,16 +82,16 @@ function LoginContent() {
             Dein Schulalltag an einem Ort: Stundenplan, Aufgaben, Prüfungen und ein Assistenzsystem, das dich im richtigen Moment unterstützt.
           </p>
           <div className="mt-10 flex items-center gap-3 text-sm font-semibold text-muted-foreground">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary text-secondary-foreground">
+            <span className="flex h-9 w-9 items-center justify-center bg-secondary text-secondary-foreground">
               <LockKeyhole className="h-4 w-4" aria-hidden="true" />
             </span>
             Privat und sicher durch eine Session
           </div>
         </section>
 
-        <Card className="border-border/80 bg-card/90 shadow-xl shadow-slate-950/5 backdrop-blur-xl">
+        <Card className="border-border bg-card">
           <CardHeader className="space-y-3 pb-4">
-            <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary lg:hidden">
+            <div className="mb-2 flex h-11 w-11 items-center justify-center bg-muted text-foreground lg:hidden">
               <Sparkles className="h-5 w-5" aria-hidden="true" />
             </div>
             <div>

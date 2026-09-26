@@ -48,9 +48,9 @@ export function AppShell({ children, user }: AppShellProps) {
 
   return (
     <div className="app-surface min-h-screen bg-background text-foreground">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[280px] flex-col border-r border-border/70 bg-card/80 px-5 py-6 backdrop-blur-xl lg:flex">
-        <Link href="/" className="flex items-center gap-3 rounded-2xl px-2 py-1.5" aria-label="Lernraum Startseite">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[280px] flex-col border-r border-border bg-card px-5 py-6 lg:flex">
+        <Link href="/" className="flex items-center gap-3 px-2 py-1.5" aria-label="Lernraum Startseite">
+          <span className="flex h-11 w-11 items-center justify-center bg-primary text-primary-foreground">
             <Sparkles className="h-5 w-5" aria-hidden="true" />
           </span>
           <span>
@@ -71,21 +71,21 @@ export function AppShell({ children, user }: AppShellProps) {
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "group flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition-colors",
-                    active ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    "group flex items-center gap-3 px-3 py-3 text-sm font-semibold transition-colors",
+                    active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
                   {item.label}
-                  {active ? <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary-foreground" /> : null}
+                  {active ? <span className="ml-auto h-1.5 w-1.5 bg-primary-foreground" /> : null}
                 </Link>
               );
             })}
           </nav>
         </div>
 
-        <div className="mt-10 rounded-2xl border border-primary/15 bg-primary/5 p-4">
-          <div className="mb-3 flex items-center gap-2 text-primary">
+        <div className="mt-10 border border-border bg-muted p-4">
+          <div className="mb-3 flex items-center gap-2">
             <ShieldCheck className="h-4 w-4" aria-hidden="true" />
             <span className="text-xs font-bold uppercase tracking-[0.16em]">Datenschutz</span>
           </div>
@@ -93,8 +93,8 @@ export function AppShell({ children, user }: AppShellProps) {
           <p className="mt-2 text-xs leading-5 text-muted-foreground">Sie werden nicht als private Daten im Browser gespeichert.</p>
         </div>
 
-        <div className="mt-auto flex items-center gap-3 border-t border-border/70 pt-5">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary text-xs font-extrabold text-secondary-foreground">
+        <div className="mt-auto flex items-center gap-3 border-t border-border pt-5">
+          <span className="flex h-10 w-10 items-center justify-center bg-secondary text-xs font-extrabold text-secondary-foreground">
             {getInitials(displayName)}
           </span>
           <span className="min-w-0 flex-1">
@@ -106,19 +106,19 @@ export function AppShell({ children, user }: AppShellProps) {
       </aside>
 
       <div className="lg:pl-[280px]">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border/70 bg-background/85 px-4 backdrop-blur-xl sm:px-6 lg:hidden">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background px-4 sm:px-6 lg:hidden">
           <Link href="/" className="flex items-center gap-2.5" aria-label="Lernraum Startseite">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <span className="flex h-9 w-9 items-center justify-center bg-primary text-primary-foreground">
               <Sparkles className="h-4 w-4" aria-hidden="true" />
             </span>
             <span className="text-sm font-extrabold tracking-tight">Lernraum</span>
           </Link>
           <div className="flex items-center gap-1">
           <ThemeToggle />
-          <Link href="/settings" className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary text-xs font-extrabold text-secondary-foreground" aria-label="Einstellungen">
+          <Link href="/settings" className="flex h-9 w-9 items-center justify-center bg-secondary text-xs font-extrabold text-secondary-foreground" aria-label="Einstellungen">
             <Settings className="h-5 w-5" aria-hidden="true" />
           </Link>
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary text-xs font-extrabold text-secondary-foreground">
+          <span className="flex h-9 w-9 items-center justify-center bg-secondary text-xs font-extrabold text-secondary-foreground">
             {getInitials(displayName)}
           </span>
           </div>
@@ -128,7 +128,7 @@ export function AppShell({ children, user }: AppShellProps) {
         </main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-card/90 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl lg:hidden" aria-label="Mobile Navigation">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 lg:hidden" aria-label="Mobile Navigation">
         <div className="mx-auto grid max-w-lg grid-cols-6 gap-1">
           {navigation.map((item) => {
             const Icon = item.icon;
@@ -139,8 +139,8 @@ export function AppShell({ children, user }: AppShellProps) {
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-bold transition-colors",
-                  active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  "flex min-h-14 flex-col items-center justify-center gap-1 px-1 text-[10px] font-bold transition-colors",
+                  active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
                 <Icon className="h-[18px] w-[18px]" aria-hidden="true" />

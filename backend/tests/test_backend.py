@@ -1,12 +1,16 @@
+import hashlib
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from app.core.config import Settings, normalize_database_url
+from app.core.crypto import decrypt_credentials
 from app.core.security import create_session_token, hash_password
-from app.db.entities import LearningProgress, StudyPlan, StudySession, Topic, User
+from app.db.entities import LearningProgress, StudyPlan, StudySession, SyncSource, Topic, User
 from app.schemas.auth import UserRead
 from app.services.demo_seed import seed_demo_data
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 
@@ -360,10 +364,12 @@ def test_production_settings_accept_non_placeholder_secrets() -> None:
         _env_file=None,
         APP_ENV="production",
         SECRET_KEY="a-real-secret-key",
+        INTEGRATION_ENCRYPTION_KEY="a-real-integration-key",
         ADMIN_PASSWORD="a-real-admin-password",
     )
     assert settings.environment == "production"
     assert settings.secret_key is not None
+    assert settings.integration_encryption_key is not None
     assert settings.admin_password is not None
 
 
@@ -380,3 +386,263 @@ def test_response_timestamps_are_utc_aware() -> None:
     response = UserRead.model_validate(user)
     assert response.created_at.tzinfo is timezone.utc
     assert response.created_at.utcoffset() == timedelta(0)
+
+
+def test_file_upload_requires_authentication_and_stores_checksum(app_client: TestClient) -> None:
+    assert app_client.post("/api/v1/files", files={"file": ("notiz.txt", b"hallo")}).status_code == 401
+
+    login(app_client)
+    response = app_client.post("/api/v1/files", files={"file": ("notiz.txt", b"hallo welt")})
+    assert response.status_code == 201
+    body = response.json()
+    assert body["filename"] == "notiz.txt"
+    assert body["checksum"] == hashlib.sha256(b"hallo welt").hexdigest()
+    assert body["mime_type"] == "text/plain"
+    assert Path(body["path"]).is_file()
+
+
+def test_integration_routes_are_registered(app_client: TestClient) -> None:
+    paths = {route.path for route in app_client.app.routes}
+    assert "/api/v1/integrations" in paths
+    assert "/api/v1/integrations/catalog" in paths
+    assert "/api/v1/integrations/{integration_id}" in paths
+    assert "/api/v1/integrations/{integration_id}/test" in paths
+
+
+def test_integration_catalog_lists_all_kinds(app_client: TestClient) -> None:
+    login(app_client)
+    response = app_client.get("/api/v1/integrations/catalog")
+    assert response.status_code == 200
+    catalog = response.json()
+    assert [entry["kind"] for entry in catalog] == ["webuntis", "ai_provider", "documents"]
+    webuntis = next(entry for entry in catalog if entry["kind"] == "webuntis")
+    assert webuntis["required_config"] == ["base_url", "school"]
+    assert webuntis["required_credentials"] == ["username", "password"]
+
+
+def test_integrations_require_authentication(app_client: TestClient) -> None:
+    assert app_client.get("/api/v1/integrations").status_code == 401
+    assert app_client.post("/api/v1/integrations", json={"kind": "documents"}).status_code == 401
+
+
+def test_integration_credentials_are_encrypted_at_rest(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, _user = app_context
+    login(client)
+    created = client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "webuntis",
+            "name": "Schulportal",
+            "config": {"base_url": "https://portal.example.org/", "school": "Gymnasium"},
+            "credentials": {"username": "schueler", "password": "geheim-passwort"},
+        },
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["has_credentials"] is True
+    assert body["credential_keys"] == ["password", "username"]
+    assert body["missing_fields"] == []
+    assert body["config"]["base_url"] == "https://portal.example.org"
+    assert "credentials" not in body
+
+    source = db.scalar(select(SyncSource).where(SyncSource.id == body["id"]))
+    assert source is not None
+    assert source.credentials is not None
+    assert "geheim-passwort" not in source.credentials
+    assert source.credentials.startswith("sa1.")
+    assert decrypt_credentials(source.credentials, "test-integration-encryption-key") == {
+        "username": "schueler",
+        "password": "geheim-passwort",
+    }
+
+
+def test_integration_create_rejects_incomplete_input(app_client: TestClient) -> None:
+    login(app_client)
+    missing_credentials = app_client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "webuntis",
+            "name": "Ohne Zugangsdaten",
+            "config": {"base_url": "https://portal.example.org", "school": "Gymnasium"},
+        },
+    )
+    assert missing_credentials.status_code == 422
+
+    unknown_field = app_client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "webuntis",
+            "name": "Unbekanntes Feld",
+            "config": {"base_url": "https://portal.example.org", "school": "Gymnasium", "token": "x"},
+            "credentials": {"username": "schueler", "password": "geheim"},
+        },
+    )
+    assert unknown_field.status_code == 422
+
+    duplicate = app_client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "documents",
+            "name": "Dokumente",
+            "config": {"path": "erste"},
+        },
+    )
+    assert duplicate.status_code == 201
+    second = app_client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "documents",
+            "name": "Dokumente",
+            "config": {"path": "zweite"},
+        },
+    )
+    assert second.status_code == 409
+
+
+def test_integration_update_disable_and_delete(app_client: TestClient) -> None:
+    login(app_client)
+    integration_id = app_client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "ai_provider",
+            "name": "Ollama",
+            "config": {"base_url": "http://localhost:11434", "model": "llama3"},
+        },
+    ).json()["id"]
+
+    patched = app_client.patch(
+        f"/api/v1/integrations/{integration_id}",
+        json={"name": "Ollama lokal", "config": {"model": "llama3.2"}},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["name"] == "Ollama lokal"
+    assert patched.json()["config"] == {"base_url": "http://localhost:11434", "model": "llama3.2"}
+
+    disabled = app_client.patch(f"/api/v1/integrations/{integration_id}", json={"enabled": False})
+    assert disabled.status_code == 200
+    assert disabled.json()["enabled"] is False
+    assert disabled.json()["status"] == "disabled"
+
+    assert app_client.delete(f"/api/v1/integrations/{integration_id}").status_code == 200
+    assert app_client.get(f"/api/v1/integrations/{integration_id}").status_code == 404
+
+
+def test_integration_test_endpoint_reports_pending_adapter(app_client: TestClient) -> None:
+    login(app_client)
+    integration_id = app_client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "ai_provider",
+            "name": "Ollama",
+            "config": {"base_url": "http://localhost:11434", "model": "llama3"},
+        },
+    ).json()["id"]
+
+    result = app_client.post(f"/api/v1/integrations/{integration_id}/test")
+    assert result.status_code == 200
+    body = result.json()
+    assert body["ok"] is False
+    assert body["status"] == "pending"
+    assert "noch nicht implementiert" in body["message"]
+
+    listed = {item["id"]: item for item in app_client.get("/api/v1/integrations").json()}
+    assert listed[integration_id]["status"] == "pending"
+
+
+def test_integration_test_endpoint_flags_missing_fields(app_client: TestClient) -> None:
+    login(app_client)
+    integration_id = app_client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "webuntis",
+            "name": "Unvollständig",
+            "config": {"base_url": "https://portal.example.org", "school": "Gymnasium"},
+            "credentials": {"username": "schueler", "password": "geheim"},
+        },
+    ).json()["id"]
+
+    app_client.patch(f"/api/v1/integrations/{integration_id}", json={"credentials": {}})
+    result = app_client.post(f"/api/v1/integrations/{integration_id}/test")
+    assert result.status_code == 200
+    body = result.json()
+    assert body["ok"] is False
+    assert body["status"] == "error"
+    assert body["missing_fields"] == ["username", "password"]
+
+
+def test_integrations_are_isolated_per_user(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, _user = app_context
+    login(client)
+    mine = client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "documents",
+            "name": "Meine Dokumente",
+            "config": {"path": "meine"},
+        },
+    )
+    assert mine.status_code == 201
+    assert [item["name"] for item in client.get("/api/v1/integrations").json()] == ["Meine Dokumente"]
+
+    other = User(
+        username="other",
+        password_hash=hash_password("other-password"),
+        is_admin=False,
+        is_active=True,
+        timezone="UTC",
+    )
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+
+    client.post("/api/v1/auth/logout")
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"username": "other", "password": "other-password"},
+    )
+    assert response.status_code == 200
+
+    assert client.get("/api/v1/integrations").json() == []
+    assert client.get(f"/api/v1/integrations/{mine.json()['id']}").status_code == 404
+    assert client.patch(f"/api/v1/integrations/{mine.json()['id']}", json={"name": "Gekapert"}).status_code == 404
+    assert client.delete(f"/api/v1/integrations/{mine.json()['id']}").status_code == 404
+
+
+def test_integration_endpoints_require_encryption_key(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, _db, _user = app_context
+    login(client)
+    integration_id = client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "webuntis",
+            "name": "Schulportal",
+            "config": {"base_url": "https://portal.example.org", "school": "Gymnasium"},
+            "credentials": {"username": "schueler", "password": "geheim-passwort"},
+        },
+    ).json()["id"]
+
+    settings = client.app.state.settings
+    original_key = settings.integration_encryption_key
+    settings.integration_encryption_key = None
+    try:
+        assert client.get("/api/v1/integrations").status_code == 503
+        assert client.get(f"/api/v1/integrations/{integration_id}").status_code == 503
+        assert client.post(f"/api/v1/integrations/{integration_id}/test").status_code == 503
+        assert (
+            client.post(
+                "/api/v1/integrations",
+                json={"kind": "documents", "name": "Ohne Key", "config": {"path": "x"}},
+            ).status_code
+            == 503
+        )
+        assert client.get("/api/v1/integrations/catalog").status_code == 200
+    finally:
+        settings.integration_encryption_key = original_key
+
+    assert client.get("/api/v1/integrations").status_code == 200

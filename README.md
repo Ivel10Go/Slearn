@@ -64,9 +64,10 @@ Vor dem ersten Start müssen diese fail-closed Variablen mit nichtleeren, indivi
 - `POSTGRES_DB`
 - `DATABASE_URL`
 - `SECRET_KEY`
+- `INTEGRATION_ENCRYPTION_KEY`
 - `ADMIN_PASSWORD`
 
-Die Vorlage enthält bei Passwörtern und `SECRET_KEY` absichtlich keine funktionierenden Platzhalter. `SECRET_KEY` muss ein ausreichend langer zufälliger Wert sein. Datenbankpasswörter in `DATABASE_URL` müssen URL-kodiert werden. Wenn Benutzername oder Datenbankname geändert werden, müssen die Werte in `DATABASE_URL` dazu passen.
+Die Vorlage enthält bei Passwörtern und `SECRET_KEY` absichtlich keine funktionierenden Platzhalter. `SECRET_KEY` muss ein ausreichend langer zufälliger Wert sein. `INTEGRATION_ENCRYPTION_KEY` schützt die gespeicherten Zugangsdaten der Integrationen (WebUntis, KI-Provider) und wird per HKDF zu einem AES-GCM-Schlüssel abgeleitet. Ein späterer Wechsel dieses Werts macht bereits gespeicherte Zugangsdaten unlesbar, also vor der ersten Nutzung festlegen. Datenbankpasswörter in `DATABASE_URL` müssen URL-kodiert werden. Wenn Benutzername oder Datenbankname geändert werden, müssen die Werte in `DATABASE_URL` dazu passen.
 
 Der Bootstrap-Administrator wird nur angelegt, wenn er noch nicht existiert. Ein späteres Ändern von `ADMIN_PASSWORD` in `.env` rotiert das Passwort eines bereits vorhandenen Benutzers nicht automatisch.
 
@@ -225,6 +226,7 @@ Es ist noch kein Backup-Runner enthalten. Die Backup- und Kalenderintegrationen 
 | `POSTGRES_DB` | Erforderlicher PostgreSQL-Datenbankname |
 | `DATABASE_URL` | Erforderliche SQLAlchemy-URL für Backend und Worker |
 | `SECRET_KEY` | Erforderlicher Schlüssel für Session-Token |
+| `INTEGRATION_ENCRYPTION_KEY` | Erforderlicher Schlüssel zum Verschlüsseln der Integrations-Zugangsdaten |
 | `ADMIN_PASSWORD` | Erforderliches Passwort für einen neu anzulegenden Bootstrap-Admin |
 
 ### Backend

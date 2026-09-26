@@ -3,48 +3,48 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #f5f7fb;
-  --foreground: #172033;
+  --background: #fafafa;
+  --foreground: #0a0a0a;
   --card: #ffffff;
-  --card-foreground: #172033;
+  --card-foreground: #0a0a0a;
   --popover: #ffffff;
-  --popover-foreground: #172033;
-  --primary: #4f46e5;
+  --popover-foreground: #0a0a0a;
+  --primary: #0a0a0a;
   --primary-foreground: #ffffff;
-  --secondary: #eef2ff;
-  --secondary-foreground: #3730a3;
-  --muted: #eef2f7;
-  --muted-foreground: #64748b;
-  --accent: #e0e7ff;
-  --accent-foreground: #3730a3;
-  --destructive: #dc2626;
+  --secondary: #f0f0f0;
+  --secondary-foreground: #0a0a0a;
+  --muted: #f4f4f4;
+  --muted-foreground: #6b6b6b;
+  --accent: #ebebeb;
+  --accent-foreground: #0a0a0a;
+  --destructive: #0a0a0a;
   --destructive-foreground: #ffffff;
-  --border: #e2e8f0;
-  --input: #dbe3ef;
-  --ring: #818cf8;
+  --border: #e2e2e2;
+  --input: #d4d4d4;
+  --ring: #0a0a0a;
   color-scheme: light;
 }
 
 .dark {
-  --background: #0b1120;
-  --foreground: #e5e7eb;
-  --card: #111a2d;
-  --card-foreground: #e5e7eb;
-  --popover: #111a2d;
-  --popover-foreground: #e5e7eb;
-  --primary: #818cf8;
-  --primary-foreground: #11112b;
-  --secondary: #1e2740;
-  --secondary-foreground: #c7d2fe;
-  --muted: #172238;
-  --muted-foreground: #94a3b8;
-  --accent: #242f4c;
-  --accent-foreground: #c7d2fe;
-  --destructive: #f87171;
-  --destructive-foreground: #450a0a;
-  --border: #26334d;
-  --input: #334155;
-  --ring: #a5b4fc;
+  --background: #0a0a0a;
+  --foreground: #fafafa;
+  --card: #141414;
+  --card-foreground: #fafafa;
+  --popover: #141414;
+  --popover-foreground: #fafafa;
+  --primary: #fafafa;
+  --primary-foreground: #0a0a0a;
+  --secondary: #1c1c1c;
+  --secondary-foreground: #fafafa;
+  --muted: #171717;
+  --muted-foreground: #9c9c9c;
+  --accent: #212121;
+  --accent-foreground: #fafafa;
+  --destructive: #fafafa;
+  --destructive-foreground: #0a0a0a;
+  --border: #2a2a2a;
+  --input: #404040;
+  --ring: #fafafa;
   color-scheme: dark;
 }
 
@@ -68,11 +68,16 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --radius-sm: 0.5rem;
-  --radius-md: 0.75rem;
-  --radius-lg: 1rem;
-  --radius-xl: 1.25rem;
-  --radius-2xl: 1.5rem;
+  --radius: 0px;
+  --radius-none: 0px;
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
 }
 
 @layer base {
@@ -111,21 +116,13 @@
   }
 
   ::selection {
-    background: color-mix(in srgb, var(--primary) 24%, transparent);
+    background: var(--foreground);
+    color: var(--background);
   }
 }
 
 .app-surface {
-  background-image:
-    radial-gradient(circle at 15% 0%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 28rem),
-    radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--accent) 34%, transparent), transparent 24rem);
-}
-
-.surface-grid {
-  background-image: linear-gradient(to right, color-mix(in srgb, var(--border) 42%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--border) 42%, transparent) 1px, transparent 1px);
-  background-size: 32px 32px;
-  mask-image: linear-gradient(to bottom, black, transparent 82%);
+  background-color: var(--background);
 }
 
 .skeleton-shimmer {

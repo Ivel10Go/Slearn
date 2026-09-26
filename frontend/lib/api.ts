@@ -2,8 +2,8 @@
 
 import { getDemoDashboard, isDemoFallbackEnabled } from "./demo";
 import { isDemoTaskId, normalizeDashboard, normalizeStudyAction, type ApiIdentifier, type DashboardData, type UserResponse } from "./types";
-import { parseLoginResponse, parseUserResponse, parseUserSession, parseIntegrationArray } from "./schemas";
-import type { IntegrationRead } from "./types";
+import { parseLoginResponse, parseUserResponse, parseUserSession, parseIntegrationArray, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationTestResult } from "./schemas";
+import type { IntegrationCatalog, IntegrationRead, IntegrationTestResult } from "./types";
 
 const API_PREFIX = "/api/backend";
 
@@ -38,9 +38,11 @@ function responseMessage(payload: unknown, fallback: string) {
 }
 
 function redirectToLogin() {
-  if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-    window.location.replace("/login?next=%2F");
+  if (typeof window === "undefined" || window.location.pathname === "/login") {
+    return;
   }
+  const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  window.location.replace(`/login?next=${encodeURIComponent(next)}`);
 }
 
 export function canUseDemoFallback(error: unknown) {
@@ -160,9 +162,64 @@ async function studyAction(taskId: ApiIdentifier, action: "start" | "stop" | "co
   return normalizeStudyAction(payload, taskId);
 }
 
+export interface IntegrationWrite {
+  kind: string;
+  name: string;
+  config: Record<string, string>;
+  credentials?: Record<string, string>;
+  enabled?: boolean;
+}
+
+export interface IntegrationChanges {
+  name?: string;
+  config?: Record<string, string>;
+  credentials?: Record<string, string>;
+  enabled?: boolean;
+}
+
 export async function getIntegrations(): Promise<IntegrationRead[]> {
   const payload = await apiRequest('/v1/integrations');
   return parseIntegrationArray(payload);
+}
+
+export async function getIntegrationCatalog(): Promise<IntegrationCatalog[]> {
+  return parseIntegrationCatalogArray(await apiRequest("/v1/integrations/catalog"));
+}
+
+export async function createIntegration(input: IntegrationWrite): Promise<IntegrationRead> {
+  const payload = await apiRequest("/v1/integrations", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return parseIntegrationRead(payload);
+}
+
+export async function updateIntegration(integrationId: number, changes: IntegrationChanges): Promise<IntegrationRead> {
+  const payload = await apiRequest(`/v1/integrations/${integrationId}`, {
+    method: "PATCH",
+    body: JSON.stringify(changes),
+  });
+  return parseIntegrationRead(payload);
+}
+
+export async function deleteIntegration(integrationId: number): Promise<void> {
+  await apiRequest(`/v1/integrations/${integrationId}`, { method: "DELETE" });
+}
+
+export async function testIntegration(integrationId: number): Promise<IntegrationTestResult> {
+  const payload = await apiRequest(`/v1/integrations/${integrationId}/test`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return parseIntegrationTestResult(payload);
+}
+
+export async function logout(): Promise<void> {
+  await apiRequest("/v1/auth/logout", {
+    method: "POST",
+    body: JSON.stringify({}),
+    redirectOnUnauthorized: false,
+  });
 }
 
 

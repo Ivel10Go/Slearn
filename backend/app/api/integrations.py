@@ -16,9 +16,9 @@ from app.schemas.integrations import (
     IntegrationUpdate,
 )
 from app.services.integrations import (
+    INTEGRATION_SPECS,
     IntegrationValidationError,
     integration_read,
-    integration_spec,
     missing_fields,
     normalize_config,
     normalize_credentials,

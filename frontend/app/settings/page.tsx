@@ -1,30 +1,50 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getIntegrations } from "@/lib/api";
-import { IntegrationRead } from "@/lib/types";
+import { AppShell } from "@/components/app-shell";
+import { AuthLoading } from "@/components/auth-loading";
+import { SettingsView } from "@/components/settings/settings-view";
+import { useIntegrations } from "@/lib/use-integrations";
 
 export default function SettingsPage() {
-  const [integrations, setIntegrations] = useState<IntegrationRead[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    user,
+    integrations,
+    catalog,
+    error,
+    actionError,
+    status,
+    pendingAction,
+    testResults,
+    retry,
+    addIntegration,
+    changeIntegration,
+    checkIntegration,
+    removeIntegration,
+    logout,
+  } = useIntegrations();
 
-  useEffect(() => {
-    getIntegrations()
-      .then(setIntegrations)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, []);
+  if (status === "redirecting") {
+    return <AuthLoading />;
+  }
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Einstellungen</h1>
-      {error && <p className="text-red-600">{error}</p>}
-      <ul>
-        {integrations.map((i) => (
-          <li key={i.id} className="border-b py-2">
-            <span className="font-medium">{i.name}</span> – {i.kind} – {i.status}
-          </li>
-        ))}
-      </ul>
-    </div>
+    <AppShell user={user}>
+      <SettingsView
+        user={user}
+        integrations={integrations}
+        catalog={catalog}
+        error={error}
+        actionError={actionError}
+        status={status}
+        pendingAction={pendingAction}
+        testResults={testResults}
+        onRetry={retry}
+        onAdd={addIntegration}
+        onToggle={(integration, enabled) => void changeIntegration(integration.id, { enabled })}
+        onTest={(integration) => void checkIntegration(integration.id)}
+        onDelete={(integration) => void removeIntegration(integration.id)}
+        onLogout={() => void logout()}
+      />
+    </AppShell>
   );
 }

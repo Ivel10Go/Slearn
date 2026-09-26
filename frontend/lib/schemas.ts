@@ -33,6 +33,10 @@ export const integrationTestResultSchema = z.object({
   missing_fields: z.array(z.string()),
 });
 
+export function parseIntegrationRead(payload: unknown) {
+  return integrationReadSchema.parse(payload);
+}
+
 export function parseIntegrationArray(payload: unknown) {
   return z.array(integrationReadSchema).parse(payload);
 }

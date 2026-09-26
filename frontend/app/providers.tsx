@@ -11,7 +11,7 @@ function ThemeColorSync() {
     if (!resolvedTheme) {
       return;
     }
-    const color = resolvedTheme === "dark" ? "#0b1120" : "#f5f7fb";
+    const color = resolvedTheme === "dark" ? "#0a0a0a" : "#fafafa";
     const metas = Array.from(document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]'));
     if (metas.length === 0) {
       const meta = document.createElement("meta");

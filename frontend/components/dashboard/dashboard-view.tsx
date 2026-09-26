@@ -104,8 +104,8 @@ function taskVariant(status: StudyTaskStatus) {
 function ProgressBar({ value, className, indicatorClassName }: { value: number; className?: string; indicatorClassName?: string }) {
   const percentage = Math.min(100, Math.max(0, value));
   return (
-    <div className={cn("h-2 overflow-hidden rounded-full bg-muted", className)} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage}>
-      <div className={cn("h-full rounded-full bg-primary transition-all duration-500", indicatorClassName)} style={{ width: `${percentage}%` }} />
+    <div className={cn("h-2 overflow-hidden bg-muted", className)} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage}>
+      <div className={cn("h-full bg-primary transition-all duration-500", indicatorClassName)} style={{ width: `${percentage}%` }} />
     </div>
   );
 }
@@ -116,8 +116,8 @@ function ProgressRing({ value }: { value: number }) {
     background: `conic-gradient(currentColor ${percentage * 3.6}deg, color-mix(in srgb, currentColor 18%, transparent) 0deg)`,
   };
   return (
-    <div className="relative flex h-32 w-32 shrink-0 items-center justify-center rounded-full p-2 text-primary-foreground" style={style}>
-      <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-primary text-primary-foreground shadow-inner">
+    <div className="relative flex h-32 w-32 shrink-0 items-center justify-center p-2 text-primary-foreground" style={style}>
+      <div className="flex h-full w-full flex-col items-center justify-center bg-primary text-primary-foreground">
         <span className="text-3xl font-extrabold tracking-tight">{percentage}%</span>
         <span className="text-[10px] font-bold uppercase tracking-[0.16em] opacity-75">geschafft</span>
       </div>
@@ -190,8 +190,7 @@ function FocusLessonCard({ lesson, reference }: { lesson: DashboardLesson | unde
   const title = isCurrent ? "Du bist mittendrin." : lesson ? "Als Nächstes steht an" : "Dein Stundenplan ist frei.";
 
   return (
-    <Card id="focus" className="relative overflow-hidden border-primary/20 bg-card shadow-lg shadow-primary/5">
-      <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-primary/10 blur-3xl" aria-hidden="true" />
+    <Card id="focus" className="relative overflow-hidden border-foreground bg-card">
       <CardHeader className="relative pb-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-primary">
@@ -262,12 +261,12 @@ function ScheduleCard({ lessons, reference }: { lessons: DashboardLesson[]; refe
               const state = getLessonState(lesson, reference);
               const isCurrent = state === "current";
               return (
-                <div key={lesson.id} className={cn("group flex gap-3 rounded-2xl border border-transparent p-3 transition-colors hover:border-border hover:bg-muted/40", isCurrent && "border-primary/20 bg-primary/5")}>
+                <div key={lesson.id} className={cn("group flex gap-3 border border-transparent p-3 transition-colors hover:border-border hover:bg-muted/40", isCurrent && "border-foreground bg-muted")}>
                   <div className="flex w-14 shrink-0 flex-col items-center border-r border-border/70 pr-3 text-center">
                     <span className={cn("text-sm font-extrabold", isCurrent ? "text-primary" : "text-foreground")}>{formatTime(lesson.startTime)}</span>
                     <span className="mt-1 text-[10px] font-semibold text-muted-foreground">{formatTime(lesson.endTime)}</span>
                   </div>
-                  <div className="relative min-w-0 flex-1 border-l-2 pl-4" style={{ borderLeftColor: lesson.color }}>
+                  <div className="relative min-w-0 flex-1 border-l-2 border-foreground pl-4">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate text-sm font-extrabold">{lesson.subject}</p>
                       {isCurrent ? <Badge variant="success">Jetzt</Badge> : state === "completed" ? <Badge variant="outline">Erledigt</Badge> : null}
@@ -309,7 +308,7 @@ function ExamsCard({ data, reference }: { data: DashboardData; reference: Date }
             {data.upcomingExams.slice(0, 4).map((exam) => {
               const countdown = getCountdown(exam.date, reference);
               return (
-                <div key={exam.id} className="rounded-2xl border border-border/70 p-4 transition-colors hover:border-primary/25 hover:bg-primary/[0.02]">
+                <div key={exam.id} className="border border-border p-4 transition-colors hover:border-foreground hover:bg-muted/40">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">{exam.subject}</p>
@@ -371,7 +370,7 @@ function HomeworkCard({ data, reference }: { data: DashboardData; reference: Dat
           <div className="space-y-3">
             {openHomework.slice(0, 4).map((item) => (
               <div key={item.id} className="flex gap-3 rounded-2xl border border-border/70 p-3.5">
-                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-300">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center bg-muted text-foreground">
                   <BookOpen className="h-4 w-4" aria-hidden="true" />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -466,9 +465,9 @@ function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
               const busy = busyTaskId === task.id;
               const startedAt = task.session?.startedAt ?? task.startedAt;
               return (
-                <div key={task.id} className={cn("rounded-2xl border p-4 transition-colors", active ? "border-primary/40 bg-primary/5" : "border-border/70")}>
+                <div key={task.id} className={cn("border p-4 transition-colors", active ? "border-foreground bg-muted" : "border-border")}>
                   <div className="flex items-start gap-3">
-                    <span className={cn("mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", completed ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300" : "bg-secondary text-secondary-foreground")}>
+                    <span className={cn("mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center", completed ? "bg-foreground text-background" : "bg-secondary text-secondary-foreground")}>
                       {completed ? <Check className="h-4 w-4" aria-hidden="true" /> : <BookOpen className="h-4 w-4" aria-hidden="true" />}
                     </span>
                     <div className="min-w-0 flex-1">
@@ -482,10 +481,10 @@ function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
                     <span className="shrink-0 text-xs font-bold text-muted-foreground">{formatDuration(task.durationMinutes)}</span>
                   </div>
                   <div className="mt-4 flex items-center gap-3">
-                    <ProgressBar value={task.progress} className="h-1.5 flex-1" indicatorClassName={completed ? "bg-emerald-500" : "bg-primary"} />
+                    <ProgressBar value={task.progress} className="h-1.5 flex-1" indicatorClassName={completed ? "bg-foreground" : "bg-primary"} />
                     <span className="w-9 text-right text-xs font-bold text-muted-foreground">{task.progress}%</span>
                     {completed ? (
-                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300" aria-label="Erledigt">
+                      <span className="flex h-8 w-8 items-center justify-center bg-foreground text-background" aria-label="Erledigt">
                         <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                       </span>
                     ) : active ? (
@@ -595,23 +594,22 @@ function CalendarCard({ events }: { events: DashboardData["calendarEvents"] }) {
 
 function AssistantCard() {
   return (
-    <Card id="assistant" className="relative overflow-hidden border-primary/25 bg-gradient-to-br from-primary/[0.08] via-card to-card shadow-lg shadow-primary/5">
-      <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-primary/15 blur-3xl" aria-hidden="true" />
+    <Card id="assistant" className="relative overflow-hidden border-foreground bg-card">
       <CardHeader className="relative pb-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center bg-primary text-primary-foreground">
               <Sparkles className="h-6 w-6" aria-hidden="true" />
             </span>
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <CardTitle className="text-xl">Dein AI-Lernassistent</CardTitle>
-                <Badge variant="secondary"><span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />Noch nicht verbunden</Badge>
+                <Badge variant="secondary"><span className="h-1.5 w-1.5 bg-muted-foreground" />Noch nicht verbunden</Badge>
               </div>
               <CardDescription className="mt-1">KI-Gateway folgt in einer späteren Phase.</CardDescription>
             </div>
           </div>
-          <span className="hidden items-center gap-1.5 rounded-full bg-background/70 px-3 py-1.5 text-xs font-bold text-muted-foreground sm:inline-flex">
+          <span className="hidden items-center gap-1.5 border border-border bg-background px-3 py-1.5 text-xs font-bold text-muted-foreground sm:inline-flex">
             <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
             Lernhilfe vorbereitet
           </span>
@@ -678,8 +676,7 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
         </div>
       ) : null}
 
-      <Card className="relative overflow-hidden border-primary/20 bg-primary text-primary-foreground shadow-xl shadow-primary/10">
-        <div className="pointer-events-none absolute -right-16 -top-28 h-72 w-72 rounded-full bg-primary-foreground/10 blur-3xl" aria-hidden="true" />
+      <Card className="relative overflow-hidden border-primary bg-primary text-primary-foreground">
         <CardContent className="relative flex flex-col gap-8 p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-2xl">
             <div className="mb-4 flex flex-wrap items-center gap-2">
