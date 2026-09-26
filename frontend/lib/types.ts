@@ -1,4 +1,4 @@
-import { parseDashboardApiResponse, parseStudyActionResponse, parseStudySession, parseStudyTask } from "./schemas";
+import { parseDashboardApiResponse, parseGreetingResponse, parseScheduleRangeResponse, parseStudyActionResponse, parseStudySession, parseStudyTask } from "./schemas";
 
 export type ApiIdentifier = string | number;
 export type StudyTaskStatus = "todo" | "in_progress" | "completed";
@@ -33,12 +33,14 @@ export interface UserSessionResponse {
 export interface DashboardLesson {
   id: string;
   subject: string;
+  subjectShort: string | null;
   title: string;
   teacher: string;
   room: string;
   startTime: string;
   endTime: string;
   color: string;
+  isCancelled: boolean;
 }
 
 export interface DashboardExam {
@@ -110,6 +112,27 @@ export interface DashboardData {
   summary: DashboardSummary;
 }
 
+/** Stunden eines frei gewählten Zeitraums, wie ``GET /v1/lessons`` sie liefert. */
+export interface ScheduleRange {
+  rangeStart: string | null;
+  rangeEnd: string | null;
+  lessons: DashboardLesson[];
+}
+
+/**
+ * Der Willkommenssatz des Dashboards.
+ *
+ * `source` unterscheidet, ob ein Modell geschrieben hat oder der Satz aus den
+ * Daten gebaut wurde. Die Oberfläche zeigt das als kleinen Hinweis, damit ein
+ * Satz nicht als KI-Aussage missverstanden wird.
+ */
+export interface Greeting {
+  text: string;
+  source: "ai" | "fallback";
+  model: string | null;
+  generatedOn: string;
+}
+
 export interface StudyActionResult {
   task: DashboardStudyTask | null;
   session: StudySession | null;
@@ -148,9 +171,20 @@ export interface IntegrationTestResult {
   missing_fields: string[];
 }
 
+export interface IntegrationSyncResult extends IntegrationTestResult {
+  imported_lessons: number;
+  subjects: number;
+  teachers: number;
+  rooms: number;
+  skipped_entries: number;
+  window_start: string | null;
+  window_end: string | null;
+  last_sync_at: string | null;
+}
+
 // Helper functions
-function text(value: string | null | undefined, fallback: string) {
-  const normalized = value?.trim();
+function text(value: unknown, fallback: string) {
+  const normalized = typeof value === "string" ? value.trim() : "";
   return normalized ? normalized : fallback;
 }
 
@@ -259,18 +293,56 @@ export function isDemoTaskId(taskId: ApiIdentifier) {
   return String(taskId).toLowerCase().startsWith("demo-");
 }
 
-export function normalizeDashboard(payload: unknown): DashboardData {
-  const parsed: any = parseDashboardApiResponse(payload);
-  const lessons = (parsed.lessons ?? []).map((lesson: any) => ({
-    id: String(lesson.id),
-    subject: text(lesson.subject ?? lesson.subject_name, "Unbekanntes Fach"),
+function record(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+}
+
+function normalizeLesson(raw: unknown): DashboardLesson {
+  const lesson = record(raw);
+  // Die API liefert ISO-Strings; ein fehlender Zeitpunkt darf den Render nicht sprengen.
+  const startTime = text(lesson.start_time, "");
+  const subjectName = text(lesson.subject ?? lesson.subject_name, "Unbekanntes Fach");
+  return {
+    id: String(lesson.id ?? ""),
+    subject: subjectName,
+    // Ohne Kuerzel aus dem Portal bleibt der ausgeschriebene Name stehen,
+    // damit die Kachel nie leer wird.
+    subjectShort: text(lesson.subject_short_name, subjectName),
     title: text(lesson.title ?? lesson.subject_name ?? lesson.subject, "Unterricht"),
     teacher: text(lesson.teacher ?? lesson.teacher_name, "Nicht angegeben"),
     room: text(lesson.room ?? lesson.room_name, "Nicht angegeben"),
-    startTime: lesson.start_time,
-    endTime: lesson.end_time,
+    startTime,
+    endTime: text(lesson.end_time, startTime),
     color: text(lesson.color ?? lesson.subject_color, "#6366f1"),
-  }));
+    isCancelled: lesson.is_cancelled === true,
+  };
+}
+
+/** Die API antwortet mit UTC-Zeitpunkten; die Gruppierung nach Tag übernimmt der Client. */
+export function normalizeScheduleRange(payload: unknown): ScheduleRange {
+  const parsed = record(parseScheduleRangeResponse(payload));
+  return {
+    rangeStart: typeof parsed.range_start === "string" ? parsed.range_start : null,
+    rangeEnd: typeof parsed.range_end === "string" ? parsed.range_end : null,
+    lessons: Array.isArray(parsed.lessons) ? parsed.lessons.map((lesson) => normalizeLesson(lesson)) : [],
+  };
+}
+
+export function normalizeGreeting(payload: unknown): Greeting {
+  const parsed = record(parseGreetingResponse(payload));
+  return {
+    text: text(parsed.text, "Herzlich willkommen."),
+    // Das Backend kennt nur "ai" und "fallback"; alles andere wird als Fallback
+    // behandelt, damit die Oberflaeche nie eine falsche Herkunft behauptet.
+    source: parsed.source === "ai" ? "ai" : "fallback",
+    model: typeof parsed.model === "string" && parsed.model ? parsed.model : null,
+    generatedOn: text(parsed.generated_on, ""),
+  };
+}
+
+export function normalizeDashboard(payload: unknown): DashboardData {
+  const parsed: any = parseDashboardApiResponse(payload);
+  const lessons = (parsed.lessons ?? []).map((lesson: unknown) => normalizeLesson(lesson));
   const upcomingExams = (parsed.upcoming_exams ?? []).map((exam: any) => ({
     id: String(exam.id),
     subject: text(exam.subject ?? exam.subject_name, "Allgemein"),

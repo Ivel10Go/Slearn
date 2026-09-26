@@ -10,12 +10,19 @@ import {
   getIntegrations,
   getSession,
   logout as logoutRequest,
+  syncIntegration,
   testIntegration,
   updateIntegration,
   type IntegrationChanges,
   type IntegrationWrite,
 } from "./api";
-import type { IntegrationCatalog, IntegrationRead, IntegrationTestResult, UserResponse } from "./types";
+import type {
+  IntegrationCatalog,
+  IntegrationRead,
+  IntegrationSyncResult,
+  IntegrationTestResult,
+  UserResponse,
+} from "./types";
 
 type SettingsStatus = "loading" | "ready" | "error" | "redirecting";
 
@@ -62,6 +69,7 @@ export function useIntegrations() {
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<number, IntegrationTestResult>>({});
+  const [syncResults, setSyncResults] = useState<Record<number, IntegrationSyncResult>>({});
 
   const load = useCallback(async () => {
     const currentRequest = ++requestId.current;
@@ -180,6 +188,19 @@ export function useIntegrations() {
     [refreshIntegrations, runAction],
   );
 
+  const runSync = useCallback(
+    (integrationId: number) =>
+      runAction(
+        `sync:${integrationId}`,
+        () => syncIntegration(integrationId),
+        async (result) => {
+          setSyncResults((current) => ({ ...current, [integrationId]: result }));
+          await refreshIntegrations();
+        },
+      ),
+    [refreshIntegrations, runAction],
+  );
+
   const removeIntegration = useCallback(
     (integrationId: number) =>
       runAction(
@@ -191,6 +212,11 @@ export function useIntegrations() {
             integrations: current.integrations.filter((item) => item.id !== integrationId),
           }));
           setTestResults((current) => {
+            const next = { ...current };
+            delete next[integrationId];
+            return next;
+          });
+          setSyncResults((current) => {
             const next = { ...current };
             delete next[integrationId];
             return next;
@@ -214,10 +240,12 @@ export function useIntegrations() {
     pendingAction,
     actionError,
     testResults,
+    syncResults,
     retry,
     addIntegration,
     changeIntegration,
     checkIntegration,
+    runSync,
     removeIntegration,
     logout,
   };

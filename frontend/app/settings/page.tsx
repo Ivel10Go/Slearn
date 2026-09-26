@@ -15,10 +15,12 @@ export default function SettingsPage() {
     status,
     pendingAction,
     testResults,
+    syncResults,
     retry,
     addIntegration,
     changeIntegration,
     checkIntegration,
+    runSync,
     removeIntegration,
     logout,
   } = useIntegrations();
@@ -38,10 +40,12 @@ export default function SettingsPage() {
         status={status}
         pendingAction={pendingAction}
         testResults={testResults}
+        syncResults={syncResults}
         onRetry={retry}
         onAdd={addIntegration}
         onToggle={(integration, enabled) => void changeIntegration(integration.id, { enabled })}
         onTest={(integration) => void checkIntegration(integration.id)}
+        onSync={(integration) => void runSync(integration.id)}
         onDelete={(integration) => void removeIntegration(integration.id)}
         onLogout={() => void logout()}
       />

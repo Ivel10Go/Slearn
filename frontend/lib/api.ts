@@ -1,9 +1,9 @@
 "use client";
 
-import { getDemoDashboard, isDemoFallbackEnabled } from "./demo";
-import { isDemoTaskId, normalizeDashboard, normalizeStudyAction, type ApiIdentifier, type DashboardData, type UserResponse } from "./types";
-import { parseLoginResponse, parseUserResponse, parseUserSession, parseIntegrationArray, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationTestResult } from "./schemas";
-import type { IntegrationCatalog, IntegrationRead, IntegrationTestResult } from "./types";
+import { getDemoDashboard, getDemoScheduleRange, isDemoFallbackEnabled } from "./demo";
+import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type DashboardData, type Greeting, type ScheduleRange, type UserResponse } from "./types";
+import { parseLoginResponse, parseUserResponse, parseUserSession, parseIntegrationArray, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult } from "./schemas";
+import type { IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult } from "./types";
 
 const API_PREFIX = "/api/backend";
 
@@ -144,6 +144,34 @@ export async function getDashboard(): Promise<DashboardData> {
   }
 }
 
+/** Stunden eines Zeitraums. ``start`` und ``end`` sind lokale ``YYYY-MM-DD``-Tage, beide einschließlich. */
+export async function getScheduleRange(start: string, end: string): Promise<ScheduleRange> {
+  const query = `?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+  try {
+    return normalizeScheduleRange(await apiRequest(`/v1/lessons${query}`));
+  } catch (error) {
+    if (canUseDemoFallback(error)) {
+      return normalizeScheduleRange(getDemoScheduleRange(start, end));
+    }
+    throw error;
+  }
+}
+
+/**
+ * Der Willkommenssatz des Tages.
+ *
+ * Bewusst ohne Demo-Fallback: ein erfundener Begrüßungssatz wäre nicht als solcher
+ * erkennbar, und die Kachel soll nicht so tun, als stünde eine KI dahinter.
+ */
+export async function getGreeting(): Promise<Greeting> {
+  return normalizeGreeting(await apiRequest("/v1/greeting"));
+}
+
+/** Erzeugt den Satz neu. Kosten einen Modellaufruf, deshalb nur bewusst aufrufen. */
+export async function refreshGreeting(): Promise<Greeting> {
+  return normalizeGreeting(await apiRequest("/v1/greeting/refresh", { method: "POST" }));
+}
+
 function studyTaskPath(taskId: ApiIdentifier, action: "start" | "stop" | "complete") {
   if (!String(taskId).trim()) {
     throw new ApiError("Die Lernaufgabe ist ungültig.", 422);
@@ -212,6 +240,14 @@ export async function testIntegration(integrationId: number): Promise<Integratio
     body: JSON.stringify({}),
   });
   return parseIntegrationTestResult(payload);
+}
+
+export async function syncIntegration(integrationId: number): Promise<IntegrationSyncResult> {
+  const payload = await apiRequest(`/v1/integrations/${integrationId}/sync`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return parseIntegrationSyncResult(payload);
 }
 
 export async function logout(): Promise<void> {

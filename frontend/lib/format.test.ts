@@ -1,6 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { formatDueDate, getCountdown, getDayProgress, getLessonState } from "./format";
-import { normalizeDashboard, type DashboardApiResponse } from "./types";
+import {
+  addDays,
+  addWeeks,
+  eachDay,
+  formatDateRange,
+  formatDueDate,
+  formatWeekNumber,
+  getCountdown,
+  getDayProgress,
+  getLessonState,
+  groupLessonSlots,
+  isSameDay,
+  pickSlotLesson,
+  startOfDay,
+  startOfWeek,
+  toIsoDate,
+} from "./format";
+import { normalizeDashboard, normalizeGreeting, normalizeScheduleRange, type DashboardApiResponse } from "./types";
 
 describe("Dashboard-Normalisierung", () => {
   it("wandelt snake_case in ein stabiles UI-Modell um", () => {
@@ -112,5 +128,199 @@ describe("Datums- und Lernformatierung", () => {
     expect(getDayProgress(lessons, now)).toBe(50);
     expect(formatDueDate("2026-09-25T18:00:00.000Z", now)).toBe("Heute fällig");
     expect(formatDueDate("2026-09-24T18:00:00.000Z", now)).toBe("Überfällig");
+  });
+});
+
+describe("Stundenplan-Zeiträume", () => {
+  // 2026-09-25 ist ein Freitag, 2026-09-28 ein Montag.
+  const freitag = new Date(2026, 8, 25, 13, 45);
+
+  it("schneidet den Tag und den Montag der Woche ab", () => {
+    expect(startOfDay(freitag).getHours()).toBe(0);
+    expect(startOfDay(freitag).getDate()).toBe(25);
+    expect(toIsoDate(startOfWeek(freitag))).toBe("2026-09-21");
+    // Montag bleibt Montag, Sonntag gehört noch zur laufenden Woche.
+    expect(toIsoDate(startOfWeek(new Date(2026, 8, 27)))).toBe("2026-09-21");
+    expect(toIsoDate(startOfWeek(new Date(2026, 8, 28)))).toBe("2026-09-28");
+  });
+
+  it("verändert das übergebene Datum nicht", () => {
+    const original = new Date(2026, 8, 25, 13, 45);
+    const before = original.getTime();
+
+    startOfDay(original);
+    addDays(original, 3);
+    addWeeks(original, 1);
+    startOfWeek(original);
+
+    expect(original.getTime()).toBe(before);
+  });
+
+  it("rechnet in Tagen und Wochen weiter", () => {
+    expect(toIsoDate(addDays(freitag, 3))).toBe("2026-09-28");
+    expect(toIsoDate(addDays(freitag, -4))).toBe("2026-09-21");
+    expect(toIsoDate(addWeeks(freitag, 1))).toBe("2026-10-02");
+  });
+
+  it("liefert jeden Kalendertag inklusive beider Grenzen", () => {
+    expect(eachDay(new Date(2026, 8, 25), new Date(2026, 8, 27)).map(toIsoDate)).toEqual([
+      "2026-09-25",
+      "2026-09-26",
+      "2026-09-27",
+    ]);
+    expect(eachDay(new Date(2026, 8, 25), new Date(2026, 8, 25))).toHaveLength(1);
+  });
+
+  it("vergleicht Tage unabhängig von der Uhrzeit", () => {
+    expect(isSameDay(new Date(2026, 8, 25, 0, 1), new Date(2026, 8, 25, 23, 59))).toBe(true);
+    expect(isSameDay(new Date(2026, 8, 25), new Date(2026, 8, 26))).toBe(false);
+    expect(isSameDay(null, new Date(2026, 8, 25))).toBe(false);
+  });
+
+  it("nummeriert die Woche nach ISO-8601", () => {
+    expect(formatWeekNumber(new Date(2026, 0, 4))).toBe("KW 1");
+    // 4. Januar 2026 ist ein Sonntag und gehört damit noch zu KW 1.
+    expect(formatWeekNumber(new Date(2026, 0, 5))).toBe("KW 2");
+    expect(formatWeekNumber(new Date(2026, 8, 21))).toBe("KW 39");
+  });
+
+  it("beschriftet Zeiträume je nach Spanne", () => {
+    expect(formatDateRange(new Date(2026, 8, 25), new Date(2026, 8, 27))).toContain("September");
+    expect(formatDateRange(new Date(2026, 8, 25), new Date(2026, 8, 25))).toContain("September");
+  });
+
+  it("normalisiert die Zeitraum-Antwort und fängt fehlende Felder ab", () => {
+    const result = normalizeScheduleRange({
+      range_start: "2026-09-21",
+      range_end: "2026-09-27",
+      lessons: [
+        {
+          id: 3,
+          subject_name: "Deutsch",
+          teacher_name: "Herr Weber",
+          room_name: "112",
+          start_time: "2026-09-21T08:00:00.000Z",
+          end_time: "2026-09-21T08:50:00.000Z",
+        },
+      ],
+    });
+
+    expect(result.rangeStart).toBe("2026-09-21");
+    expect(result.rangeEnd).toBe("2026-09-27");
+    expect(result.lessons[0]).toMatchObject({ id: "3", subject: "Deutsch", teacher: "Herr Weber", room: "112" });
+
+    const kaputt = normalizeScheduleRange({ lessons: "keine Liste" });
+    expect(kaputt.lessons).toEqual([]);
+    expect(kaputt.rangeStart).toBeNull();
+  });
+});
+
+describe("Parallel liegende Fächer", () => {
+  // Echtes Muster aus dem Portal: 20260928 14:50 Deutsch oder Französisch.
+  const fr = "2026-09-28T12:50:00.000Z";
+  const frEnde = "2026-09-28T13:35:00.000Z";
+  const drei = "2026-09-28T13:20:00.000Z";
+  const dreiEnde = "2026-09-28T14:05:00.000Z";
+
+  const f = { id: "1", startTime: fr, endTime: frEnde, subjectShort: "F", subject: "Französisch", room: "201" };
+  const l = { id: "2", startTime: fr, endTime: frEnde, subjectShort: "L", subject: "Latein", room: "203" };
+  const eR = { id: "3", startTime: drei, endTime: dreiEnde, subjectShort: "eR", subject: "ev. Religion", room: "102" };
+  const kR = { id: "4", startTime: drei, endTime: dreiEnde, subjectShort: "kR", subject: "kath. Religion", room: "110" };
+  const eth = { id: "5", startTime: drei, endTime: dreiEnde, subjectShort: "eth", subject: "Ethik", room: "323" };
+
+  it("fasst Fächer mit gleicher Zeit zu einer Lage zusammen", () => {
+    const slots = groupLessonSlots([f, l, eR, kR, eth]);
+
+    expect(slots).toHaveLength(2);
+    expect(slots[0].lessons).toHaveLength(2);
+    expect(slots[0].lessons.map((l) => l.subjectShort)).toEqual(["F", "L"]);
+    // Auch dreifach belegte Lagen bleiben eine Lage.
+    expect(slots[1].lessons).toHaveLength(3);
+  });
+
+  it("sortiert Lagen chronologisch", () => {
+    const slots = groupLessonSlots([eth, l, eR, f]);
+    expect(slots[0].lessons[0].subjectShort).toBe("F");
+    expect(slots[1].lessons[0].subjectShort).toBe("eR");
+  });
+
+  it("gibt den Schlüssel als Zeitlage wieder", () => {
+    const [slot] = groupLessonSlots([f]);
+    expect(slot.key).toBe(`${fr}|${frEnde}`);
+  });
+
+  it("liefert jede einzelne Stunde als eigene Lage", () => {
+    expect(groupLessonSlots([f])[0].lessons).toHaveLength(1);
+    expect(groupLessonSlots([])).toEqual([]);
+  });
+
+  it("wählt das gewünschte Fach einer Lage", () => {
+    expect(pickSlotLesson([f, l], "2").id).toBe("2");
+    expect(pickSlotLesson([f, l], null).id).toBe("1");
+  });
+
+  it("fällt auf die erste Alternative zurück, wenn die Wahl nicht mehr existiert", () => {
+    // Nach einem Planwechsel zeigt die gespeicherte ID ins Leere.
+    expect(pickSlotLesson([f, l], "99").id).toBe("1");
+  });
+});
+
+describe("Willkommenssatz", () => {
+  it("übernimmt Text, Herkunft und Modell", () => {
+    const greeting = normalizeGreeting({
+      text: "Herzlich willkommen, um 8:00 beginnt Mathematik.",
+      source: "ai",
+      model: "gpt-4o-mini",
+      generated_on: "2026-09-25",
+    });
+
+    expect(greeting.text).toBe("Herzlich willkommen, um 8:00 beginnt Mathematik.");
+    expect(greeting.source).toBe("ai");
+    expect(greeting.model).toBe("gpt-4o-mini");
+    expect(greeting.generatedOn).toBe("2026-09-25");
+  });
+
+  it("behandelt unbekannte Herkunft als Daten-Satz", () => {
+    // So behauptet die Oberfläche nie eine KI, die nicht geantwortet hat.
+    expect(normalizeGreeting({ text: "Hallo", source: "irgendwas" }).source).toBe("fallback");
+    expect(normalizeGreeting({ text: "Hallo" }).source).toBe("fallback");
+  });
+
+  it("übersteht eine Antwort ohne Text", () => {
+    const greeting = normalizeGreeting({ source: "ai" });
+    expect(greeting.text.length).toBeGreaterThan(0);
+    expect(greeting.model).toBeNull();
+  });
+});
+
+describe("Kürzel und Entfall aus der API", () => {
+  it("übernimmt Kürzel und Ausfall-Markierung", () => {
+    const result = normalizeScheduleRange({
+      range_start: "2026-09-21",
+      range_end: "2026-09-27",
+      lessons: [
+        {
+          id: 1,
+          subject_name: "Französisch",
+          subject_short_name: "F",
+          is_cancelled: true,
+          start_time: "2026-09-28T12:50:00.000Z",
+          end_time: "2026-09-28T13:35:00.000Z",
+        },
+      ],
+    });
+
+    expect(result.lessons[0].subject).toBe("Französisch");
+    expect(result.lessons[0].subjectShort).toBe("F");
+    expect(result.lessons[0].isCancelled).toBe(true);
+  });
+
+  it("nutzt den ausgeschriebenen Namen, wenn das Portal kein Kürzel liefert", () => {
+    const result = normalizeScheduleRange({
+      lessons: [{ id: 2, subject_name: "Mathematik", start_time: "2026-09-28T08:00:00.000Z", end_time: "2026-09-28T08:50:00.000Z" }],
+    });
+
+    expect(result.lessons[0].subjectShort).toBe("Mathematik");
+    expect(result.lessons[0].isCancelled).toBe(false);
   });
 });

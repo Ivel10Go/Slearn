@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Cloud,
+  Download,
   FolderTree,
   KeyRound,
   LoaderCircle,
@@ -26,7 +27,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate, formatDateTime, getInitials } from "@/lib/format";
-import type { IntegrationCatalog, IntegrationRead, IntegrationTestResult, UserResponse } from "@/lib/types";
+import type {
+  IntegrationCatalog,
+  IntegrationRead,
+  IntegrationSyncResult,
+  IntegrationTestResult,
+  UserResponse,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { IntegrationWrite } from "@/lib/api";
 
@@ -195,22 +202,26 @@ function ThemeCard() {
 interface IntegrationRowProps {
   integration: IntegrationRead;
   testResult: IntegrationTestResult | undefined;
+  syncResult: IntegrationSyncResult | undefined;
   pendingAction: string | null;
   onToggle: (enabled: boolean) => void;
   onTest: () => void;
+  onSync: () => void;
   onDelete: () => void;
 }
 
-function IntegrationRow({ integration, testResult, pendingAction, onToggle, onTest, onDelete }: IntegrationRowProps) {
+function IntegrationRow({ integration, testResult, syncResult, pendingAction, onToggle, onTest, onSync, onDelete }: IntegrationRowProps) {
   const [confirming, setConfirming] = useState(false);
   const isTesting = pendingAction === `test:${integration.id}`;
+  const isSyncing = pendingAction === `sync:${integration.id}`;
   const isUpdating = pendingAction === `update:${integration.id}`;
   const isDeleting = pendingAction === `delete:${integration.id}`;
-  const isBusy = isTesting || isUpdating || isDeleting;
+  const isBusy = isTesting || isSyncing || isUpdating || isDeleting;
   const Icon = KIND_ICONS[integration.kind] ?? Plug;
   const status = STATUS_META[integration.status] ?? { label: integration.status, variant: "secondary" as BadgeVariant };
   const entries = configEntries(integration);
   const incomplete = integration.missing_fields.length > 0;
+  const canSync = integration.kind === "webuntis" && integration.enabled && !incomplete && !isBusy;
 
   return (
     <li className="rounded-2xl border border-border/70 bg-card/60 p-4 sm:p-5">
@@ -267,6 +278,7 @@ function IntegrationRow({ integration, testResult, pendingAction, onToggle, onTe
           {integration.has_credentials ? `Zugangsdaten gespeichert (${integration.credential_keys.join(", ")})` : "Keine Zugangsdaten"}
         </span>
         <span>Zuletzt getestet: {formatDateTime(integration.last_tested_at)}</span>
+        {integration.last_sync_at ? <span>Zuletzt synchronisiert: {formatDateTime(integration.last_sync_at)}</span> : null}
       </div>
 
       {incomplete ? (
@@ -297,11 +309,32 @@ function IntegrationRow({ integration, testResult, pendingAction, onToggle, onTe
         </p>
       ) : null}
 
+      {syncResult ? (
+        <p
+          className={cn(
+            "mt-3 flex items-start gap-2 rounded-xl border px-3 py-2 text-xs font-medium",
+            syncResult.ok
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/50 dark:text-emerald-300"
+              : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-300",
+          )}
+          role="status"
+        >
+          {syncResult.ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
+          {syncResult.message}
+        </p>
+      ) : null}
+
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" variant="outline" onClick={onTest} disabled={isBusy}>
           {isTesting ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
           Verbindung testen
         </Button>
+        {integration.kind === "webuntis" ? (
+          <Button type="button" size="sm" onClick={onSync} disabled={!canSync}>
+            {isSyncing ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
+            {isSyncing ? "Wird importiert" : "Stundenplan aktualisieren"}
+          </Button>
+        ) : null}
         {confirming ? (
           <>
             <Button type="button" size="sm" variant="destructive" onClick={onDelete} disabled={isBusy}>
@@ -482,11 +515,13 @@ interface IntegrationsCardProps {
   catalog: IntegrationCatalog[];
   pendingAction: string | null;
   testResults: Record<number, IntegrationTestResult>;
+  syncResults: Record<number, IntegrationSyncResult>;
   isRefreshing: boolean;
   onRefresh: () => void;
   onAdd: (input: IntegrationWrite) => Promise<boolean>;
   onToggle: (integration: IntegrationRead, enabled: boolean) => void;
   onTest: (integration: IntegrationRead) => void;
+  onSync: (integration: IntegrationRead) => void;
   onDelete: (integration: IntegrationRead) => void;
 }
 
@@ -495,11 +530,13 @@ function IntegrationsCard({
   catalog,
   pendingAction,
   testResults,
+  syncResults,
   isRefreshing,
   onRefresh,
   onAdd,
   onToggle,
   onTest,
+  onSync,
   onDelete,
 }: IntegrationsCardProps) {
   const [formOpen, setFormOpen] = useState(false);
@@ -554,9 +591,11 @@ function IntegrationsCard({
                 key={integration.id}
                 integration={integration}
                 testResult={testResults[integration.id]}
+                syncResult={syncResults[integration.id]}
                 pendingAction={pendingAction}
                 onToggle={(enabled) => onToggle(integration, enabled)}
                 onTest={() => onTest(integration)}
+                onSync={() => onSync(integration)}
                 onDelete={() => onDelete(integration)}
               />
             ))}
@@ -576,10 +615,12 @@ export interface SettingsViewProps {
   status: "loading" | "ready" | "error" | "redirecting";
   pendingAction: string | null;
   testResults: Record<number, IntegrationTestResult>;
+  syncResults: Record<number, IntegrationSyncResult>;
   onRetry: () => void;
   onAdd: (input: IntegrationWrite) => Promise<boolean>;
   onToggle: (integration: IntegrationRead, enabled: boolean) => void;
   onTest: (integration: IntegrationRead) => void;
+  onSync: (integration: IntegrationRead) => void;
   onDelete: (integration: IntegrationRead) => void;
   onLogout: () => void;
 }
@@ -593,10 +634,12 @@ export function SettingsView({
   status,
   pendingAction,
   testResults,
+  syncResults,
   onRetry,
   onAdd,
   onToggle,
   onTest,
+  onSync,
   onDelete,
   onLogout,
 }: SettingsViewProps) {
@@ -634,11 +677,13 @@ export function SettingsView({
           catalog={catalog}
           pendingAction={pendingAction}
           testResults={testResults}
+          syncResults={syncResults}
           isRefreshing={status === "loading"}
           onRefresh={onRetry}
           onAdd={onAdd}
           onToggle={onToggle}
           onTest={onTest}
+          onSync={onSync}
           onDelete={onDelete}
         />
         <div className="space-y-6">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import {
   AlarmClock,
@@ -24,10 +24,10 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ApiError, completeStudyTask, startStudyTask, stopStudyTask } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -39,8 +39,11 @@ import {
   getDayProgress,
   getLessonState,
 } from "@/lib/format";
+import { useNow } from "@/lib/use-now";
+import { useGreeting } from "@/lib/use-greeting";
 import { isDemoTaskId, type DashboardData, type DashboardLesson, type DashboardStudyTask, type LessonState, type StudyActionResult, type StudyTaskStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { ScheduleCard } from "./schedule-view";
 
 interface DashboardViewProps {
   data: DashboardData | null;
@@ -61,35 +64,6 @@ const taskStatusLabels: Record<StudyTaskStatus, string> = {
   in_progress: "In Arbeit",
   completed: "Erledigt",
 };
-
-function useNow() {
-  const [now, setNow] = useState<Date | null>(null);
-
-  useEffect(() => {
-    const initialUpdate = window.setTimeout(() => setNow(new Date()), 0);
-    const interval = window.setInterval(() => setNow(new Date()), 1000);
-    return () => {
-      window.clearTimeout(initialUpdate);
-      window.clearInterval(interval);
-    };
-  }, []);
-
-  return now;
-}
-
-function greetingFor(date: Date | null) {
-  if (!date) {
-    return "Guten Tag";
-  }
-  const hour = date.getHours();
-  if (hour < 11) {
-    return "Guten Morgen";
-  }
-  if (hour < 18) {
-    return "Guten Tag";
-  }
-  return "Guten Abend";
-}
 
 function taskVariant(status: StudyTaskStatus) {
   if (status === "completed") {
@@ -121,18 +95,6 @@ function ProgressRing({ value }: { value: number }) {
         <span className="text-3xl font-extrabold tracking-tight">{percentage}%</span>
         <span className="text-[10px] font-bold uppercase tracking-[0.16em] opacity-75">geschafft</span>
       </div>
-    </div>
-  );
-}
-
-function EmptyState({ icon: Icon, title, description }: { icon: LucideIcon; title: string; description: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/30 px-5 py-10 text-center">
-      <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-secondary text-secondary-foreground">
-        <Icon className="h-5 w-5" aria-hidden="true" />
-      </span>
-      <p className="font-bold">{title}</p>
-      <p className="mt-1 max-w-xs text-sm leading-6 text-muted-foreground">{description}</p>
     </div>
   );
 }
@@ -233,54 +195,6 @@ function FocusLessonCard({ lesson, reference }: { lesson: DashboardLesson | unde
           </div>
         ) : (
           <EmptyState icon={GraduationCap} title="Keine Unterrichtsstunden" description="Für heute sind keine Stunden eingetragen. Nutze die Zeit für deine offenen Aufgaben." />
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function ScheduleCard({ lessons, reference }: { lessons: DashboardLesson[]; reference: Date }) {
-  return (
-    <Card id="schedule">
-      <CardHeader className="flex-row items-start justify-between space-y-0 pb-4">
-        <div>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <CalendarDays className="h-5 w-5 text-primary" aria-hidden="true" />
-            Heutiger Stundenplan
-          </CardTitle>
-          <CardDescription className="mt-1">Deine Unterrichtsstunden auf einen Blick.</CardDescription>
-        </div>
-        <Badge variant="secondary">{lessons.length} Stunden</Badge>
-      </CardHeader>
-      <CardContent>
-        {lessons.length === 0 ? (
-          <EmptyState icon={CalendarDays} title="Noch keine Stunden" description="Sobald der Stundenplan verfügbar ist, erscheinen die heutigen Lektionen hier." />
-        ) : (
-          <div className="space-y-2">
-            {lessons.map((lesson) => {
-              const state = getLessonState(lesson, reference);
-              const isCurrent = state === "current";
-              return (
-                <div key={lesson.id} className={cn("group flex gap-3 border border-transparent p-3 transition-colors hover:border-border hover:bg-muted/40", isCurrent && "border-foreground bg-muted")}>
-                  <div className="flex w-14 shrink-0 flex-col items-center border-r border-border/70 pr-3 text-center">
-                    <span className={cn("text-sm font-extrabold", isCurrent ? "text-primary" : "text-foreground")}>{formatTime(lesson.startTime)}</span>
-                    <span className="mt-1 text-[10px] font-semibold text-muted-foreground">{formatTime(lesson.endTime)}</span>
-                  </div>
-                  <div className="relative min-w-0 flex-1 border-l-2 border-foreground pl-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-extrabold">{lesson.subject}</p>
-                      {isCurrent ? <Badge variant="success">Jetzt</Badge> : state === "completed" ? <Badge variant="outline">Erledigt</Badge> : null}
-                    </div>
-                    <p className="mt-1 truncate text-sm text-muted-foreground">{lesson.title}</p>
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      <span>{lesson.teacher}</span>
-                      <span>{lesson.room}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
         )}
       </CardContent>
     </Card>
@@ -418,6 +332,71 @@ function mergeStudyAction(task: DashboardStudyTask, result: StudyActionResult, a
     session,
     startedAt: session?.startedAt ?? responseTask?.startedAt ?? task.startedAt,
   };
+}
+
+/**
+ * Die Kopfzeile des Dashboards.
+ *
+ * Der Satz kommt vom Backend und ist einmal pro Tag vom KI-Provider erzeugt.
+ * Steht dort `source: "fallback"`, hat kein Modell geschrieben - der Satz wurde
+ * aus den Daten gebaut. Das wird sichtbar gemacht, damit niemand einen
+ * Zufallssatz fuer eine KI-Aussage haelt.
+ */
+function GreetingHeader({ username }: { username?: string | null }) {
+  const { greeting, error, status, refresh, refreshing } = useGreeting();
+
+  return (
+    <header id="overview" className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+      <div className="min-w-0">
+        <p className="mb-2 flex items-center gap-1.5 text-sm font-bold uppercase tracking-[0.18em] text-primary">
+          <Sparkles className="h-4 w-4" aria-hidden="true" />
+          Dein Tagesbriefing
+        </p>
+        {status === "loading" ? (
+          <Skeleton className="h-9 w-full max-w-xl" />
+        ) : status === "error" || !greeting ? (
+          <>
+            <h1 className="text-2xl font-extrabold tracking-[-0.03em] sm:text-3xl">
+              Willkommen{username ? `, ${username}` : ""}.
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {error ?? "Der Willkommenssatz ist gerade nicht verfügbar."}
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 className="max-w-3xl text-2xl font-extrabold leading-snug tracking-[-0.03em] sm:text-3xl">
+              {greeting.text}
+            </h1>
+            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+              <Badge variant={greeting.source === "ai" ? "info" : "secondary"}>
+                {greeting.source === "ai" ? "Von der KI" : "Aus deinen Daten"}
+              </Badge>
+              {greeting.source === "ai" && greeting.model ? <span>{greeting.model}</span> : null}
+              {greeting.source === "ai" && greeting.generatedOn ? (
+                <>
+                  <span className="text-border">·</span>
+                  <span>für {formatDate(new Date(`${greeting.generatedOn}T12:00:00`))}</span>
+                </>
+              ) : null}
+            </p>
+          </>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => void refresh()}
+          disabled={refreshing || status === "loading"}
+        >
+          <RefreshCw className={cn(refreshing && "animate-spin")} aria-hidden="true" />
+          Neu formulieren
+        </Button>
+      </div>
+    </header>
+  );
 }
 
 function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
@@ -649,22 +628,7 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
 
   return (
     <div className="space-y-6">
-      <header id="overview" className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
-        <div>
-          <p className="mb-2 text-sm font-bold uppercase tracking-[0.18em] text-primary">{now ? formatDate(now) : "Dein Lerntag"}</p>
-          <h1 className="text-3xl font-extrabold tracking-[-0.035em] sm:text-4xl">{greetingFor(now)}{username ? `, ${username}` : ""}.</h1>
-          <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-muted-foreground">
-            <Clock3 className="h-4 w-4 text-primary" aria-hidden="true" />
-            <span>{now ? `${formatTime(now, true)} Uhr` : "Uhrzeit wird geladen …"}</span>
-            <span className="text-border">·</span>
-            <span>Ein fokussierter Tag beginnt mit einem Schritt.</span>
-          </p>
-        </div>
-        <Button type="button" variant="outline" size="sm" onClick={onRetry} disabled={isLoading}>
-          <RefreshCw className={cn(isLoading && "animate-spin")} aria-hidden="true" />
-          Aktualisieren
-        </Button>
-      </header>
+      <GreetingHeader username={username} />
 
       {error ? (
         <div className="flex flex-col gap-3 rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between" role="alert">
@@ -709,7 +673,7 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
         <div className="space-y-6">
           <FocusLessonCard lesson={focusLesson} reference={reference} />
           <AssistantCard />
-          <ScheduleCard lessons={data.lessons} reference={reference} />
+          <ScheduleCard />
         </div>
         <div className="space-y-6">
           <ExamsCard data={data} reference={reference} />
