@@ -2,7 +2,7 @@
 
 School Assistant ist eine lokal betreibbare Docker-Compose-Anwendung mit Next.js-Frontend, FastAPI-Backend, PostgreSQL 15 mit pgvector und einem schlanken Python-Worker. Der Backend-Stand umfasst serverseitige Session-Authentifizierung, ein Dashboard, Benutzerisolation und API-Routen für Fächer, Hausaufgaben, Klausuren, Kalendereinträge und Lernaufgaben.
 
-KI-, WebUntis-, iCalendar-, Dokumentverarbeitungs- und automatische Backup-Funktionen sind reserviert, aber in diesem Stack noch nicht als ausführbare Integrationen enthalten.
+WebUntis, KI-Provider und Dokumente sind als echte Integrationen umgesetzt: Der Verbindungstest spricht das JSON-RPC-Portal der Schule bzw. die OpenAI-kompatible Modellliste des KI-Anbieters an und meldet `connected`, `error` oder `disabled`. iCalendar-Abgleich, Dokumentauswertung und automatische Backups sind reserviert, aber noch nicht als ausführbare Integrationen enthalten.
 
 ## Architektur
 
@@ -123,6 +123,9 @@ Die nichtöffentliche Backend-Basis lautet `http://backend:8000`. Über das Fron
 | Auth | `POST /api/v1/auth/logout` | Session-Cookie löschen |
 | Auth | `GET /api/v1/auth/me` | Aktuellen Benutzer lesen |
 | Dashboard | `GET /api/v1/dashboard` | Aggregierte Lern-, Hausaufgaben-, Klausur- und Kalenderdaten |
+| Stundenplan | `GET /api/v1/lessons` | Stunden für einen Zeitraum; optionale `start`/`end` als `YYYY-MM-DD`, beide inklusiv, in der Zeitzone des Benutzers, maximal 62 Tage. Liefert zusätzlich `subject_short_name` (Fachkürzel aus dem Schulportal) und `is_cancelled` (ausgefallen) |
+| Willkommenssatz | `GET /api/v1/greeting` | Tagesbriefing aus Stundenplan, Kalender und offenen Aufgaben. Wird vom KI-Provider erzeugt und pro Tag gehalten; ohne Provider kommt ein Satz aus den Daten (`source: "fallback"`) |
+| Willkommenssatz | `POST /api/v1/greeting/refresh` | Satz neu formulieren; kostet einen Modellaufruf |
 | Fächer | `GET, POST /api/v1/subjects` | Liste und Anlage |
 | Fach | `GET, PATCH, DELETE /api/v1/subjects/{subject_id}` | Einzelnes Fach lesen, ändern oder löschen |
 | Hausaufgaben | `GET, POST /api/v1/homework` | Liste mit `completed`-Filter und Anlage |
@@ -140,8 +143,70 @@ Die nichtöffentliche Backend-Basis lautet `http://backend:8000`. Über das Fron
 | Lernsession | `POST /api/v1/study/tasks/{task_id}/start` | Lernsession starten; idempotent für denselben Benutzer und dieselbe Aufgabe |
 | Lernsession | `POST /api/v1/study/tasks/{task_id}/stop` | Offene Lernsession beenden und gelernte Sekunden speichern |
 | Lernsession | `POST /api/v1/study/tasks/{task_id}/complete` | Aufgabe als erledigt markieren und offene Session abschließen |
+| Integrationen | `GET /api/v1/integrations` | Eigene Integrationen inklusive Status und `last_sync_at` |
+| Integration | `POST /api/v1/integrations` | Anlegen aus dem Katalog; Zugangsdaten werden verschlüsselt gespeichert |
+| Integration | `PATCH /api/v1/integrations/{integration_id}` | Name, Config, Zugangsdaten oder `enabled` ändern |
+| Integration | `DELETE /api/v1/integrations/{integration_id}` | Integration samt importierten Daten entfernen |
+| Integrationstest | `POST /api/v1/integrations/{integration_id}/test` | Echte Verbindung prüfen; `missing_fields` → `enabled` → Verbindungstest |
+| Integrationstest | `GET /api/v1/integrations/{integration_id}/test` | Letztes Testergebnis lesen, ohne erneut zu testen |
+| Integrationskatalog | `GET /api/v1/integrations/catalog` | Kinds, Pflichtfelder und Feldbeschreibungen; ohne Session und ohne Schlüssel lesbar |
+| Datensync | `POST /api/v1/integrations/{integration_id}/sync` | Daten importieren; aktuell `webuntis`, siehe unten |
+
 
 Alle `/api/v1`-Routen außer Health erfordern standardmäßig eine gültige Session und isolieren Daten nach Benutzer. Die interaktive OpenAPI-Oberfläche ist unter `/docs`, die ReDoc-Oberfläche unter `/redoc` verfügbar.
+
+### Stundenplan-Import aus WebUntis
+
+`POST /api/v1/integrations/{integration_id}/sync` holt den Stundenplan direkt beim Schulportal und schreibt ihn in die Datenbank. Die Einbindung in den Einstellungen unter dem Namen **Stundenplan aktualisieren**; das Ergebnis erscheint danach im Dashboard. Es gibt keinen Request-Body und keinen Zeitraum-Parameter, der Import umfasst immer vier Kalenderwochen.
+
+Die Reihenfolge ist dieselbe wie beim Verbindungstest: fehlende Felder → deaktivierte Integration → Schlüssel `INTEGRATION_ENCRYPTION_KEY` → echter Abruf. Ein logisch fehlgeschlagener Import antwortet wie `/test` mit HTTP 200, `ok: false` und deutschem `message`; der Fehlertext landet zusätzlich in `last_error` der Integration. Nur HTTP-Statusfehler des Stapels selbst (fehlende Session, fremde Integration, fehlender Schlüssel) ergeben 4xx bzw. 503.
+
+Antwort zusätzlich zu den Feldern des Verbindungstests: `imported_lessons`, `subjects`, `teachers`, `rooms`, `skipped_entries`, `window_start`, `window_end` und `last_sync_at`.
+
+Intern nutzt der Adapter die JSON-RPC-Methode `getTimetable` des Schulportals, aufgerufen über `{base_url}/WebUntis/jsonrpc.do?school={kuerzel}`. Die Parameter werden als **Objekt** übergeben, nicht als positionelles Array:
+
+```json
+{
+  "id": 0,
+  "method": "getTimetable",
+  "params": {
+    "options": {
+      "id": "<Unixzeit in Millisekunden>",
+      "element": { "id": "<personId>", "type": 5 },
+      "type": 5,
+      "startDate": "20260921",
+      "endDate": "20261018",
+      "showCanceledLessons": false,
+      "showLessonType": false,
+      "showRegistration": false,
+      "showExams": false,
+      "showSubstitutes": false,
+      "showAdditionalInfo": false,
+      "showRoomInfo": true,
+      "showTeacherInfo": true,
+      "showStudentgroup": true,
+      "showLsText": true,
+      "showLsNumber": true,
+      "showSubstText": true,
+      "showInfo": true,
+      "showBooking": true,
+      "classFields": ["id", "name", "longname", "externalkey"],
+      "roomFields": ["id", "name", "longname", "externalkey"],
+      "subjectFields": ["id", "name", "longname", "externalkey"],
+      "teacherFields": ["id", "name", "longname", "externalkey"]
+    }
+  }
+}
+```
+
+`element.type` ist die Element-ID der angemeldeten Person und stammt aus `personId`/`personType` der Login-Antwort: Schüler `5`, Klasse `1`, Lehrer `2`. `startDate` und `endDate` sind `YYYYMMDD` ohne Trennzeichen. WebUntis-Zeiten sind Ortszeit des Schulstandorts; der Import interpretiert sie in der Zeitzone des Benutzers und speichert sie als UTC.
+
+Die Antwort ist ein Objekt mit `id` auf School-Ebene, `klasse`/`teachers`/`rooms`/`subjects` als Arrays von Stammdaten und `timeGrid` als Array der Unterrichtseinheiten. Eine Einheit liefert `id`, `date` (`YYYYMMDD`), `startTime`/`endTime` (`HHMM`), die Relationsarrays `kl`/`te`/`su`/`ro` mit Objekten aus den Stammdaten, `lsnumber`, `activityType` sowie optional `lstext` und `code`. Anlagen ohne `id`, `date`, `startTime` oder `endTime` werden übersprungen und in `skipped_entries` gezählt, statt den ganzen Import abbrechen zu lassen.
+
+Fächer und Lehrer übernehmen `longname`, Räume bevorzugt `name`, weil `longname` dort teils Klassen- oder Gebäudenamen enthält. Existiert eine Stammdateneintragung schon manuell, wird sie anhand des Namens wiederverwendet, damit Fächer nicht doppelt auftauchen. Der Import ersetzt ausschließlich Lessons derselben `sync_source_id` innerhalb des Vier-Wochen-Fensters; manuell angelegte Stunden und Daten außerhalb des Fensters bleiben erhalten. `code` und `lsnumber` werden bewusst nicht gespeichert, weil die Modelle keine Felder dafür vorsehen.
+
+Automatisch ausgelöst wird der Import nicht: Es gibt noch keinen Scheduler-Job. Neu deployte Container starten ohne Import, die Daten bleiben also bestehen, bis der Button in den Einstellungen gedrückt wird.
+
 
 ## Worker
 
@@ -271,12 +336,15 @@ Es ist noch kein Backup-Runner enthalten. Die Backup- und Kalenderintegrationen 
 | `BACKUPS_HOST_PATH` | `./data/backups` | Host-Quelle für Backups |
 | `IMPORTS_HOST_PATH` | `./data/imports` | Host-Quelle für Importe |
 | `DOCUMENT_STORAGE_PATH` | `/var/lib/school-assistant/documents` | Stabiles internes Backend-/Worker-Ziel |
+| `INTEGRATION_TIMEOUT_SECONDS` | `10` | Zeitlimit für den Verbindungstest einer Integration (1 bis 120) |
 | `BACKUP_STORAGE_PATH` | `/var/lib/school-assistant/backups` | Stabiles internes Backend-/Worker-Ziel |
 | `IMPORT_STORAGE_PATH` | `/var/lib/school-assistant/imports` | Stabiles internes Backend-/Worker-Ziel |
 | `BACKUP_SCHEDULE` | `0 2 * * *` | Reservierter Zeitplan ohne Runner |
 | `BACKUP_RETENTION_DAYS` | `30` | Reservierte Aufbewahrung ohne Runner |
 
 ### Reservierte spätere Integrationen
+
+Der KI-Provider wird pro Integration in der Oberfläche konfiguriert, nicht über diese Variablen. Die folgenden Werte sind daher noch ohne Wirkung.
 
 | Variable | Zweck |
 | --- | --- |
@@ -285,10 +353,6 @@ Es ist noch kein Backup-Runner enthalten. Die Backup- und Kalenderintegrationen 
 | `AI_MODEL` | Spätere Modellkennung |
 | `AI_TIMEOUT_SECONDS` | Späteres Request-Timeout |
 | `AI_MAX_TOKENS` | Späteres Antwortlimit |
-| `WEBUNTIS_BASE_URL` | Spätere WebUntis-Basis-URL |
-| `WEBUNTIS_SCHOOL` | Spätere WebUntis-Schulkennung |
-| `WEBUNTIS_USERNAME` | Späterer WebUntis-Benutzername |
-| `WEBUNTIS_PASSWORD` | Späteres WebUntis-Passwort |
 | `ICAL_CALENDAR_URL` | Spätere iCalendar-Quelle |
 | `CALENDAR_REFRESH_INTERVAL_SECONDS` | Späteres Aktualisierungsintervall |
 
