@@ -401,6 +401,39 @@ def test_file_upload_requires_authentication_and_stores_checksum(app_client: Tes
     assert Path(body["path"]).is_file()
 
 
+def test_non_integration_sync_sources_are_ignored(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    demo_source = SyncSource(
+        user_id=user.id,
+        source_type="demo",
+        name="Demo",
+        enabled=True,
+        configuration={"kind": "demo"},
+    )
+    db.add(demo_source)
+    db.commit()
+    db.refresh(demo_source)
+
+    login(client)
+    assert client.get("/api/v1/integrations").json() == []
+
+    real = client.post(
+        "/api/v1/integrations",
+        json={"kind": "documents", "name": "Dokumente", "config": {"path": "dokumente"}},
+    )
+    assert real.status_code == 201
+    listed = client.get("/api/v1/integrations").json()
+    assert [item["name"] for item in listed] == ["Dokumente"]
+
+    assert client.get(f"/api/v1/integrations/{demo_source.id}").status_code == 404
+    assert client.patch(f"/api/v1/integrations/{demo_source.id}", json={"name": "Umbenannt"}).status_code == 404
+    assert client.post(f"/api/v1/integrations/{demo_source.id}/test").status_code == 404
+    assert client.delete(f"/api/v1/integrations/{demo_source.id}").status_code == 404
+    assert db.get(SyncSource, demo_source.id) is not None
+
+
 def test_integration_routes_are_registered(app_client: TestClient) -> None:
     paths = {route.path for route in app_client.app.routes}
     assert "/api/v1/integrations" in paths

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.api.deps import AppSettings, CurrentUser, DatabaseSession
 from app.api.helpers import owned_or_404
@@ -16,6 +17,7 @@ from app.schemas.integrations import (
     IntegrationUpdate,
 )
 from app.services.integrations import (
+    INTEGRATION_KINDS,
     INTEGRATION_SPECS,
     IntegrationValidationError,
     integration_read,
@@ -53,11 +55,18 @@ def _read(source: SyncSource, settings: AppSettings) -> IntegrationRead:
         ) from exc
 
 
+def _owned_integration(db: Session, integration_id: int, user_id: int) -> SyncSource:
+    source = owned_or_404(db, SyncSource, integration_id, user_id)
+    if source.source_type not in INTEGRATION_KINDS:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
+    return source
+
+
 @router.get("", response_model=list[IntegrationRead])
 def list_integrations(current_user: CurrentUser, db: DatabaseSession, settings: AppSettings) -> list[IntegrationRead]:
     sources = db.scalars(
         select(SyncSource)
-        .where(SyncSource.user_id == current_user.id)
+        .where(SyncSource.user_id == current_user.id, SyncSource.source_type.in_(INTEGRATION_KINDS))
         .order_by(SyncSource.source_type, SyncSource.name, SyncSource.id)
     ).all()
     return [_read(source, settings) for source in sources]
@@ -128,7 +137,7 @@ def create_integration(
 def get_integration(
     integration_id: int, current_user: CurrentUser, db: DatabaseSession, settings: AppSettings
 ) -> IntegrationRead:
-    return _read(owned_or_404(db, SyncSource, integration_id, current_user.id), settings)
+    return _read(_owned_integration(db, integration_id, current_user.id), settings)
 
 
 @router.patch("/{integration_id}", response_model=IntegrationRead)
@@ -140,7 +149,7 @@ def update_integration(
     settings: AppSettings,
 ) -> IntegrationRead:
     key = _encryption_key(settings)
-    source = owned_or_404(db, SyncSource, integration_id, current_user.id)
+    source = _owned_integration(db, integration_id, current_user.id)
     values = payload.model_dump(exclude_unset=True)
 
     if "name" in values and values["name"] is not None:
@@ -185,7 +194,7 @@ def update_integration(
 
 @router.delete("/{integration_id}", response_model=MessageResponse)
 def delete_integration(integration_id: int, current_user: CurrentUser, db: DatabaseSession) -> MessageResponse:
-    source = owned_or_404(db, SyncSource, integration_id, current_user.id)
+    source = _owned_integration(db, integration_id, current_user.id)
     db.delete(source)
     db.commit()
     return MessageResponse(message="Integration disconnected")
@@ -195,7 +204,7 @@ def delete_integration(integration_id: int, current_user: CurrentUser, db: Datab
 def test_integration(
     integration_id: int, current_user: CurrentUser, db: DatabaseSession, settings: AppSettings
 ) -> IntegrationTestResult:
-    source = owned_or_404(db, SyncSource, integration_id, current_user.id)
+    source = _owned_integration(db, integration_id, current_user.id)
     integration = _read(source, settings)
     source.last_tested_at = utc_now()
 
