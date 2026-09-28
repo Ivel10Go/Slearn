@@ -177,9 +177,50 @@ export interface IntegrationSyncResult extends IntegrationTestResult {
   teachers: number;
   rooms: number;
   skipped_entries: number;
+  imported_documents: number;
+  updated_documents: number;
+  indexed_chunks: number;
+  removed_documents: number;
+  skipped_files: number;
   window_start: string | null;
   window_end: string | null;
   last_sync_at: string | null;
+}
+
+export interface DocumentRecord {
+  id: number;
+  filename: string;
+  source: string;
+  status: string;
+  external_id: string | null;
+  mime_type: string | null;
+  created_at: string;
+  processed_at: string | null;
+}
+
+export interface DocumentSource {
+  document_id: number;
+  filename: string;
+  chunk_index: number;
+  content: string;
+}
+
+export interface DocumentHit extends DocumentSource {
+  distance: number | null;
+}
+
+export interface DocumentSearchResult {
+  query: string;
+  hits: DocumentHit[];
+}
+
+export type DocumentAnswerSource = "ai" | "fallback" | "none";
+
+export interface DocumentAnswer {
+  answer: string;
+  source: DocumentAnswerSource;
+  model: string | null;
+  sources: DocumentSource[];
 }
 
 // Helper functions

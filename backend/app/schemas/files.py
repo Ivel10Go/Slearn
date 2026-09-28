@@ -9,4 +9,5 @@ class FileUploadResponse(BaseModel):
     mime_type: str | None = None
     path: str
     checksum: str | None = None
+    status: str | None = None
     created_at: datetime | None = None

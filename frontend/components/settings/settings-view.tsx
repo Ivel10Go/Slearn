@@ -120,9 +120,9 @@ function AccountCard({ user, isLoggingOut, onLogout }: { user: UserResponse | nu
   ];
 
   return (
-    <Card className="border-border/80 bg-card/90 shadow-sm">
+    <Card className="border-border/80 bg-card/90">
       <CardHeader className="flex flex-row items-start gap-3.5">
-        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-sm font-extrabold text-primary-foreground shadow-lg shadow-primary/20">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center border border-border bg-primary text-sm font-extrabold text-primary-foreground">
           {getInitials(displayName)}
         </span>
         <div className="min-w-0 flex-1">
@@ -137,7 +137,7 @@ function AccountCard({ user, isLoggingOut, onLogout }: { user: UserResponse | nu
         <dl className="grid gap-3 sm:grid-cols-2">
           {details.map((detail) => (
             <div key={detail.label} className="rounded-xl border border-border/70 bg-muted/40 px-3.5 py-3">
-              <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{detail.label}</dt>
+              <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{detail.label}</dt>
               <dd className="mt-1 truncate text-sm font-semibold">{detail.value}</dd>
             </div>
           ))}
@@ -161,7 +161,7 @@ function ThemeCard() {
   }, []);
 
   return (
-    <Card className="border-border/80 bg-card/90 shadow-sm">
+    <Card className="border-border/80 bg-card/90">
       <CardHeader>
         <CardTitle>Darstellung</CardTitle>
         <CardDescription>Wähle, ob dein Lernraum hell, dunkel oder wie das System erscheint.</CardDescription>
@@ -179,7 +179,7 @@ function ThemeCard() {
                   onClick={() => setTheme(option.value)}
                   aria-pressed={active}
                   className={cn(
-                    "flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-xl border text-xs font-bold transition-colors",
+                    "flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-xl border text-xs font-bold transition-colors active:opacity-80",
                     active
                       ? "border-primary/40 bg-primary/10 text-primary"
                       : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -219,9 +219,11 @@ function IntegrationRow({ integration, testResult, syncResult, pendingAction, on
   const isBusy = isTesting || isSyncing || isUpdating || isDeleting;
   const Icon = KIND_ICONS[integration.kind] ?? Plug;
   const status = STATUS_META[integration.status] ?? { label: integration.status, variant: "secondary" as BadgeVariant };
+  const result = testResult ?? syncResult;
   const entries = configEntries(integration);
   const incomplete = integration.missing_fields.length > 0;
-  const canSync = integration.kind === "webuntis" && integration.enabled && !incomplete && !isBusy;
+  const canSync = ["webuntis", "documents"].includes(integration.kind) && integration.enabled && !incomplete && !isBusy;
+  const syncLabel = integration.kind === "documents" ? "Dokumente indexieren" : "Stundenplan aktualisieren";
 
   return (
     <li className="rounded-2xl border border-border/70 bg-card/60 p-4 sm:p-5">
@@ -248,13 +250,13 @@ function IntegrationRow({ integration, testResult, syncResult, pendingAction, on
           disabled={isBusy}
           onClick={() => onToggle(!integration.enabled)}
           className={cn(
-            "relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50",
+            "relative h-6 w-11 shrink-0 rounded-full transition-colors duration-fast disabled:opacity-50 active:opacity-80",
             integration.enabled ? "bg-primary" : "bg-muted",
           )}
         >
           <span
             className={cn(
-              "absolute top-0.5 h-5 w-5 rounded-full bg-card shadow transition-all",
+              "absolute top-0.5 h-5 w-5 rounded-full border border-border bg-card transition-[left] duration-fast",
               integration.enabled ? "left-[22px]" : "left-0.5",
             )}
           />
@@ -265,7 +267,7 @@ function IntegrationRow({ integration, testResult, syncResult, pendingAction, on
         <dl className="mt-4 grid gap-2 sm:grid-cols-2">
           {entries.map((entry) => (
             <div key={entry.key} className="flex items-baseline justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2">
-              <dt className="text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">{entry.label}</dt>
+              <dt className="text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground">{entry.label}</dt>
               <dd className="truncate text-xs font-semibold">{entry.value}</dd>
             </div>
           ))}
@@ -294,45 +296,38 @@ function IntegrationRow({ integration, testResult, syncResult, pendingAction, on
         </p>
       ) : null}
 
-      {testResult ? (
-        <p
-          className={cn(
-            "mt-3 flex items-start gap-2 rounded-xl border px-3 py-2 text-xs font-medium",
-            testResult.ok
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/50 dark:text-emerald-300"
-              : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-300",
-          )}
-          role="status"
-        >
-          {testResult.ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
-          {testResult.message}
-        </p>
-      ) : null}
-
-      {syncResult ? (
-        <p
-          className={cn(
-            "mt-3 flex items-start gap-2 rounded-xl border px-3 py-2 text-xs font-medium",
-            syncResult.ok
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/50 dark:text-emerald-300"
-              : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-300",
-          )}
-          role="status"
-        >
-          {syncResult.ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
-          {syncResult.message}
-        </p>
-      ) : null}
+      {/*
+        Der Container steht immer im DOM, nur sein Inhalt wechselt. Ein
+        `role="status"`, das erst zusammen mit dem Text eingefuegt wird, wird
+        von Screenreadern nicht angesagt - die Live-Region muss vorher da sein.
+        Test- und Sync-Ergebnis teilen sich die Box, weil beide dieselbe
+        Frage beantworten: hat es geklappt?
+      */}
+      <div className="mt-3" role="status" aria-live="polite">
+        {result ? (
+          <p
+            className={cn(
+              "flex items-start gap-2 rounded-xl border px-3 py-2 text-xs font-medium",
+              result.ok
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/50 dark:text-emerald-300"
+                : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-300",
+            )}
+          >
+            {result.ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
+            {result.message}
+          </p>
+        ) : null}
+      </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" variant="outline" onClick={onTest} disabled={isBusy}>
           {isTesting ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
           Verbindung testen
         </Button>
-        {integration.kind === "webuntis" ? (
+        {["webuntis", "documents"].includes(integration.kind) ? (
           <Button type="button" size="sm" onClick={onSync} disabled={!canSync}>
             {isSyncing ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
-            {isSyncing ? "Wird importiert" : "Stundenplan aktualisieren"}
+            {isSyncing ? "Wird importiert" : syncLabel}
           </Button>
         ) : null}
         {confirming ? (
@@ -369,10 +364,13 @@ function IntegrationForm({ catalog, isSubmitting, onSubmit, onCancel }: Integrat
   const [config, setConfig] = useState<Record<string, string>>({});
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
+  /** Wird nach einem Fehlversuch gesetzt, damit die Felder `aria-invalid` bekommen. */
+  const [invalidFields, setInvalidFields] = useState<Set<string>>(new Set());
 
   const spec = useMemo(() => catalog.find((entry) => entry.kind === kind), [catalog, kind]);
   const credentialFields = spec ? [...spec.required_credentials, ...spec.optional_credentials] : [];
   const requiredFields = spec ? [...spec.required_config, ...spec.required_credentials] : [];
+  const formErrorId = "integration-form-error";
 
   function handleKindChange(nextKind: string) {
     const nextSpec = catalog.find((entry) => entry.kind === nextKind);
@@ -381,6 +379,7 @@ function IntegrationForm({ catalog, isSubmitting, onSubmit, onCancel }: Integrat
     setConfig({});
     setCredentials({});
     setFormError(null);
+    setInvalidFields(new Set());
   }
 
   function collect(values: Record<string, string>, fields: string[]) {
@@ -402,11 +401,13 @@ function IntegrationForm({ catalog, isSubmitting, onSubmit, onCancel }: Integrat
     const combined = { ...config, ...credentials };
     const missing = requiredFields.filter((field) => !combined[field]?.trim());
     if (missing.length > 0) {
+      setInvalidFields(new Set(missing));
       setFormError(`Diese Angaben fehlen noch: ${missing.map(fieldLabel).join(", ")}.`);
       return;
     }
 
     setFormError(null);
+    setInvalidFields(new Set());
     const created = await onSubmit({
       kind: spec.kind,
       name: name.trim() || spec.label,
@@ -416,6 +417,7 @@ function IntegrationForm({ catalog, isSubmitting, onSubmit, onCancel }: Integrat
     if (created) {
       setConfig({});
       setCredentials({});
+      setInvalidFields(new Set());
     }
   }
 
@@ -424,6 +426,8 @@ function IntegrationForm({ catalog, isSubmitting, onSubmit, onCancel }: Integrat
     const value = bucket === "config" ? config[field] ?? "" : credentials[field] ?? "";
     const setter = bucket === "config" ? setConfig : setCredentials;
     const fieldId = `${bucket}-${kind}-${field}`;
+    const invalid = invalidFields.has(field);
+    const showError = invalid && formError !== null;
     return (
       <div key={field} className="space-y-2">
         <label className="text-sm font-bold" htmlFor={fieldId}>
@@ -440,6 +444,8 @@ function IntegrationForm({ catalog, isSubmitting, onSubmit, onCancel }: Integrat
           onChange={(event) => setter((current) => ({ ...current, [field]: event.target.value }))}
           required={isRequired}
           disabled={isSubmitting}
+          aria-invalid={invalid || undefined}
+          aria-describedby={showError ? formErrorId : undefined}
         />
       </div>
     );
@@ -497,7 +503,7 @@ function IntegrationForm({ catalog, isSubmitting, onSubmit, onCancel }: Integrat
       {credentialFields.map((field) => renderField(field, "credentials"))}
 
       {formError ? (
-        <p className="rounded-xl border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-sm font-medium text-destructive" role="alert">
+        <p id={formErrorId} className="rounded-xl border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-sm font-medium text-destructive" role="alert">
           {formError}
         </p>
       ) : null}
@@ -543,7 +549,7 @@ function IntegrationsCard({
   const isSubmitting = pendingAction === "create";
 
   return (
-    <Card className="border-border/80 bg-card/90 shadow-sm">
+    <Card className="border-border/80 bg-card/90">
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div>
           <CardTitle>Integrationen</CardTitle>

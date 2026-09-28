@@ -75,3 +75,19 @@ def app_context(tmp_path: Path) -> Iterator[tuple[TestClient, Session, User]]:
 @pytest.fixture
 def app_client(app_context: tuple[TestClient, Session, User]) -> TestClient:
     return app_context[0]
+
+
+@pytest.fixture
+def settings(tmp_path: Path) -> Settings:
+    """Die Einstellungen, die auch ``app_context`` nutzt (gleicher tmp_path)."""
+    return Settings(
+        database_url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}",
+        secret_key="test-secret-key",
+        integration_encryption_key="test-integration-encryption-key",
+        admin_username="admin",
+        admin_password="admin-password",
+        bootstrap_on_startup=False,
+        demo_mode=False,
+        cookie_secure=False,
+        document_storage_path=tmp_path.as_posix(),
+    )

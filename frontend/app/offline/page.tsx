@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { CloudOff, RefreshCw, Sparkles } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export default function OfflinePage() {
   return (
@@ -14,18 +16,12 @@ export default function OfflinePage() {
           Die statische Oberfläche ist verfügbar. Private Schul- und Lerndaten werden offline nicht gespeichert.
         </p>
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
-          <Link
-            href="/"
-            className="inline-flex h-10 items-center justify-center gap-2 border border-primary bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/85"
-          >
-            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+          <Link href="/" className={cn(buttonVariants({ size: "sm" }), "h-10")}>
+            <RefreshCw aria-hidden="true" />
             Erneut versuchen
           </Link>
-          <Link
-            href="/login"
-            className="inline-flex h-10 items-center justify-center gap-2 border border-border bg-card px-4 text-sm font-semibold transition-colors hover:bg-muted"
-          >
-            <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
+          <Link href="/login" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-10")}>
+            <Sparkles className="text-primary" aria-hidden="true" />
             Zum Login
           </Link>
         </div>

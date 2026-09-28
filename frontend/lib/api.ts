@@ -1,8 +1,8 @@
 "use client";
 
 import { getDemoDashboard, getDemoScheduleRange, isDemoFallbackEnabled } from "./demo";
-import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type DashboardData, type Greeting, type ScheduleRange, type UserResponse } from "./types";
-import { parseLoginResponse, parseUserResponse, parseUserSession, parseIntegrationArray, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult } from "./schemas";
+import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type DashboardData, type DocumentAnswer, type DocumentRecord, type DocumentSearchResult, type Greeting, type ScheduleRange, type UserResponse } from "./types";
+import { parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseIntegrationArray, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseLoginResponse, parseUserResponse, parseUserSession } from "./schemas";
 import type { IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult } from "./types";
 
 const API_PREFIX = "/api/backend";
@@ -248,6 +248,37 @@ export async function syncIntegration(integrationId: number): Promise<Integratio
     body: JSON.stringify({}),
   });
   return parseIntegrationSyncResult(payload);
+}
+
+export async function getDocuments(): Promise<DocumentRecord[]> {
+  const payload = await apiRequest("/v1/documents");
+  return parseDocumentArray(payload);
+}
+
+export interface DocumentSearchInput {
+  query: string;
+  limit?: number;
+}
+
+export interface DocumentAskInput {
+  question: string;
+  limit?: number;
+}
+
+export async function searchDocuments(input: DocumentSearchInput): Promise<DocumentSearchResult> {
+  const payload = await apiRequest("/v1/documents/search", {
+    method: "POST",
+    body: JSON.stringify({ query: input.query, limit: input.limit }),
+  });
+  return parseDocumentSearchResult(payload);
+}
+
+export async function askDocuments(input: DocumentAskInput): Promise<DocumentAnswer> {
+  const payload = await apiRequest("/v1/documents/ask", {
+    method: "POST",
+    body: JSON.stringify({ question: input.question, limit: input.limit }),
+  });
+  return parseDocumentAnswer(payload);
 }
 
 export async function logout(): Promise<void> {

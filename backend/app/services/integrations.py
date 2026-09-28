@@ -5,10 +5,12 @@ from typing import Final, cast
 
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.core.crypto import decrypt_credentials, has_credentials
 from app.db.entities import SyncSource
 from app.schemas.integrations import IntegrationKind, IntegrationRead, IntegrationStatus
 from app.services.ai_provider import AiProviderError, probe_ai_provider
+from app.services.documents import DocumentSyncOutcome, sync_documents
 from app.services.timetable_import import (
     DEFAULT_SYNC_WEEKS,
     SyncOutcome,
@@ -246,11 +248,12 @@ def sync_integration(
     source: SyncSource,
     config: dict[str, str],
     credentials: dict[str, str],
+    settings: Settings,
     timezone_name: str,
     timeout_seconds: float,
     weeks: int = DEFAULT_SYNC_WEEKS,
     today: date | None = None,
-) -> SyncOutcome:
+) -> SyncOutcome | DocumentSyncOutcome:
     """Holt Daten aus der Integration und schreibt sie in die Datenbank.
 
     Wirft ``IntegrationConnectionError``, wenn die Gegenseite nicht erreichbar
@@ -259,6 +262,13 @@ def sync_integration(
     if source.source_type == "webuntis":
         return _sync_webuntis(
             db, source, config, credentials, timezone_name, timeout_seconds, weeks, today
+        )
+    if source.source_type == "documents":
+        return sync_documents(
+            db=db,
+            source=source,
+            folder=str(config.get("path", "")),
+            settings=settings,
         )
     raise IntegrationConnectionError(f"Für {source.source_type} ist noch kein Import implementiert.")
 

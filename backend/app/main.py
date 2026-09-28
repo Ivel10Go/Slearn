@@ -75,9 +75,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(exams.router)
     application.include_router(calendar.router)
     application.include_router(study.router)
-    from app.api import files, integrations
+    from app.api import documents, files, integrations
     application.include_router(integrations.router)
     application.include_router(files.router)
+    application.include_router(documents.router)
     return application
 
 

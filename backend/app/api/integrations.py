@@ -297,6 +297,7 @@ def sync_integration_endpoint(
             source=source,
             config=integration.config,
             credentials=credentials,
+            settings=settings,
             timezone_name=current_user.timezone or settings.timezone,
             timeout_seconds=settings.integration_timeout_seconds,
         )
@@ -312,18 +313,26 @@ def sync_integration_endpoint(
         raise
 
     message = outcome.describe()
-    if outcome.skipped_entries:
-        message += f" {outcome.skipped_entries} unvollständige Einträge wurden übersprungen."
+    lesson_fields = getattr(outcome, "imported_lessons", 0)
+    if lesson_fields:
+        skipped = getattr(outcome, "skipped_entries", 0)
+        if skipped:
+            message += f" {skipped} unvollständige Einträge wurden übersprungen."
     return IntegrationSyncResult(
         ok=True,
         status="connected",
         message=message,
-        imported_lessons=outcome.imported_lessons,
-        subjects=outcome.subjects,
-        teachers=outcome.teachers,
-        rooms=outcome.rooms,
-        skipped_entries=outcome.skipped_entries,
-        window_start=outcome.window_start,
-        window_end=outcome.window_end,
+        imported_lessons=getattr(outcome, "imported_lessons", 0),
+        subjects=getattr(outcome, "subjects", 0),
+        teachers=getattr(outcome, "teachers", 0),
+        rooms=getattr(outcome, "rooms", 0),
+        skipped_entries=getattr(outcome, "skipped_entries", 0),
+        imported_documents=getattr(outcome, "imported_documents", 0),
+        updated_documents=getattr(outcome, "updated_documents", 0),
+        indexed_chunks=getattr(outcome, "indexed_chunks", 0),
+        removed_documents=getattr(outcome, "removed_documents", 0),
+        skipped_files=getattr(outcome, "skipped_files", 0),
+        window_start=getattr(outcome, "window_start", None),
+        window_end=getattr(outcome, "window_end", None),
         last_sync_at=source.last_sync_at,
     )

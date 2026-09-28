@@ -8,6 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.api.deps import AppSettings, CurrentUser, DatabaseSession
 from app.db.entities import Document
 from app.schemas.files import FileUploadResponse
+from app.services.documents import index_uploaded_document
 
 router = APIRouter(prefix="/api/v1/files", tags=["files"])
 
@@ -65,11 +66,14 @@ def upload_file(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database unavailable") from exc
 
+    index_uploaded_document(db, current_user.id, doc, settings)
+
     return FileUploadResponse(
         id=doc.id,
         filename=doc.filename,
         mime_type=doc.mime_type,
         path=doc.storage_path,
         checksum=doc.checksum,
+        status=doc.status,
         created_at=doc.created_at,
     )

@@ -33,10 +33,12 @@ from app.services.ai_provider import (
     AiProviderError,
     AiProviderModels,
     build_chat_url,
+    build_embeddings_url,
     build_models_url,
 )
 from app.services.dashboard import serialize_dashboard
 from app.services.demo_seed import seed_demo_data
+from app.services.documents import chunk_text, read_document_text
 from app.services.integrations import IntegrationConnectionError, sync_integration, sync_window
 from app.services.lessons import MAX_RANGE_DAYS, LessonRangeError, validate_range
 from app.services.webuntis import (
@@ -1334,6 +1336,15 @@ def stub_webuntis(monkeypatch: pytest.MonkeyPatch) -> type[_StubWebUntisClient]:
     _StubWebUntisClient.failure = None
     _StubWebUntisClient.requested = []
     monkeypatch.setattr(integrations_service, "WebUntisClient", _StubWebUntisClient)
+
+    class _FrozenDate(date):
+        # Der Sync holt die Wochen um den heutigen Tag. Damit die Tests nicht
+        # von der Kalenderwoche des Laufdatums abhaengen, ist "heute" fixiert.
+        @classmethod
+        def today(cls) -> _FrozenDate:
+            return cls(2026, 9, 21)
+
+    monkeypatch.setattr(integrations_service, "date", _FrozenDate)
     return _StubWebUntisClient
 
 
@@ -1711,10 +1722,12 @@ def test_sync_endpoint_requires_encryption_key(
     assert result.status_code == 503
 
 
-def test_sync_rejects_unknown_kind(app_context: tuple[TestClient, Session, User]) -> None:
+def test_sync_rejects_unknown_integration_type(
+    app_context: tuple[TestClient, Session, User], settings: Settings
+) -> None:
     _, db, user = app_context
     source = SyncSource(
-        user_id=user.id, source_type="documents", name="Ablage", configuration={"path": tmp_path_value()}
+        user_id=user.id, source_type="ical", name="Kalender", configuration={"path": tmp_path_value()}
     )
     db.add(source)
     db.commit()
@@ -1722,8 +1735,9 @@ def test_sync_rejects_unknown_kind(app_context: tuple[TestClient, Session, User]
         sync_integration(
             db=db,
             source=source,
-            config={"path": tmp_path_value()},
+            config={},
             credentials={},
+            settings=settings,
             timezone_name="UTC",
             timeout_seconds=5.0,
         )
@@ -1731,6 +1745,175 @@ def test_sync_rejects_unknown_kind(app_context: tuple[TestClient, Session, User]
 
 def tmp_path_value() -> str:
     return str(Path.cwd())
+
+
+# --- Dokumente durchsuchbar (RAG) -------------------------------------------
+
+
+def _create_documents_integration(client: TestClient, *, path: str = "dokumente") -> int:
+    created = client.post(
+        "/api/v1/integrations",
+        json={"kind": "documents", "name": "Dokumente", "config": {"path": path}},
+    )
+    assert created.status_code == 201, created.text
+    return created.json()["id"]
+
+
+def _write_document(file_path: Path, text: str) -> None:
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(text, encoding="utf-8")
+
+
+def test_chunk_text_keeps_words_intact_and_overlaps() -> None:
+    woerter = [f"wort{index}" for index in range(500)]
+    text = " ".join(woerter)
+    chunks = chunk_text(text, size=200, overlap=40)
+    assert len(chunks) > 1
+    assert all(0 < len(chunk.split()) <= 200 for chunk in chunks)
+    # Der erste Absatz beginnt vorn, der letzte hoert hinten auf.
+    assert chunks[0].split()[0] == "wort0"
+    assert chunks[-1].split()[-1] == "wort499"
+    # Die Naht ist ueberlappend: Der Anfang des naechsten Absatzes stand schon am Ende des vorigen.
+    for vorher, nachher in zip(chunks, chunks[1:]):
+        anfang = " ".join(nachher.split()[:3])
+        assert anfang in " ".join(vorher.split()[-12:])
+
+
+def test_read_document_text_rejects_unsupported_formats(tmp_path: Path) -> None:
+    binary = tmp_path / "daten.pdf"
+    binary.write_bytes(b"%PDF-1.4")
+    with pytest.raises(ValueError):
+        read_document_text(binary)
+
+
+def test_documents_sync_indexes_folder(
+    app_context: tuple[TestClient, Session, User], settings: Settings
+) -> None:
+    client, _, _ = app_context
+    login(client)
+    integration_id = _create_documents_integration(client)
+    folder = Path(settings.document_storage_path) / "dokumente"
+    _write_document(folder / "deutsch.md", "Goethe wurde 1749 in Frankfurt am Main geboren.")
+    _write_document(folder / "bild.pdf", "kein Text, landet im Papierkorb")
+
+    result = client.post(f"/api/v1/integrations/{integration_id}/sync")
+    assert result.status_code == 200
+    body = result.json()
+    assert body["ok"] is True
+    assert body["status"] == "connected"
+    assert body["imported_documents"] == 1
+    assert body["skipped_files"] == 1
+    assert body["indexed_chunks"] >= 1
+
+    listing = client.get("/api/v1/documents").json()
+    assert [entry["filename"] for entry in listing] == ["deutsch.md"]
+    assert listing[0]["status"] == "indexed"
+
+    search = client.post("/api/v1/documents/search", json={"query": "Goethe", "limit": 5}).json()
+    assert search["hits"]
+    assert search["hits"][0]["filename"] == "deutsch.md"
+    assert "Frankfurt" in search["hits"][0]["content"]
+
+
+def test_documents_sync_is_idempotent_and_removes_stale_files(
+    app_context: tuple[TestClient, Session, User], settings: Settings
+) -> None:
+    client, _, _ = app_context
+    login(client)
+    integration_id = _create_documents_integration(client)
+    folder = Path(settings.document_storage_path) / "dokumente"
+    _write_document(folder / "chemie.txt", "Das Periodensystem ordnet die Elemente nach der Kernladung.")
+
+    first = client.post(f"/api/v1/integrations/{integration_id}/sync").json()
+    assert first["imported_documents"] == 1
+
+    # Unveraendert: Der zweite Lauf ist ein spurloser No-Op.
+    second = client.post(f"/api/v1/integrations/{integration_id}/sync").json()
+    assert second["ok"] is True
+    assert second["imported_documents"] == 0
+    assert second["updated_documents"] == 0
+    assert second["indexed_chunks"] == 0
+
+    # Ein Aenderung reicht zum Neuindexieren, ohne die Liste zu verdoppeln.
+    _write_document(folder / "chemie.txt", "Uran hat die Kernladungszahl 92.")
+    third = client.post(f"/api/v1/integrations/{integration_id}/sync").json()
+    assert third["updated_documents"] == 1
+    assert third["imported_documents"] == 0
+
+    # Verschwundene Dateien verlassen den Index.
+    (folder / "chemie.txt").unlink()
+    fourth = client.post(f"/api/v1/integrations/{integration_id}/sync").json()
+    assert fourth["removed_documents"] == 1
+    assert client.get("/api/v1/documents").json() == []
+
+
+def test_documents_ask_falls_back_without_a_provider(
+    app_context: tuple[TestClient, Session, User], settings: Settings
+) -> None:
+    client, _, _ = app_context
+    login(client)
+    integration_id = _create_documents_integration(client)
+    folder = Path(settings.document_storage_path) / "dokumente"
+    _write_document(folder / "deutsch.md", "Goethe wurde 1749 in Frankfurt am Main geboren.")
+    assert client.post(f"/api/v1/integrations/{integration_id}/sync").json()["ok"] is True
+
+    result = client.post("/api/v1/documents/ask", json={"question": "Wer war Goethe?"}).json()
+    assert result["source"] == "fallback"
+    assert "deutsch.md" in result["answer"]
+    assert "deutsch.md" in {quelle["filename"] for quelle in result["sources"]}
+
+    leer = client.post("/api/v1/documents/ask", json={"question": "Quantenkosmologie"}).json()
+    assert leer["source"] == "none"
+
+
+def test_document_search_isolates_users(
+    app_context: tuple[TestClient, Session, User], settings: Settings
+) -> None:
+    client, db, user = app_context
+    login(client)
+    integration_id = _create_documents_integration(client)
+    folder = Path(settings.document_storage_path) / "dokumente"
+    _write_document(folder / "mein.txt", "Privates Wissen über die Photosynthese.")
+    assert client.post(f"/api/v1/integrations/{integration_id}/sync").json()["ok"] is True
+
+    other = User(
+        username="anderer-dokumente",
+        password_hash=hash_password("anderes-passwort"),
+        is_active=True,
+        is_admin=False,
+        timezone="UTC",
+    )
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+
+    client.cookies.clear()
+    client.headers.update(
+        {"Authorization": f"Bearer {create_session_token(other.id, 'test-secret-key', 3600)}"}
+    )
+    assert client.get("/api/v1/documents").json() == []
+    search = client.post("/api/v1/documents/search", json={"query": "Photosynthese"}).json()
+    assert search["hits"] == []
+
+
+def test_upload_indexes_supported_text(
+    app_context: tuple[TestClient, Session, User], settings: Settings
+) -> None:
+    client, _, _ = app_context
+    login(client)
+
+    response = client.post(
+        "/api/v1/files",
+        files={"file": ("notizen.md", b"# Mathe\nDer Satz des Pythagoras gilt im Dreieck.", "text/markdown")},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["status"] == "indexed"
+    assert Path(body["path"]).is_file()
+
+    search = client.post("/api/v1/documents/search", json={"query": "Pythagoras"}).json()
+    assert search["hits"]
+    assert search["hits"][0]["filename"] == "notizen.md"
 
 
 # --- Stundenplan über einen Zeitraum -----------------------------------------
@@ -1871,6 +2054,40 @@ def test_chat_url_is_built_from_the_base_url() -> None:
     assert build_chat_url("http://localhost:11434") == "http://localhost:11434/v1/chat/completions"
     # Eine URL, die auf /models endet, darf nicht zu /models/chat/completions werden.
     assert build_chat_url("https://x.test/v1/models") == "https://x.test/v1/chat/completions"
+
+
+def test_embeddings_url_is_built_from_the_base_url() -> None:
+    assert build_embeddings_url("https://api.openai.com/v1") == "https://api.openai.com/v1/embeddings"
+    assert build_embeddings_url("http://localhost:11434") == "http://localhost:11434/v1/embeddings"
+    # Auch hier: Ein /models-Suffix gehört nicht in den Endpunkt.
+    assert build_embeddings_url("https://x.test/v1/models") == "https://x.test/v1/embeddings"
+
+
+def test_embed_reads_the_embeddings() -> None:
+    body = {"data": [{"embedding": [0.1, 0.2, 0.3]}, {"embedding": [0.4, 0.5, 0.6]}]}
+    transport = _FakeAiTransport(httpx.Response(200, content=json.dumps(body).encode()))
+    client = AiProviderClient("https://api.example.com/v1", "gpt-4o-mini", "geheim")
+    client._client = httpx.Client(transport=transport, timeout=5.0)
+
+    vectors = client.embed(["Satz eins", "Satz zwei"])
+
+    assert vectors == [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
+    request = transport.requests[0]
+    assert str(request.url) == "https://api.example.com/v1/embeddings"
+    assert request.headers["Authorization"] == "Bearer geheim"
+    koerper = json.loads(request.read().decode("utf-8"))
+    assert koerper["model"] == "gpt-4o-mini"
+    assert koerper["input"] == ["Satz eins", "Satz zwei"]
+
+
+def test_embed_rejects_short_responses() -> None:
+    client = AiProviderClient("https://api.example.com/v1", "gpt-4o-mini", "geheim")
+    body = {"data": [{"embedding": [0.1]}]}
+    client._client = httpx.Client(
+        transport=_FakeAiTransport(httpx.Response(200, content=json.dumps(body).encode())), timeout=5.0
+    )
+    with pytest.raises(AiProviderError):
+        client.embed(["eins", "zwei"])
 
 
 def test_generate_reads_the_chat_completion() -> None:

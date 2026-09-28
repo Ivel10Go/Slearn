@@ -53,7 +53,9 @@ function columnClasses(days: number) {
   if (days === 3) {
     return "grid-cols-1 sm:grid-cols-3";
   }
-  return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7";
+  // Sieben Tage: auf einem Tablet im Querformat ist die Sidebar weg, es ist also
+  // mehr Platz als die 280px-Schale am Desktop vermuten lassen.
+  return "grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-7";
 }
 
 function SegmentedControl<T extends string>({
@@ -78,7 +80,7 @@ function SegmentedControl<T extends string>({
             onClick={() => onChange(option.id)}
             aria-pressed={active}
             className={cn(
-              "h-7 px-2.5 text-[11px] font-semibold transition-colors",
+              "h-7 px-2.5 text-xs font-semibold transition-colors active:opacity-80",
               index > 0 && "border-l border-border",
               active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
@@ -112,7 +114,7 @@ function LessonTile({ lesson, reference }: { lesson: DashboardLesson; reference:
     >
       <span
         className={cn(
-          "shrink-0 text-[10px] font-bold tabular-nums",
+          "shrink-0 text-[11px] font-bold tabular-nums",
           isCurrent ? "text-primary" : "text-muted-foreground",
         )}
       >
@@ -120,16 +122,16 @@ function LessonTile({ lesson, reference }: { lesson: DashboardLesson; reference:
       </span>
       <span
         className={cn(
-          "min-w-0 flex-1 truncate text-[11px] font-extrabold",
+          "min-w-0 flex-1 truncate text-xs font-extrabold",
           lesson.isCancelled && "line-through",
         )}
       >
         {lesson.subjectShort}
       </span>
       {lesson.isCancelled ? (
-        <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-destructive">Entfall</span>
+        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-destructive">Entfall</span>
       ) : null}
-      <span className="shrink-0 truncate text-[10px] tabular-nums text-muted-foreground">{lesson.room}</span>
+      <span className="shrink-0 truncate text-[11px] tabular-nums text-muted-foreground">{lesson.room}</span>
     </div>
   );
 }
@@ -156,7 +158,7 @@ function SlotPicker({
             aria-pressed={aktiv}
             title={`${lesson.subject} · ${lesson.room}`}
             className={cn(
-              "border px-1 py-px text-[9px] font-extrabold leading-none transition-colors",
+              "border px-1 py-px text-[10px] font-extrabold leading-none transition-colors active:opacity-80",
               aktiv
                 ? "border-foreground bg-foreground text-background"
                 : "border-border/70 text-muted-foreground hover:border-foreground hover:text-foreground",
@@ -196,20 +198,20 @@ function DayColumn({
       <div className="mb-1 flex items-baseline justify-between gap-1">
         <span
           className={cn(
-            "text-[10px] font-bold uppercase tracking-[0.12em]",
+            "text-[11px] font-bold uppercase tracking-[0.12em]",
             isToday ? "text-foreground underline underline-offset-4" : "text-muted-foreground",
           )}
         >
           {formatDate(day, { weekday: "short" })}
         </span>
-        <span className={cn("text-[11px] font-extrabold tabular-nums", weekend && "text-muted-foreground")}>
+        <span className={cn("text-xs font-extrabold tabular-nums", weekend && "text-muted-foreground")}>
           {formatDate(day, { day: "2-digit" })}
         </span>
       </div>
       {slots.length === 0 ? (
         <p
           className={cn(
-            "border border-dashed border-border/70 px-1 py-3 text-center text-[9px] leading-4",
+            "border border-dashed border-border/70 px-1 py-3 text-center text-[10px] leading-4",
             weekend ? "text-border" : "text-muted-foreground",
           )}
         >
@@ -284,20 +286,22 @@ export function ScheduleCard() {
   const total = lessons?.length ?? 0;
 
   return (
-    <Card id="schedule">
-      {/* Alles auf eine Zeile: Titel, Zeitraum, Segmente und Pfeile nebeneinander. */}
-      <CardHeader className="flex flex-wrap items-center gap-x-3 gap-y-2 pb-2">
-        <CardTitle className="flex items-center gap-1.5 text-sm font-extrabold">
-          <CalendarDays className="h-4 w-4 text-primary" aria-hidden="true" />
-          Stundenplan
-        </CardTitle>
-        <CardDescription className="text-xs tabular-nums">
-          {start && end ? `${formatWeekNumber(start)} · ${formatDateRange(start, end)}` : "lädt …"}
-        </CardDescription>
-        <Badge variant="secondary" className="text-[10px]">
-          {total}
-        </Badge>
-        <div className="ml-auto flex items-center gap-1.5">
+    <Card id="schedule" className="scroll-mt-24">
+      {/* Zwei Zeilen statt einer: Titel oben, Bedienelemente darunter. Mit einer
+          Zeile laufen sieben Tage plus Segmente, Pfeile und Reload auf
+          schmalen Fenstern aus der Karte. */}
+      <CardHeader className="gap-3 pb-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <CardTitle className="flex items-center gap-1.5 text-sm font-extrabold">
+            <CalendarDays className="h-4 w-4 text-primary" aria-hidden="true" />
+            Stundenplan
+          </CardTitle>
+          <CardDescription className="text-xs tabular-nums">
+            {start && end ? `${formatWeekNumber(start)} · ${formatDateRange(start, end)}` : "lädt …"}
+          </CardDescription>
+          <Badge variant="secondary">{total}</Badge>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <SegmentedControl
             options={RANGE_OPTIONS}
             value={rangeId}
@@ -308,7 +312,7 @@ export function ScheduleCard() {
             <button
               type="button"
               onClick={() => setOffset((current) => current - 1)}
-              className="flex h-7 w-7 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="flex h-7 w-7 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:opacity-80"
               aria-label={option.days === 1 ? "Ein Tag zurück" : `Um ${option.days} Tage zurück`}
             >
               <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
@@ -317,14 +321,14 @@ export function ScheduleCard() {
               type="button"
               onClick={() => setOffset(0)}
               disabled={offset === 0}
-              className="h-7 border-x border-border px-2 text-[11px] font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+              className="h-7 border-x border-border px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:opacity-80 disabled:pointer-events-none disabled:opacity-40"
             >
               {offset === 0 ? "Heute" : `${offset > 0 ? "+" : ""}${offset * option.days}T`}
             </button>
             <button
               type="button"
               onClick={() => setOffset((current) => current + 1)}
-              className="flex h-7 w-7 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="flex h-7 w-7 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:opacity-80"
               aria-label={option.days === 1 ? "Ein Tag vor" : `Um ${option.days} Tage vor`}
             >
               <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />

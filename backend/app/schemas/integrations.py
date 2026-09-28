@@ -93,6 +93,11 @@ class IntegrationSyncResult(UTCResponseModel):
     teachers: int = 0
     rooms: int = 0
     skipped_entries: int = 0
+    imported_documents: int = 0
+    updated_documents: int = 0
+    indexed_chunks: int = 0
+    removed_documents: int = 0
+    skipped_files: int = 0
     window_start: date | None = None
     window_end: date | None = None
     last_sync_at: datetime | None = None

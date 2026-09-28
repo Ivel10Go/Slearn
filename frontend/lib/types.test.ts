@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseIntegrationSyncResult } from "./schemas";
 import { isDemoTaskId, normalizeDashboard, normalizeStudyAction } from "./types";
 
 describe("Study-Normalisierung", () => {
@@ -91,5 +92,57 @@ describe("Dashboard-Validierung", () => {
 
   it("lehnt fehlerhafte API-Daten ab", () => {
     expect(() => normalizeDashboard({ lessons: [{ id: 1, start_time: "kein-datum" }] })).toThrow();
+  });
+});
+
+describe("Dokumente-Parsing", () => {
+  it("behaelt die Dokumentfelder im Sync-Ergebnis", () => {
+    const result = parseIntegrationSyncResult({
+      ok: true,
+      status: "success",
+      message: "Sync fertig.",
+      missing_fields: [],
+      imported_lessons: 0,
+      subjects: 0,
+      teachers: 0,
+      rooms: 0,
+      skipped_entries: 0,
+      imported_documents: 3,
+      updated_documents: 1,
+      indexed_chunks: 42,
+      removed_documents: 0,
+      skipped_files: 1,
+      window_start: null,
+      window_end: null,
+      last_sync_at: null,
+    });
+
+    expect(result).toMatchObject({ imported_documents: 3, indexed_chunks: 42, skipped_files: 1 });
+  });
+
+  it("normalisiert eine Dokumentliste auf string | null", () => {
+    const result = parseDocumentArray([
+      { id: 1, filename: "notizen.txt", source: "upload", status: "indexed", created_at: "2026-09-25T08:00:00.000Z" },
+    ]);
+    expect(result).toMatchObject([{ filename: "notizen.txt", external_id: null, processed_at: null }]);
+  });
+
+  it("behaelt Treffer und erlaubt fehlende Distanz", () => {
+    const result = parseDocumentSearchResult({
+      query: "Pythagoras",
+      hits: [{ document_id: 1, filename: "mathe.txt", chunk_index: 0, content: "…" }],
+    });
+    expect(result.hits[0]).toMatchObject({ document_id: 1, chunk_index: 0, distance: null });
+  });
+
+  it("normalisiert unbekannte Herkunft auf fallback", () => {
+    const result = parseDocumentAnswer({
+      answer: "Antwort.",
+      source: "unbekannt",
+      model: null,
+      sources: [],
+    });
+    expect(result).toMatchObject({ source: "fallback", model: null });
+    expect(result.sources).toEqual([]);
   });
 });

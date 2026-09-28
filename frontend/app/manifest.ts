@@ -9,8 +9,10 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "portrait-primary",
-    background_color: "#f5f7fb",
-    theme_color: "#4f46e5",
+    // Muss zu app/globals.css und app/layout.tsx passen, sonst steht der
+    // installierte PWA-Splash blau neben einer schwarz-weißen App.
+    background_color: "#fafafa",
+    theme_color: "#fafafa",
     categories: ["education", "productivity"],
     icons: [
       {

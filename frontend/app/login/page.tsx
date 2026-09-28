@@ -20,6 +20,7 @@ function LoginContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState<"checking" | "idle" | "submitting">("checking");
   const [error, setError] = useState<string | null>(null);
+  const errorId = "login-error";
 
   useEffect(() => {
     let active = true;
@@ -62,7 +63,10 @@ function LoginContent() {
 
   return (
     <main className="app-surface relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-8 sm:px-6">
-      <div className="relative grid w-full max-w-5xl items-center gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-20">
+      {/* Ohne die Breitebegrenzung streckt sich die Karte unterhalb von `lg`
+          ueber die volle Breite - das Formular laege dann in einer 700px
+          breiten Box. */}
+      <div className="relative mx-auto grid w-full max-w-md items-center gap-10 sm:max-w-lg lg:max-w-5xl lg:grid-cols-[1.05fr_0.95fr] lg:gap-20">
         <section className="hidden lg:block">
           <div className="mb-8 flex items-center gap-3">
             <span className="flex h-12 w-12 items-center justify-center bg-primary text-primary-foreground">
@@ -116,6 +120,8 @@ function LoginContent() {
                   required
                   autoFocus
                   disabled={status === "submitting"}
+                  aria-invalid={error !== null || undefined}
+                  aria-describedby={error ? errorId : undefined}
                 />
               </div>
               <div className="space-y-2">
@@ -137,19 +143,23 @@ function LoginContent() {
                     required
                     className="pr-11"
                     disabled={status === "submitting"}
+                    aria-invalid={error !== null || undefined}
+                    aria-describedby={error ? errorId : undefined}
                   />
                   <button
                     type="button"
-                    className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground transition hover:text-foreground"
+                    className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground transition-colors hover:text-foreground active:opacity-80"
                     onClick={() => setShowPassword((visible) => !visible)}
                     aria-label={showPassword ? "Passwort verbergen" : "Passwort anzeigen"}
+                    aria-pressed={showPassword}
+                    aria-controls="password"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
                   </button>
                 </div>
               </div>
               {error ? (
-                <p className="rounded-xl border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-sm font-medium text-destructive" role="alert">
+                <p id={errorId} className="rounded-xl border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-sm font-medium text-destructive" role="alert">
                   {error}
                 </p>
               ) : null}

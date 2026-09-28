@@ -29,6 +29,7 @@ import httpx
 
 _DEFAULT_PORT_PATH: Final = "/v1"
 _MODELS_SEGMENT: Final = "/models"
+_EMBEDDINGS_SEGMENT: Final = "/embeddings"
 _CHAT_SEGMENT: Final = "/chat/completions"
 _MAX_SUGGESTIONS: Final = 4
 _AUTO_VALUES: Final = frozenset({"auto", "automatisch", "*", "default"})
@@ -93,6 +94,20 @@ def build_chat_url(base_url: str) -> str:
     return f"{root}{_CHAT_SEGMENT}"
 
 
+def build_embeddings_url(base_url: str) -> str:
+    """Leitet die ``/embeddings``-URL aus der Basis-URL ab.
+
+    Wie bei ``build_chat_url`` wird ein ``/models``-Suffix entfernt, damit der
+    Endpunkt nicht taetig in den Pfad geschrieben wird. Die OpenAI-kompatible
+    Adresse ist ``{basis}/embeddings``; Ollama und LM Studio liefern sie ueber
+    denselben ``/v1``-Pfad.
+    """
+    root = _api_root(base_url)
+    if root.endswith(_MODELS_SEGMENT):
+        root = root[: -len(_MODELS_SEGMENT)]
+    return f"{root}{_EMBEDDINGS_SEGMENT}"
+
+
 def _api_root(base_url: str) -> str:
     parsed = urlparse(base_url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
@@ -117,6 +132,7 @@ class AiProviderClient:
     ) -> None:
         self._url = build_models_url(base_url)
         self._chat_url = build_chat_url(base_url)
+        self._embeddings_url = build_embeddings_url(base_url)
         self._base_url = base_url
         self._model = model
         self._api_key = api_key
@@ -188,6 +204,66 @@ class AiProviderClient:
         except ValueError as exc:
             raise AiProviderError("Der KI-Provider hat eine nicht lesbare Antwort geliefert.") from exc
         return _extract_text(body)
+
+    def embed(self, input_texts: list[str]) -> list[list[float]]:
+        """Berechnet Einbettungen ueber ``POST /embeddings``.
+
+        Die Eingaben bleiben in der uebermittelten Reihenfolge; die Anzahl der
+        Antworten muss zur Anzahl der Eingaben passen. Wird das konfigurierte
+        Modell nicht als Einbettungsmodell angeboten, antwortet der Server in
+        der Regel mit 404 - genau dieser Hinweis gehoert in die Meldung.
+        """
+        model = self._resolve_model()
+        texts = [text for text in input_texts if text.strip()]
+        if not texts:
+            return []
+
+        try:
+            response = self._client.post(
+                self._embeddings_url,
+                headers=self._headers(),
+                json={"model": model, "input": texts},
+            )
+        except httpx.TimeoutException as exc:
+            raise AiProviderError("Zeitüberschreitung bei der Berechnung der Einbettungen.") from exc
+        except httpx.HTTPError as exc:
+            raise AiProviderError(f"Der KI-Provider ist nicht erreichbar: {exc}") from exc
+
+        if response.status_code in {401, 403}:
+            raise AiProviderAuthError("Der KI-Provider hat den API-Schlüssel abgelehnt oder erwartet keinen.")
+        if response.status_code == 404:
+            raise AiProviderConfigError(
+                f"Der KI-Provider kennt '{self._embeddings_url}' nicht. "
+                "Häufige Ursache: das Modell unterstützt keine Einbettungen."
+            )
+        if response.status_code >= 400:
+            raise AiProviderError(
+                f"Der KI-Provider hat die Einbettungsanfrage abgelehnt (HTTP {response.status_code})."
+            )
+
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise AiProviderError("Der KI-Provider hat eine nicht lesbare Antwort geliefert.") from exc
+        if not isinstance(body, dict):
+            raise AiProviderError("Der KI-Provider hat eine unerwartete Antwort geliefert.")
+        data = body.get("data")
+        if not isinstance(data, list) or not data:
+            raise AiProviderError("Der KI-Provider hat keine Einbettungen geliefert.")
+        vectors: list[list[float]] = []
+        for entry in data:
+            if not isinstance(entry, dict):
+                raise AiProviderError("Der KI-Provider hat eine unerwartete Antwort geliefert.")
+            embedding = entry.get("embedding")
+            if not isinstance(embedding, list) or not embedding:
+                raise AiProviderError("Der KI-Provider hat eine leere Einbettung geliefert.")
+            try:
+                vectors.append([float(value) for value in embedding])
+            except (TypeError, ValueError) as exc:
+                raise AiProviderError("Der KI-Provider hat eine unbrauchbare Einbettung geliefert.") from exc
+        if len(vectors) != len(texts):
+            raise AiProviderError("Der KI-Provider liefert nicht zu jeder Eingabe eine Einbettung.")
+        return vectors
 
     def _resolve_model(self) -> str:
         """Bestimmt das Modell fuer einen Lauf, ``Auto`` aufloesend."""
@@ -337,3 +413,20 @@ def generate_text(
     """
     with AiProviderClient(base_url, model, api_key, timeout_seconds) as client:
         return client.generate(system_prompt, user_prompt, max_tokens=max_tokens)
+
+
+def generate_embeddings(
+    base_url: str,
+    model: str,
+    input_texts: list[str],
+    api_key: str = "",
+    timeout_seconds: float = 60.0,
+) -> list[list[float]]:
+    """Bequemlichkeit für Aufrufer, die nur Einbettungen brauchen.
+
+    Das Standard-Timeout ist bewusst großzügig: Die Indexierung fasst viele
+    Absätze in einen einzigen Request, und ein lokales Modell rechnet deutlich
+    länger als ein ``GET /models``.
+    """
+    with AiProviderClient(base_url, model, api_key, timeout_seconds) as client:
+        return client.embed(input_texts)
