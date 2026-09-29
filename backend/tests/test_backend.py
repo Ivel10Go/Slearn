@@ -77,6 +77,23 @@ def create_task(client: TestClient, db: Session, user: User, duration_minutes: i
     return response.json()
 
 
+def create_plan(client: TestClient, db: Session, user: User, title: str = "Lernplan") -> dict[str, object]:
+    """Einen Plan ueber die API anlegen, inklusive der Zaehler im Antwortkoerper."""
+    response = client.post("/api/v1/study/plans", json={"title": title})
+    assert response.status_code == 201, response.text
+    plan = response.json()
+    db.expire_all()
+    return plan
+
+
+def create_topic(db: Session, user: User, name: str, subject: Subject | None = None) -> Topic:
+    topic = Topic(user_id=user.id, subject_id=subject.id if subject else None, name=name)
+    db.add(topic)
+    db.commit()
+    db.refresh(topic)
+    return topic
+
+
 def test_health_and_authentication(app_client: TestClient) -> None:
     health = app_client.get("/health")
     assert health.status_code == 200
@@ -362,6 +379,553 @@ def test_study_task_actions_are_user_isolated(app_context: tuple[TestClient, Ses
     assert client.post(f"/api/v1/study/tasks/{task_id}/stop", headers=headers).status_code == 404
     db.expire_all()
     assert db.query(StudySession).filter(StudySession.task_id == task_id).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# Task-Manager: Plaene, Prioritaet, Faelligkeit, Serien, Abhaengigkeiten
+# ---------------------------------------------------------------------------
+
+
+def test_study_plans_are_created_and_count_their_tasks(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+
+    plan = create_plan(client, db, user, "Mathematik")
+    assert plan["task_count"] == 0
+    assert plan["open_task_count"] == 0
+
+    first = client.post(
+        "/api/v1/study/tasks", json={"study_plan_id": plan["id"], "title": "Bruchrechnen", "priority": 3}
+    )
+    second = client.post("/api/v1/study/tasks", json={"study_plan_id": plan["id"], "title": "Nebenjob"})
+    assert first.status_code == 201
+    assert second.status_code == 201
+
+    listed = client.get("/api/v1/study/plans").json()
+    assert [(entry["id"], entry["task_count"], entry["open_task_count"]) for entry in listed] == [(plan["id"], 2, 2)]
+
+    assert client.post(f"/api/v1/study/tasks/{first.json()['id']}/complete").status_code == 200
+    assert client.get(f"/api/v1/study/plans/{plan['id']}").json()["open_task_count"] == 1
+
+    assert client.delete(f"/api/v1/study/plans/{plan['id']}").status_code == 200
+    assert client.get("/api/v1/study/tasks").json() == []
+
+
+def test_study_plans_reject_an_inverted_window(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    response = client.post(
+        "/api/v1/study/plans",
+        json={
+            "title": "Verkehrt",
+            "starts_on": "2026-10-10T00:00:00Z",
+            "ends_on": "2026-10-01T00:00:00Z",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_study_plans_are_user_isolated(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+    other = User(
+        username="other-plans",
+        password_hash=hash_password("other-password"),
+        is_active=True,
+        timezone="UTC",
+    )
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+
+    client.cookies.clear()
+    headers = {"Authorization": f"Bearer {create_session_token(other.id, 'test-secret-key', 3600)}"}
+    assert client.get(f"/api/v1/study/plans/{plan['id']}", headers=headers).status_code == 404
+    assert client.patch(f"/api/v1/study/plans/{plan['id']}", json={"title": "Fremd"}, headers=headers).status_code == 404
+    assert client.delete(f"/api/v1/study/plans/{plan['id']}", headers=headers).status_code == 404
+    assert client.get("/api/v1/study/plans", headers=headers).json() == []
+
+
+def test_task_priority_and_due_date_are_stored_normalized(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+
+    created = client.post(
+        "/api/v1/study/tasks",
+        json={
+            "study_plan_id": plan["id"],
+            "title": "Klausurvorbereitung",
+            # Ohne Offset: das Schema deutet naive Zeiten als UTC, wie alle
+            # anderen Datumsfelder in der App.
+            "due_date": "2026-10-01T23:59:00",
+            "priority": 4,
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["priority"] == 4
+    assert created.json()["due_date"] == "2026-10-01T23:59:00Z"
+
+    patched = client.patch(
+        f"/api/v1/study/tasks/{created.json()['id']}", json={"priority": 1, "due_date": None}
+    )
+    assert patched.status_code == 200
+    assert patched.json()["priority"] == 1
+    assert patched.json()["due_date"] is None
+
+    assert client.patch(f"/api/v1/study/tasks/{created.json()['id']}", json={"priority": 9}).status_code == 422
+    assert client.patch(f"/api/v1/study/tasks/{created.json()['id']}", json={"due_date": None, "title": None}).status_code == 422
+
+
+def test_task_list_sorts_by_priority_then_due_date(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+    base = "/api/v1/study/tasks"
+
+    for title, priority, due in (
+        ("gleich faellig, wichtig", 5, "2026-10-05T09:00:00Z"),
+        ("gleich faellig, egal", 0, "2026-10-05T09:00:00Z"),
+        ("spaeter faellig, wichtig", 5, "2026-10-20T09:00:00Z"),
+        ("ohne faelligkeit", 5, None),
+    ):
+        response = client.post(
+            base,
+            json={
+                "study_plan_id": plan["id"],
+                "title": title,
+                "priority": priority,
+                "due_date": due,
+            },
+        )
+        assert response.status_code == 201, response.text
+
+    by_priority = [task["title"] for task in client.get(base, params={"order": "priority"}).json()]
+    assert by_priority == [
+        "gleich faellig, wichtig",
+        "spaeter faellig, wichtig",
+        "ohne faelligkeit",
+        "gleich faellig, egal",
+    ]
+
+    by_due = [task["title"] for task in client.get(base, params={"order": "due"}).json()]
+    assert by_due == [
+        "gleich faellig, wichtig",
+        "gleich faellig, egal",
+        "spaeter faellig, wichtig",
+        "ohne faelligkeit",
+    ]
+
+    by_position = [task["order_index"] for task in client.get(base, params={"order": "position"}).json()]
+    assert by_position == [0, 1, 2, 3]
+    assert client.get(base, params={"order": "unsinn"}).status_code == 422
+
+
+def test_task_series_creates_the_next_occurrence_on_completion(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+
+    series = client.post(
+        "/api/v1/study/series",
+        json={
+            "study_plan_id": plan["id"],
+            "title": "Vokabeln",
+            "recurrence": "weekly",
+            "starts_on": "2026-10-05T18:00:00Z",
+            # Zwei Occurrences: der 5. und der 12. Oktober. Der 19. waere
+            # die dritte und faellt damit raus.
+            "until": "2026-10-12T18:00:00Z",
+            "duration_minutes": 15,
+            "priority": 2,
+        },
+    )
+    assert series.status_code == 201, series.text
+    payload = series.json()
+    assert payload["occurrences"] == 1
+    assert payload["next_due_on"] == "2026-10-12T18:00:00Z"
+
+    # Die erste Occurrence existiert sofort, damit die Serie nicht leer ist.
+    first = client.get("/api/v1/study/tasks", params={"study_plan_id": plan["id"]}).json()
+    assert len(first) == 1
+    assert first[0]["title"] == "Vokabeln"
+    assert first[0]["due_date"] == "2026-10-05T18:00:00Z"
+    assert first[0]["series_id"] == payload["id"]
+    assert first[0]["series_recurrence"] == "weekly"
+    assert first[0]["priority"] == 2
+
+    # Und es ist immer genau eine, nicht die ganze Serie auf einen Schlag.
+    assert client.post(f"/api/v1/study/tasks/{first[0]['id']}/complete").status_code == 200
+    after_first = client.get("/api/v1/study/tasks", params={"study_plan_id": plan["id"]}).json()
+    assert len(after_first) == 2
+    assert sorted(task["due_date"] for task in after_first) == ["2026-10-05T18:00:00Z", "2026-10-12T18:00:00Z"]
+    assert client.get(f"/api/v1/study/series/{payload['id']}").json()["occurrences"] == 2
+
+    # Die letzte erlaubte Occurrence beendet die Serie von selbst.
+    open_tasks = [task for task in after_first if task["status"] != "completed"]
+    assert len(open_tasks) == 1
+    assert client.post(f"/api/v1/study/tasks/{open_tasks[0]['id']}/complete").status_code == 200
+    final = client.get(f"/api/v1/study/series/{payload['id']}").json()
+    assert final["status"] == "finished"
+    assert final["next_due_on"] is None
+    assert final["occurrences"] == 2
+
+    # Eine fertige Serie erzeugt auch beim naechsten Abschluss nichts mehr.
+    assert [task for task in client.get("/api/v1/study/tasks").json() if task["status"] != "completed"] == []
+    assert len(client.get("/api/v1/study/tasks").json()) == 2
+
+
+def test_task_series_honours_the_occurrence_limit(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+    series = client.post(
+        "/api/v1/study/series",
+        json={
+            "study_plan_id": plan["id"],
+            "title": "Wiederholungsblatt",
+            "recurrence": "daily",
+            "starts_on": "2026-10-05T18:00:00Z",
+            "occurrence_limit": 3,
+        },
+    )
+    assert series.status_code == 201
+    assert series.json()["next_due_on"] == "2026-10-06T18:00:00Z"
+
+    for expected in (2, 3):
+        open_task = [task for task in client.get("/api/v1/study/tasks").json() if task["status"] == "pending"][0]
+        assert client.post(f"/api/v1/study/tasks/{open_task['id']}/complete").status_code == 200
+        assert client.get(f"/api/v1/study/series/{series.json()['id']}").json()["occurrences"] == expected
+
+    assert client.get(f"/api/v1/study/series/{series.json()['id']}").json()["status"] == "finished"
+    assert len(client.get("/api/v1/study/tasks").json()) == 3
+
+
+def test_task_series_rejects_an_unknown_recurrence(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+    response = client.post(
+        "/api/v1/study/series",
+        json={
+            "study_plan_id": plan["id"],
+            "title": "Ungueltig",
+            "recurrence": "yearly",
+            "starts_on": "2026-10-05T18:00:00Z",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_cancelling_a_series_stops_it_without_deleting_history(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+    series = client.post(
+        "/api/v1/study/series",
+        json={
+            "study_plan_id": plan["id"],
+            "title": "Vokabeln",
+            "recurrence": "weekly",
+            "starts_on": "2026-10-05T18:00:00Z",
+        },
+    )
+    series_id = series.json()["id"]
+    pending = [task for task in client.get("/api/v1/study/tasks").json() if task["status"] == "pending"][0]
+    assert client.post(f"/api/v1/study/tasks/{pending['id']}/complete").status_code == 200
+
+    assert client.delete(f"/api/v1/study/series/{series_id}").status_code == 200
+    tasks = client.get("/api/v1/study/tasks").json()
+    assert [task["status"] for task in tasks] == ["completed", "cancelled"]
+    assert client.get(f"/api/v1/study/series/{series_id}").json()["status"] == "cancelled"
+
+
+def test_task_dependencies_block_a_task_until_the_prerequisite_is_done(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+    base = "/api/v1/study/tasks"
+
+    grundlage = client.post(base, json={"study_plan_id": plan["id"], "title": "Grundlagen"}).json()
+    aufbau = client.post(base, json={"study_plan_id": plan["id"], "title": "Aufgaben dazu"}).json()
+
+    dependency = client.post(
+        f"{base}/{aufbau['id']}/dependencies", json={"depends_on_task_id": grundlage["id"]}
+    )
+    assert dependency.status_code == 201
+    assert dependency.json()["task_id"] == aufbau["id"]
+
+    blocked = client.get(f"{base}/{aufbau['id']}").json()
+    assert [prerequisite["title"] for prerequisite in blocked["blocked_by"]] == ["Grundlagen"]
+    assert client.get(f"{base}/{grundlage['id']}").json()["blocking_task_ids"] == [aufbau["id"]]
+
+    # Die Reihenfolge im Plan ist damit verbindlich, nicht nur ein Vorschlag.
+    started = client.post(f"{base}/{aufbau['id']}/start")
+    assert started.status_code == 409
+    assert "Grundlagen" in started.json()["detail"]
+
+    assert client.post(f"{base}/{grundlage['id']}/complete").status_code == 200
+    assert client.get(f"{base}/{aufbau['id']}").json()["blocked_by"] == []
+    assert client.post(f"{base}/{aufbau['id']}/start").status_code == 200
+
+    # Dieselbe Kante zweimal anzulegen ist ein No-Op, kein 409.
+    repeated = client.post(f"{base}/{aufbau['id']}/dependencies", json={"depends_on_task_id": grundlage["id"]})
+    assert repeated.status_code == 201
+    assert len(client.get(f"{base}/{aufbau['id']}/dependencies").json()) == 1
+
+    assert client.delete(f"{base}/{aufbau['id']}/dependencies/{grundlage['id']}").status_code == 200
+    assert client.get(f"{base}/{aufbau['id']}/dependencies").json() == []
+
+
+def test_task_dependencies_reject_cycles_and_cross_plan_links(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+    other_plan = create_plan(client, db, user, "Anderer Plan")
+    base = "/api/v1/study/tasks"
+
+    a = client.post(base, json={"study_plan_id": plan["id"], "title": "A"}).json()
+    b = client.post(base, json={"study_plan_id": plan["id"], "title": "B"}).json()
+    c = client.post(base, json={"study_plan_id": plan["id"], "title": "C"}).json()
+    fremd = client.post(base, json={"study_plan_id": other_plan["id"], "title": "Fremd"}).json()
+
+    assert client.post(f"{base}/{b['id']}/dependencies", json={"depends_on_task_id": a['id']}).status_code == 201
+    assert client.post(f"{base}/{c['id']}/dependencies", json={"depends_on_task_id": b['id']}).status_code == 201
+
+    # A wartet auf C, C wartet auf B, B wartet auf A: nie erfuellbar.
+    cycle = client.post(f"{base}/{a['id']}/dependencies", json={"depends_on_task_id": c["id"]})
+    assert cycle.status_code == 422
+    assert "cycle" in cycle.json()["detail"].lower()
+
+    assert client.post(f"{base}/{a['id']}/dependencies", json={"depends_on_task_id": a['id']}).status_code == 422
+    cross = client.post(f"{base}/{a['id']}/dependencies", json={"depends_on_task_id": fremd["id"]})
+    assert cross.status_code == 422
+    assert "same study plan" in cross.json()["detail"]
+
+
+def test_deleting_a_task_clears_dependencies_in_both_directions(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+    base = "/api/v1/study/tasks"
+
+    voraussetzung = client.post(base, json={"study_plan_id": plan["id"], "title": "Voraussetzung"}).json()
+    wartende = client.post(base, json={"study_plan_id": plan["id"], "title": "Wartende"}).json()
+    client.post(f"{base}/{wartende['id']}/dependencies", json={"depends_on_task_id": voraussetzung["id"]})
+
+    # Waehrend die Voraussetzung lebt, ist die wartende Aufgabe blockiert.
+    assert len(client.get(f"{base}/{wartende['id']}").json()["blocked_by"]) == 1
+
+    assert client.delete(f"{base}/{voraussetzung['id']}").status_code == 200
+    # Sonst waere die wartende Aufgabe fuer immer blockiert.
+    assert client.get(f"{base}/{wartende['id']}").json()["blocked_by"] == []
+    assert client.post(f"{base}/{wartende['id']}/start").status_code == 200
+
+
+def test_task_dependencies_are_user_isolated(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+    eigene = client.post("/api/v1/study/tasks", json={"study_plan_id": plan["id"], "title": "Eigene"}).json()
+    other = User(
+        username="other-dependencies",
+        password_hash=hash_password("other-password"),
+        is_active=True,
+        timezone="UTC",
+    )
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+    fremde_plan = StudyPlan(user_id=other.id, title="Fremder Plan")
+    db.add(fremde_plan)
+    db.commit()
+    db.refresh(fremde_plan)
+    fremde = client.post(
+        "/api/v1/study/tasks", json={"study_plan_id": fremde_plan.id, "title": "Fremde"}
+    )
+    assert fremde.status_code == 404
+
+    client.cookies.clear()
+    headers = {"Authorization": f"Bearer {create_session_token(other.id, 'test-secret-key', 3600)}"}
+    assert client.get(f"/api/v1/study/tasks/{eigene['id']}/dependencies", headers=headers).status_code == 404
+    assert client.post(
+        f"/api/v1/study/tasks/{eigene['id']}/dependencies",
+        json={"depends_on_task_id": eigene["id"]},
+        headers=headers,
+    ).status_code == 404
+    assert client.get("/api/v1/study/series", headers=headers).json() == []
+
+
+def test_exam_topics_become_chained_tasks(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+    subject = Subject(user_id=user.id, name="Mathematik", color="#3B82F6")
+    db.add(subject)
+    db.commit()
+    db.refresh(subject)
+
+    # Derselbe Lernstand, damit die Reihenfolge am Namen haengt und der
+    # Test nicht vom `sorted` der Datenbank abhaengt.
+    for name in ("Bruchgleichungen", "Ableitungen", "Integralrechnung"):
+        create_topic(db, user, name, subject)
+    exam_date = (datetime.now(timezone.utc) + timedelta(days=10)).replace(hour=9, minute=0, second=0, microsecond=0)
+    exam = client.post(
+        "/api/v1/exams",
+        json={
+            "subject_id": subject.id,
+            "title": "Klausur Analysis",
+            "date": exam_date.isoformat(),
+        },
+    )
+    assert exam.status_code == 201, exam.text
+
+    generated = client.post(
+        f"/api/v1/exams/{exam.json()['id']}/tasks",
+        json={"study_plan_id": plan["id"], "lead_days": 14, "scheduled_hour": 16, "duration_minutes": 45},
+    )
+    assert generated.status_code == 201, generated.text
+    payload = generated.json()
+    assert payload["created_count"] == 3
+    assert payload["skipped_count"] == 0
+    # Ohne Fortschrittswert gilt jedes Thema als unsicher, also hoechste Prioritaet.
+    assert {task["priority"] for task in payload["created_tasks"]} == {4}
+    assert [task["topic_name"] for task in payload["created_tasks"]] == [
+        "Ableitungen",
+        "Bruchgleichungen",
+        "Integralrechnung",
+    ]
+    # Alle drei Aufgaben hängen an derselben Klausur.
+    assert {task["exam_title"] for task in payload["created_tasks"]} == {"Klausur Analysis"}
+    # Die Reihenfolge ist eine Kette, nicht nur eine Liste.
+    assert [len(task["blocked_by"]) for task in payload["created_tasks"]] == [0, 1, 1]
+    assert payload["created_tasks"][1]["blocked_by"][0]["title"] == "Ableitungen lernen"
+    # Faellig am Ende des eigenen Lerntags, nicht erst am Klausurtag.
+    assert payload["last_due_on"] is not None
+    assert datetime.fromisoformat(payload["last_due_on"]) < exam_date
+
+    # Ein zweiter Lauf erzeugt nichts doppelt.
+    again = client.post(
+        f"/api/v1/exams/{exam.json()['id']}/tasks", json={"study_plan_id": plan["id"]}
+    )
+    assert again.status_code == 201
+    assert again.json()["created_count"] == 0
+    assert again.json()["skipped_count"] == 3
+    assert len(client.get("/api/v1/study/tasks").json()) == 3
+
+    # ... und die Kette gilt jetzt: nichts davon laesst sich vorzeitig starten.
+    assert client.post(f"/api/v1/study/tasks/{payload['created_tasks'][1]['id']}/start").status_code == 409
+
+
+def test_exam_task_generation_orders_by_confidence_and_can_skip_dependencies(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+    subject = Subject(user_id=user.id, name="Geschichte", color="#64748B")
+    db.add(subject)
+    db.commit()
+    db.refresh(subject)
+
+    sicher = create_topic(db, user, "Bundeswehr", subject)
+    unsicher = create_topic(db, user, "Industrialisierung", subject)
+    db.add(LearningProgress(user_id=user.id, topic_id=sicher.id, confidence=0.9))
+    db.add(LearningProgress(user_id=user.id, topic_id=unsicher.id, confidence=0.1))
+    db.commit()
+
+    exam = client.post(
+        "/api/v1/exams",
+        json={
+            "subject_id": subject.id,
+            "title": "Epochen",
+            "date": (datetime.now(timezone.utc) + timedelta(days=5)).isoformat(),
+        },
+    )
+    generated = client.post(
+        f"/api/v1/exams/{exam.json()['id']}/tasks",
+        json={"study_plan_id": plan["id"], "chain_dependencies": False},
+    )
+    assert generated.status_code == 201, generated.text
+    created = generated.json()["created_tasks"]
+    # Das unsichere Thema zuerst und mit der hoeheren Prioritaet.
+    assert [task["topic_name"] for task in created] == ["Industrialisierung", "Bundeswehr"]
+    assert [task["priority"] for task in created] == [4, 0]
+    assert all(task["blocked_by"] == [] for task in created)
+    # Das unsichere Thema bekommt auch den frueheren Termin.
+    assert created[0]["scheduled_for"] < created[1]["scheduled_for"]
+
+
+def test_exam_task_generation_needs_topics(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+    exam = client.post(
+        "/api/v1/exams",
+        json={"title": "Ohne Fach", "date": (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()},
+    )
+    assert exam.status_code == 201
+    response = client.post(f"/api/v1/exams/{exam.json()['id']}/tasks", json={"study_plan_id": plan["id"]})
+    assert response.status_code == 422
+    assert "Themen" in response.json()["detail"]
+
+
+def test_dashboard_reports_priority_due_date_and_blockers(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+    base = "/api/v1/study/tasks"
+    heute = datetime.now(timezone.utc).replace(hour=17, minute=0, second=0, microsecond=0)
+
+    erste = client.post(
+        base,
+        json={
+            "study_plan_id": plan["id"],
+            "title": "Erst lernen",
+            "priority": 3,
+            "scheduled_for": heute.isoformat(),
+            "due_date": (heute + timedelta(days=1)).isoformat(),
+        },
+    ).json()
+    zweite = client.post(
+        base,
+        json={"study_plan_id": plan["id"], "title": "Dann lernen", "scheduled_for": heute.isoformat()},
+    ).json()
+    client.post(f"{base}/{zweite['id']}/dependencies", json={"depends_on_task_id": erste["id"]})
+
+    tasks = {task["title"]: task for task in client.get("/api/v1/dashboard").json()["study_tasks"]}
+    assert tasks["Erst lernen"]["priority"] == 3
+    assert tasks["Erst lernen"]["due_date"] is not None
+    assert tasks["Erst lernen"]["blocked_by"] == []
+    assert tasks["Dann lernen"]["blocked_by"] == ["Erst lernen"]
+    # Hohe Prioritaet zuerst, auch wenn der Termin gleich ist.
+    assert list(tasks) == ["Erst lernen", "Dann lernen"]
+
+
+def test_study_routes_are_registered(app_client: TestClient) -> None:
+    for path in (
+        "/api/v1/study/plans",
+        "/api/v1/study/tasks",
+        "/api/v1/study/series",
+    ):
+        routes = {route.path for route in app_client.app.routes}
+        assert path in routes
+    assert "/api/v1/exams/{exam_id}/tasks" in {route.path for route in app_client.app.routes}
 
 
 def test_settings_aliases_and_url_normalization() -> None:

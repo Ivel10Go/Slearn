@@ -56,8 +56,13 @@ class DashboardStudyTask(UTCResponseModel):
     topic_name: str | None = None
     title: str
     scheduled_for: datetime | None = None
+    due_date: datetime | None = None
+    priority: int = 0
     duration_minutes: int
     status: StudyTaskStatus
+    # Eine nicht leere Liste heisst: die Aufgabe wartet noch auf eine andere.
+    blocked_by: list[str] = Field(default_factory=list)
+    is_series: bool = False
 
 
 class DashboardCalendarEvent(UTCResponseModel):

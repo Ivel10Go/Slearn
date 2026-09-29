@@ -24,7 +24,7 @@ from .base import Base
 if TYPE_CHECKING:
     from .academic import CalendarEvent, Exam, Homework, Lesson
     from .content import Document, LearningProgress, Topic
-    from .planning import StudyPlan, StudyPlanTask, StudySession
+    from .planning import StudyPlan, StudyPlanTask, StudySession, StudyTaskSeries
     from .quiz import Quiz, QuizAnswer, QuizAttempt
 
 
@@ -66,6 +66,9 @@ class User(Base):
     study_plans: Mapped[list[StudyPlan]] = relationship(back_populates="user", cascade="all, delete-orphan")
     study_tasks: Mapped[list[StudyPlanTask]] = relationship(back_populates="user", cascade="all, delete-orphan")
     study_sessions: Mapped[list[StudySession]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    study_task_series: Mapped[list[StudyTaskSeries]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
     learning_progress: Mapped[list[LearningProgress]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

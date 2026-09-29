@@ -28,7 +28,7 @@ from .base import Base
 from .identity import Subject, SyncSource, User
 
 if TYPE_CHECKING:
-    from .planning import StudyPlanTask
+    from .planning import StudyPlanTask, StudyTaskSeries
     from .quiz import Quiz, QuizQuestion
 
 
@@ -113,6 +113,7 @@ class Topic(Base):
     subject: Mapped[Subject | None] = relationship(back_populates="topics")
     documents: Mapped[list[Document]] = relationship(secondary="topic_documents", back_populates="topics")
     study_tasks: Mapped[list[StudyPlanTask]] = relationship(back_populates="topic")
+    study_task_series: Mapped[list[StudyTaskSeries]] = relationship(back_populates="topic")
     quizzes: Mapped[list[Quiz]] = relationship(back_populates="topic")
     quiz_questions: Mapped[list[QuizQuestion]] = relationship(back_populates="topic")
     progress: Mapped[LearningProgress | None] = relationship(
