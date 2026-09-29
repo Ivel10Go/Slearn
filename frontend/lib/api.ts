@@ -1,8 +1,8 @@
 "use client";
 
 import { getDemoDashboard, getDemoScheduleRange, isDemoFallbackEnabled } from "./demo";
-import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type DashboardData, type DocumentAnswer, type DocumentRecord, type DocumentSearchResult, type Greeting, type ScheduleRange, type UserResponse } from "./types";
-import { parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseIntegrationArray, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseLoginResponse, parseUserResponse, parseUserSession } from "./schemas";
+import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type DashboardData, type DocumentAnswer, type DocumentRecord, type DocumentSearchResult, type Greeting, type ScheduleRange } from "./types";
+import { parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseIntegrationArray, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseUserResponse, parseUserSession } from "./schemas";
 import type { IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult } from "./types";
 
 const API_PREFIX = "/api/backend";
@@ -19,7 +19,6 @@ export class ApiError extends Error {
 
 export interface ApiRequestOptions extends Omit<RequestInit, "body"> {
   body?: BodyInit | null;
-  redirectOnUnauthorized?: boolean;
 }
 
 function endpoint(path: string) {
@@ -37,14 +36,6 @@ function responseMessage(payload: unknown, fallback: string) {
   return fallback;
 }
 
-function redirectToLogin() {
-  if (typeof window === "undefined" || window.location.pathname === "/login") {
-    return;
-  }
-  const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-  window.location.replace(`/login?next=${encodeURIComponent(next)}`);
-}
-
 export function canUseDemoFallback(error: unknown) {
   return isDemoFallbackEnabled() && error instanceof ApiError && (error.status === 0 || error.status === 503);
 }
@@ -54,7 +45,7 @@ export async function apiRequest(path: string, options: ApiRequestOptions = {}):
     throw new ApiError("API-Anfragen sind nur im Browser verfügbar.", 0);
   }
 
-  const { redirectOnUnauthorized = true, body, headers: suppliedHeaders, ...fetchOptions } = options;
+  const { body, headers: suppliedHeaders, ...fetchOptions } = options;
   const headers = new Headers(suppliedHeaders);
   if (!headers.has("Accept")) {
     headers.set("Accept", "application/json");
@@ -80,38 +71,15 @@ export async function apiRequest(path: string, options: ApiRequestOptions = {}):
   const payload = response.status === 204 ? undefined : await response.json().catch(() => undefined);
 
   if (!response.ok) {
-    if (response.status === 401 && redirectOnUnauthorized) {
-      redirectToLogin();
-    }
     throw new ApiError(responseMessage(payload, `Die Anfrage ist fehlgeschlagen (${response.status}).`), response.status);
   }
 
   return payload;
 }
 
-export interface LoginCredentials {
-  username: string;
-  password: string;
-}
-
-export interface LoginResponse {
-  user: UserResponse;
-  access_token?: string;
-  token_type?: string;
-}
-
-export async function login(credentials: LoginCredentials) {
-  const payload = parseLoginResponse(await apiRequest("/v1/auth/login", {
-    method: "POST",
-    body: JSON.stringify(credentials),
-    redirectOnUnauthorized: false,
-  }));
-  return "user" in payload ? payload : { user: payload };
-}
-
 export async function getSession() {
   try {
-    const payload = parseUserSession(await apiRequest("/v1/auth/me", { redirectOnUnauthorized: false }));
+    const payload = parseUserSession(await apiRequest("/v1/auth/me"));
     if (payload === null) {
       return null;
     }
@@ -280,15 +248,6 @@ export async function askDocuments(input: DocumentAskInput): Promise<DocumentAns
   });
   return parseDocumentAnswer(payload);
 }
-
-export async function logout(): Promise<void> {
-  await apiRequest("/v1/auth/logout", {
-    method: "POST",
-    body: JSON.stringify({}),
-    redirectOnUnauthorized: false,
-  });
-}
-
 
 export function startStudyTask(taskId: ApiIdentifier) {
   return studyAction(taskId, "start");

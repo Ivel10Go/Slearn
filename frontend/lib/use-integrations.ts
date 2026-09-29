@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   ApiError,
   createIntegration,
@@ -9,7 +8,6 @@ import {
   getIntegrationCatalog,
   getIntegrations,
   getSession,
-  logout as logoutRequest,
   syncIntegration,
   testIntegration,
   updateIntegration,
@@ -24,7 +22,7 @@ import type {
   UserResponse,
 } from "./types";
 
-type SettingsStatus = "loading" | "ready" | "error" | "redirecting";
+type SettingsStatus = "loading" | "ready" | "error";
 
 interface SettingsState {
   user: UserResponse | null;
@@ -42,12 +40,6 @@ const initialState: SettingsState = {
   status: "loading",
 };
 
-const NEXT_PATH = "/settings";
-
-function loginPath() {
-  return `/login?next=${encodeURIComponent(NEXT_PATH)}`;
-}
-
 function errorMessage(error: unknown) {
   if (error instanceof ApiError) {
     return error.message;
@@ -63,7 +55,6 @@ function sortIntegrations(integrations: IntegrationRead[]) {
 }
 
 export function useIntegrations() {
-  const router = useRouter();
   const requestId = useRef(0);
   const [state, setState] = useState<SettingsState>(initialState);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -81,8 +72,7 @@ export function useIntegrations() {
         return;
       }
       if (!user) {
-        setState((current) => ({ ...current, status: "redirecting" }));
-        router.replace(loginPath());
+        setState((current) => ({ ...current, status: "error", error: "Es ist kein Benutzerkonto vorhanden." }));
         return;
       }
 
@@ -96,13 +86,12 @@ export function useIntegrations() {
         return;
       }
       if (error instanceof ApiError && error.status === 401) {
-        setState((current) => ({ ...current, status: "redirecting" }));
-        router.replace(loginPath());
+        setState((current) => ({ ...current, status: "error", error: "Die Anmeldung ist deaktiviert, aber der Server verlangt sie." }));
         return;
       }
       setState((current) => ({ ...current, error: errorMessage(error), status: "error" }));
     }
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -135,8 +124,7 @@ export function useIntegrations() {
         return true;
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
-          setActionError("Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.");
-          router.replace(loginPath());
+          setActionError("Die Anmeldung ist deaktiviert, aber der Server verlangt sie.");
         } else {
           setActionError(errorMessage(error));
         }
@@ -145,7 +133,7 @@ export function useIntegrations() {
         setPendingAction(null);
       }
     },
-    [router],
+    [],
   );
 
   const addIntegration = useCallback(
@@ -226,15 +214,6 @@ export function useIntegrations() {
     [runAction],
   );
 
-  const logout = useCallback(async () => {
-    setPendingAction("logout");
-    setActionError(null);
-    await logoutRequest().catch(() => undefined);
-    setPendingAction(null);
-    router.replace("/login");
-    router.refresh();
-  }, [router]);
-
   return {
     ...state,
     pendingAction,
@@ -247,6 +226,5 @@ export function useIntegrations() {
     checkIntegration,
     runSync,
     removeIntegration,
-    logout,
   };
 }

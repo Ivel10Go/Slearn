@@ -10,7 +10,6 @@ import {
   FolderTree,
   KeyRound,
   LoaderCircle,
-  LogOut,
   Monitor,
   Moon,
   Plug,
@@ -110,7 +109,7 @@ function SettingsSkeleton() {
   );
 }
 
-function AccountCard({ user, isLoggingOut, onLogout }: { user: UserResponse | null; isLoggingOut: boolean; onLogout: () => void }) {
+function AccountCard({ user }: { user: UserResponse | null }) {
   const displayName = user?.username ?? "Lernende:r";
   const details = [
     { label: "E-Mail", value: user?.email || "Nicht hinterlegt" },
@@ -142,10 +141,6 @@ function AccountCard({ user, isLoggingOut, onLogout }: { user: UserResponse | nu
             </div>
           ))}
         </dl>
-        <Button type="button" variant="outline" onClick={onLogout} disabled={isLoggingOut}>
-          {isLoggingOut ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <LogOut aria-hidden="true" />}
-          {isLoggingOut ? "Abmeldung läuft …" : "Abmelden"}
-        </Button>
       </CardContent>
     </Card>
   );
@@ -618,7 +613,7 @@ export interface SettingsViewProps {
   catalog: IntegrationCatalog[];
   error: string | null;
   actionError: string | null;
-  status: "loading" | "ready" | "error" | "redirecting";
+  status: "loading" | "ready" | "error";
   pendingAction: string | null;
   testResults: Record<number, IntegrationTestResult>;
   syncResults: Record<number, IntegrationSyncResult>;
@@ -628,7 +623,6 @@ export interface SettingsViewProps {
   onTest: (integration: IntegrationRead) => void;
   onSync: (integration: IntegrationRead) => void;
   onDelete: (integration: IntegrationRead) => void;
-  onLogout: () => void;
 }
 
 export function SettingsView({
@@ -647,7 +641,6 @@ export function SettingsView({
   onTest,
   onSync,
   onDelete,
-  onLogout,
 }: SettingsViewProps) {
   if (status === "loading" && integrations.length === 0 && catalog.length === 0) {
     return <SettingsSkeleton />;
@@ -693,7 +686,7 @@ export function SettingsView({
           onDelete={onDelete}
         />
         <div className="space-y-6">
-          <AccountCard user={user} isLoggingOut={pendingAction === "logout"} onLogout={onLogout} />
+          <AccountCard user={user} />
           <ThemeCard />
         </div>
       </div>

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CloudOff, RefreshCw, Sparkles } from "lucide-react";
+import { CloudOff, RefreshCw } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -20,9 +20,8 @@ export default function OfflinePage() {
             <RefreshCw aria-hidden="true" />
             Erneut versuchen
           </Link>
-          <Link href="/login" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-10")}>
-            <Sparkles className="text-primary" aria-hidden="true" />
-            Zum Login
+          <Link href="/settings" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-10")}>
+            Zu den Einstellungen
           </Link>
         </div>
       </div>

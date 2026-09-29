@@ -1,7 +1,6 @@
 "use client";
 
 import { AppShell } from "@/components/app-shell";
-import { AuthLoading } from "@/components/auth-loading";
 import { SettingsView } from "@/components/settings/settings-view";
 import { useIntegrations } from "@/lib/use-integrations";
 
@@ -22,12 +21,7 @@ export default function SettingsPage() {
     checkIntegration,
     runSync,
     removeIntegration,
-    logout,
   } = useIntegrations();
-
-  if (status === "redirecting") {
-    return <AuthLoading />;
-  }
 
   return (
     <AppShell user={user}>
@@ -47,7 +41,6 @@ export default function SettingsPage() {
         onTest={(integration) => void checkIntegration(integration.id)}
         onSync={(integration) => void runSync(integration.id)}
         onDelete={(integration) => void removeIntegration(integration.id)}
-        onLogout={() => void logout()}
       />
     </AppShell>
   );

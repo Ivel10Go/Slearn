@@ -14,53 +14,6 @@ interface ScheduleState {
 
 const initialState: ScheduleState = { lessons: null, error: null, status: "loading" };
 
-const CHOICE_KEY = "lernraum-stundenplan-auswahl";
-
-/** Parallel liegende Faecher, je Slot eine eigene Auswahl. */
-
-export function useParallelChoice() {
-  const [choices, setChoices] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    // Ueber einen Timeout statt direkt, sonst feuert der Effekt zwei Render
-    // nacheinander ab. Das Muster ist dasselbe wie in lib/use-now.ts.
-    const timer = window.setTimeout(() => {
-      try {
-        const raw = window.localStorage.getItem(CHOICE_KEY);
-        if (raw) {
-          const parsed: unknown = JSON.parse(raw);
-          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-            const eintraege: Record<string, string> = {};
-            for (const [slot, id] of Object.entries(parsed as Record<string, unknown>)) {
-              if (typeof id === "string") {
-                eintraege[slot] = id;
-              }
-            }
-            setChoices(eintraege);
-          }
-        }
-      } catch {
-        // Kaputter oder gesperrter Storage darf die Auswahl nicht blockieren.
-      }
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  const choose = useCallback((slotKey: string, lessonId: string) => {
-    setChoices((aktuell) => {
-      const naechste = { ...aktuell, [slotKey]: lessonId };
-      try {
-        window.localStorage.setItem(CHOICE_KEY, JSON.stringify(naechste));
-      } catch {
-        // Ohne Persistenz gilt die Auswahl fuer diese Sitzung.
-      }
-      return naechste;
-    });
-  }, []);
-
-  return { choices, choose };
-}
-
 function errorMessage(error: unknown) {
   if (error instanceof ApiError) {
     return error.message;

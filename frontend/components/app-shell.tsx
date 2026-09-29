@@ -33,7 +33,7 @@ const navigation = [
 ];
 
 /** Die Anker, die das Dashboard verlinkt, in Dokumentreihenfolge. */
-const sectionIds = ["overview", "focus", "schedule", "exams", "homework", "study-tasks", "usage", "calendar"] as const;
+const sectionIds = ["overview", "focus", "schedule", "study-tasks", "exams", "homework", "calendar", "usage"] as const;
 
 export function AppShell({ children, user }: AppShellProps) {
   const pathname = usePathname();

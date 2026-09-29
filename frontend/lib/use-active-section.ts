@@ -75,8 +75,14 @@ export function useActiveSection(sectionIds: readonly string[], enabled: boolean
       }
 
       // Luecke zwischen zwei Karten: dann gilt der letzte bereits passierte.
+      // Nach der unteren Kante sortiert, nicht nach der Reihenfolge im Array -
+      // das Dashboard ist ein Grid, die Reihenfolge im DOM ist damit nicht mehr
+      // die Reihenfolge im Blickfeld.
       const above = boxes.filter((box) => box.bottom <= SCROLL_OFFSET);
-      return above.length > 0 ? above[above.length - 1].id : boxes[0].id;
+      if (above.length === 0) {
+        return boxes[0].id;
+      }
+      return above.reduce((last, box) => (box.bottom > last.bottom ? box : last)).id;
     };
 
     const update = () => {

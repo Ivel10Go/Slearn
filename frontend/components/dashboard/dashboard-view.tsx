@@ -137,18 +137,21 @@ function DashboardSkeleton() {
         </div>
         <Skeleton className="h-10 w-32" />
       </div>
-      <Skeleton className="h-52 w-full rounded-2xl" />
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(330px,0.85fr)]">
+      <Skeleton className="h-52 w-full" />
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Skeleton className="h-56 w-full" />
+        <Skeleton className="h-56 w-full" />
+      </div>
+      <Skeleton className="h-80 w-full" />
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <div className="space-y-6">
-          <Skeleton className="h-72 w-full rounded-2xl" />
-          <Skeleton className="h-96 w-full rounded-2xl" />
-          <Skeleton className="h-80 w-full rounded-2xl" />
+          <Skeleton className="h-80 w-full" />
+          <Skeleton className="h-96 w-full" />
+          <Skeleton className="h-72 w-full" />
         </div>
         <div className="space-y-6">
-          <Skeleton className="h-80 w-full rounded-2xl" />
-          <Skeleton className="h-72 w-full rounded-2xl" />
-          <Skeleton className="h-80 w-full rounded-2xl" />
-          <Skeleton className="h-64 w-full rounded-2xl" />
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-72 w-full" />
         </div>
       </div>
     </div>
@@ -648,7 +651,7 @@ function AssistantCard() {
               <CardDescription className="mt-1">Stelle eine Frage zu deinen Unterlagen – die Antwort kommt mit Quellenangabe.</CardDescription>
             </div>
           </div>
-          <span className="hidden items-center gap-1.5 border border-border bg-background px-3 py-1.5 text-xs font-bold text-muted-foreground sm:inline-flex">
+          <span className="hidden items-center gap-1.5 border border-border bg-background px-3 py-1.5 text-xs font-bold text-muted-foreground xl:inline-flex">
             <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
             Deine Daten, deine Worte
           </span>
@@ -775,18 +778,27 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
         </CardContent>
       </Card>
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(330px,0.85fr)]">
+      <div className="grid items-start gap-6 xl:grid-cols-2">
+        <FocusLessonCard lesson={focusLesson} reference={reference} />
+        <AssistantCard />
+      </div>
+
+      {/*
+        Der Stundenplan steht über die volle Breite. Sieben Tage brauchen
+        sieben gleich breite Spalten - in der früheren Zweispalten-Schale blieben
+        rund 120px je Tag, und die Stundenzeiten waren nicht mehr ausgerichtet.
+      */}
+      <ScheduleCard />
+
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <div className="space-y-6">
-          <FocusLessonCard lesson={focusLesson} reference={reference} />
-          <AssistantCard />
-          <ScheduleCard />
-        </div>
-        <div className="space-y-6">
+          <StudyTasksCard tasks={data.studyTasks} />
           <ExamsCard data={data} reference={reference} />
           <HomeworkCard data={data} reference={reference} />
-          <StudyTasksCard tasks={data.studyTasks} />
-          <UsageCard data={data} />
+        </div>
+        <div className="space-y-6">
           <CalendarCard events={data.calendarEvents} />
+          <UsageCard data={data} />
         </div>
       </div>
 
