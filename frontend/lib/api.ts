@@ -1,9 +1,9 @@
 "use client";
 
 import { getDemoDashboard, getDemoScheduleRange, isDemoFallbackEnabled } from "./demo";
-import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type DashboardData, type DocumentAnswer, type DocumentRecord, type DocumentSearchResult, type Greeting, type ScheduleRange } from "./types";
-import { parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseIntegrationArray, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseUserResponse, parseUserSession } from "./schemas";
-import type { IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult } from "./types";
+import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type CalendarEvent, type DashboardData, type DocumentAnswer, type DocumentRecord, type DocumentSearchResult, type Exam, type FileUploadResult, type Greeting, type Homework, type ScheduleRange, type StudySessionRecord, type StudyTask, type StudyTaskState, type Subject, type SubjectOption } from "./types";
+import { collectSubjectNames, parseCalendarEventArray, parseCalendarEventRead, parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseExamArray, parseExamRead, parseExamTaskPlanResult, parseFileUploadResponse, parseHomeworkArray, parseHomeworkRead, parseIntegrationArray, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseStudyDependencyArray, parseStudyDependencyRead, parseStudyPlanArray, parseStudyPlanRead, parseStudySeriesArray, parseStudySeriesRead, parseStudySessionRead, parseStudyTaskArray, parseStudyTaskRead, parseSubjectArray, parseSubjectRead, parseUserResponse, parseUserSession } from "./schemas";
+import type { ExamTaskPlanResult, IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult, StudyPlan, StudyTaskDependency, StudyTaskOrder, StudyTaskSeries, StudyTaskSeriesInput } from "./types";
 
 const API_PREFIX = "/api/backend";
 
@@ -50,7 +50,12 @@ export async function apiRequest(path: string, options: ApiRequestOptions = {}):
   if (!headers.has("Accept")) {
     headers.set("Accept", "application/json");
   }
-  if (body && !headers.has("Content-Type")) {
+  // `FormData` darf **keinen** Content-Type bekommen: der Browser haengt die
+  // Multipart-Boundary selbst an. Ein gesetzter `application/json` wuerde den
+  // Upload fuer das Backend unlesbar machen, ohne dass die Antwort den Grund
+  // verraet.
+  const isMultipart = typeof FormData !== "undefined" && body instanceof FormData;
+  if (body && !isMultipart && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -190,8 +195,12 @@ export async function createIntegration(input: IntegrationWrite): Promise<Integr
   return parseIntegrationRead(payload);
 }
 
+export async function getIntegration(integrationId: number): Promise<IntegrationRead> {
+  return parseIntegrationRead(await apiRequest(resourcePath("integrations", integrationId)));
+}
+
 export async function updateIntegration(integrationId: number, changes: IntegrationChanges): Promise<IntegrationRead> {
-  const payload = await apiRequest(`/v1/integrations/${integrationId}`, {
+  const payload = await apiRequest(resourcePath("integrations", integrationId), {
     method: "PATCH",
     body: JSON.stringify(changes),
   });
@@ -199,11 +208,11 @@ export async function updateIntegration(integrationId: number, changes: Integrat
 }
 
 export async function deleteIntegration(integrationId: number): Promise<void> {
-  await apiRequest(`/v1/integrations/${integrationId}`, { method: "DELETE" });
+  await apiRequest(resourcePath("integrations", integrationId), { method: "DELETE" });
 }
 
 export async function testIntegration(integrationId: number): Promise<IntegrationTestResult> {
-  const payload = await apiRequest(`/v1/integrations/${integrationId}/test`, {
+  const payload = await apiRequest(resourcePath("integrations", integrationId, "test"), {
     method: "POST",
     body: JSON.stringify({}),
   });
@@ -211,7 +220,7 @@ export async function testIntegration(integrationId: number): Promise<Integratio
 }
 
 export async function syncIntegration(integrationId: number): Promise<IntegrationSyncResult> {
-  const payload = await apiRequest(`/v1/integrations/${integrationId}/sync`, {
+  const payload = await apiRequest(resourcePath("integrations", integrationId, "sync"), {
     method: "POST",
     body: JSON.stringify({}),
   });
@@ -259,4 +268,516 @@ export function stopStudyTask(taskId: ApiIdentifier) {
 
 export function completeStudyTask(taskId: ApiIdentifier) {
   return studyAction(taskId, "complete");
+}
+
+/*
+ * Ab hier die schreibenden Endpunkte.
+ *
+ * Zwei Regeln gelten fuer alle neuen Aufrufe:
+ *
+ * 1. Ids werden per `encodeURIComponent` in den Pfad gesetzt. `studyTaskPath`
+ *    tat das schon, die Integrationsaufrufe taten es nicht - bei ganzzahligen
+ *    Ids folgenlos, aber inkonsistent.
+ * 2. Ein `PATCH` schickt nur gesetzte Felder. Die `*Update`-Schemata des
+ *    Backends lehnen `null` bei fast allen Feldern ab, und ein fehlendes Feld
+ *    bedeutet dort "unveraendert" - ein explizites `null` waere ein 422.
+ */
+
+/** Pfad einer Sammlung mit optionalen Query-Parametern, die `undefined` nie erreichen. */
+function collectionPath(path: string, query: Record<string, string | number | boolean | undefined>) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== "") {
+      search.set(key, String(value));
+    }
+  }
+  const suffix = search.toString();
+  return suffix ? `${path}?${suffix}` : path;
+}
+
+/**
+ * Baut `/v1/{collection}/{id}` und haengt beliebig viele Pfadabschnitte an.
+ *
+ * Die Abschnitte sind variabel, weil nicht jede Aktion eine eigene Route
+ * hat: `study/tasks/{id}/start` hat einen, `study/tasks/{id}/dependencies/{dep}`
+ * zwei. Jeder Abschnitt wird einzeln kodiert, sonst bricht eine Id mit
+ * Sonderzeichen den Pfad.
+ */
+function resourcePath(collection: string, id: number, ...segments: string[]) {
+  const base = `/v1/${collection}/${encodeURIComponent(String(id))}`;
+  return segments.length > 0 ? `${base}/${segments.map(encodeURIComponent).join("/")}` : base;
+}
+
+/** Wirft, statt eine kaputte ID als Anfrage zu schicken. */
+function assertId(id: number, label: string) {
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new ApiError(`${label} ist ungueltig.`, 422);
+  }
+}
+
+/**
+ * Entfernt `undefined`, damit PATCH-Bodies keine leeren Felder tragen.
+ *
+ * Das generische `T` bleibt erhalten, damit der Rueckgabewert weiter die
+ * Schreibeingabe ist - `compact(changes)` liefert wieder `SubjectChanges` und
+ * nicht `Record<string, unknown>`.
+ */
+function compact<T extends object>(payload: T): T {
+  return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined)) as T;
+}
+
+/* ---------------------------------------------------------------- Anmeldung */
+
+export interface LoginCredentials {
+  username: string;
+  password: string;
+}
+
+export async function login(credentials: LoginCredentials) {
+  const payload = await apiRequest("/v1/auth/login", {
+    method: "POST",
+    body: JSON.stringify(credentials),
+  });
+  return parseUserResponse(payload);
+}
+
+export async function logout() {
+  await apiRequest("/v1/auth/logout", { method: "POST" });
+}
+
+/* ------------------------------------------------------------------- Fächer */
+
+export interface SubjectWrite {
+  name: string;
+  color?: string;
+  teacher_id?: number | null;
+  description?: string | null;
+}
+
+export interface SubjectChanges {
+  name?: string;
+  color?: string;
+  teacher_id?: number | null;
+  description?: string | null;
+}
+
+export async function getSubjects(): Promise<Subject[]> {
+  return parseSubjectArray(await apiRequest("/v1/subjects"));
+}
+
+/** Nur die `{id, name}`-Paare, die ein Formular-Picker braucht. */
+export async function getSubjectOptions(): Promise<SubjectOption[]> {
+  return collectSubjectNames(await apiRequest("/v1/subjects"));
+}
+
+export async function createSubject(input: SubjectWrite): Promise<Subject> {
+  const payload = await apiRequest("/v1/subjects", {
+    method: "POST",
+    body: JSON.stringify(compact({ ...input, color: input.color ?? "#3B82F6" })),
+  });
+  return parseSubjectRead(payload);
+}
+
+export async function getSubject(subjectId: number): Promise<Subject> {
+  assertId(subjectId, "Das Fach");
+  return parseSubjectRead(await apiRequest(resourcePath("subjects", subjectId)));
+}
+
+export async function updateSubject(subjectId: number, changes: SubjectChanges): Promise<Subject> {
+  assertId(subjectId, "Das Fach");
+  const payload = await apiRequest(resourcePath("subjects", subjectId), {
+    method: "PATCH",
+    body: JSON.stringify(compact(changes)),
+  });
+  return parseSubjectRead(payload);
+}
+
+export async function deleteSubject(subjectId: number): Promise<void> {
+  assertId(subjectId, "Das Fach");
+  await apiRequest(resourcePath("subjects", subjectId), { method: "DELETE" });
+}
+
+/* ------------------------------------------------------------- Hausaufgaben */
+
+export interface HomeworkWrite {
+  title: string;
+  due_date: string;
+  subject_id?: number | null;
+  description?: string | null;
+  completed?: boolean;
+}
+
+export interface HomeworkChanges {
+  title?: string;
+  due_date?: string;
+  subject_id?: number | null;
+  description?: string | null;
+}
+
+export async function getHomework(completed?: boolean): Promise<Homework[]> {
+  return parseHomeworkArray(await apiRequest(collectionPath("/v1/homework", { completed })));
+}
+
+export async function createHomework(input: HomeworkWrite): Promise<Homework> {
+  const payload = await apiRequest("/v1/homework", { method: "POST", body: JSON.stringify(compact(input)) });
+  return parseHomeworkRead(payload);
+}
+
+export async function getHomeworkItem(homeworkId: number): Promise<Homework> {
+  assertId(homeworkId, "Die Hausaufgabe");
+  return parseHomeworkRead(await apiRequest(resourcePath("homework", homeworkId)));
+}
+
+export async function updateHomework(homeworkId: number, changes: HomeworkChanges): Promise<Homework> {
+  assertId(homeworkId, "Die Hausaufgabe");
+  const payload = await apiRequest(resourcePath("homework", homeworkId), {
+    method: "PATCH",
+    body: JSON.stringify(compact(changes)),
+  });
+  return parseHomeworkRead(payload);
+}
+
+/**
+ * Setzt den Erledigt-Status ausdruecklich.
+ *
+ * Das Backend kennt drei Routen dafuer: `POST .../complete`, `POST .../toggle`
+ * und `PATCH .../completed`. Alle drei sind dieselbe Funktion, und die beiden
+ * `POST`-Varianten **schalten um**, wenn kein Body kommt. Ein Haken im
+ * Frontend, der "fertig" anzeigt, wuerde beim naechsten Klick wieder
+ * aufmachen - deshalb wird hier bewusst die `PATCH`-Variante mit gesetztem
+ * Wert benutzt.
+ */
+export async function setHomeworkCompleted(homeworkId: number, completed: boolean): Promise<Homework> {
+  assertId(homeworkId, "Die Hausaufgabe");
+  const payload = await apiRequest(resourcePath("homework", homeworkId, "completed"), {
+    method: "PATCH",
+    body: JSON.stringify({ completed }),
+  });
+  return parseHomeworkRead(payload);
+}
+
+export async function deleteHomework(homeworkId: number): Promise<void> {
+  assertId(homeworkId, "Die Hausaufgabe");
+  await apiRequest(resourcePath("homework", homeworkId), { method: "DELETE" });
+}
+
+/* ---------------------------------------------------------------- Prüfungen */
+
+export interface ExamWrite {
+  title: string;
+  date: string;
+  subject_id?: number | null;
+  description?: string | null;
+}
+
+export interface ExamChanges {
+  title?: string;
+  date?: string;
+  subject_id?: number | null;
+  description?: string | null;
+}
+
+export async function getExams(upcoming = true): Promise<Exam[]> {
+  return parseExamArray(await apiRequest(collectionPath("/v1/exams", { upcoming })));
+}
+
+export async function createExam(input: ExamWrite): Promise<Exam> {
+  const payload = await apiRequest("/v1/exams", { method: "POST", body: JSON.stringify(compact(input)) });
+  return parseExamRead(payload);
+}
+
+export async function getExam(examId: number): Promise<Exam> {
+  assertId(examId, "Die Prüfung");
+  return parseExamRead(await apiRequest(resourcePath("exams", examId)));
+}
+
+export async function updateExam(examId: number, changes: ExamChanges): Promise<Exam> {
+  assertId(examId, "Die Prüfung");
+  const payload = await apiRequest(resourcePath("exams", examId), {
+    method: "PATCH",
+    body: JSON.stringify(compact(changes)),
+  });
+  return parseExamRead(payload);
+}
+
+export async function deleteExam(examId: number): Promise<void> {
+  assertId(examId, "Die Prüfung");
+  await apiRequest(resourcePath("exams", examId), { method: "DELETE" });
+}
+
+/* ----------------------------------------------------------------- Kalender */
+
+export interface CalendarEventWrite {
+  title: string;
+  start_time: string;
+  end_time: string;
+  description?: string | null;
+  all_day?: boolean;
+}
+
+export interface CalendarEventChanges {
+  title?: string;
+  start_time?: string;
+  end_time?: string;
+  description?: string | null;
+  all_day?: boolean;
+}
+
+/**
+ * Die Sammlungsrouten sind doppelt gemountet (`/calendar` und
+ * `/calendar/events`), die Punkte aber nur unter `/calendar/events/{id}`.
+ * Deshalb durchgaengig die ausfuehrliche Variante.
+ */
+export async function getCalendarEvents(upcoming = true): Promise<CalendarEvent[]> {
+  return parseCalendarEventArray(await apiRequest(collectionPath("/v1/calendar/events", { upcoming })));
+}
+
+export async function createCalendarEvent(input: CalendarEventWrite): Promise<CalendarEvent> {
+  const payload = await apiRequest("/v1/calendar/events", { method: "POST", body: JSON.stringify(compact(input)) });
+  return parseCalendarEventRead(payload);
+}
+
+export async function getCalendarEvent(eventId: number): Promise<CalendarEvent> {
+  assertId(eventId, "Der Kalendereintrag");
+  return parseCalendarEventRead(await apiRequest(resourcePath("calendar/events", eventId)));
+}
+
+export async function updateCalendarEvent(eventId: number, changes: CalendarEventChanges): Promise<CalendarEvent> {
+  assertId(eventId, "Der Kalendereintrag");
+  const payload = await apiRequest(resourcePath("calendar/events", eventId), {
+    method: "PATCH",
+    body: JSON.stringify(compact(changes)),
+  });
+  return parseCalendarEventRead(payload);
+}
+
+export async function deleteCalendarEvent(eventId: number): Promise<void> {
+  assertId(eventId, "Der Kalendereintrag");
+  await apiRequest(resourcePath("calendar/events", eventId), { method: "DELETE" });
+}
+
+/* ------------------------------------------------------------- Lernaufgaben */
+
+export interface StudyTaskWrite {
+  study_plan_id: number;
+  title: string;
+  duration_minutes?: number;
+  topic_id?: number | null;
+  description?: string | null;
+  scheduled_for?: string | null;
+  due_date?: string | null;
+  priority?: number;
+  order_index?: number;
+}
+
+export interface StudyTaskChanges {
+  title?: string;
+  duration_minutes?: number;
+  topic_id?: number | null;
+  description?: string | null;
+  scheduled_for?: string | null;
+  due_date?: string | null;
+  priority?: number;
+  status?: StudyTaskState;
+  order_index?: number;
+}
+
+/**
+ * Die Aufgaben eines Nutzers.
+ *
+ * `order` steuert die Sortierung. Das Backend kennt `priority` (die
+ * Voreinstellung, weil genau das der Grund fuer die Spalte ist), `due` und
+ * `position`. Ohne Demo-Fallback: eine erfundene Aufgabenliste waere an
+ * ihren Lerninhalten nicht als solche erkennbar.
+ */
+export async function getStudyTasks(
+  filter: { status?: StudyTaskState; studyPlanId?: number; order?: StudyTaskOrder } = {},
+): Promise<StudyTask[]> {
+  const payload = await apiRequest(
+    collectionPath("/v1/study/tasks", {
+      status: filter.status,
+      study_plan_id: filter.studyPlanId,
+      order: filter.order,
+    }),
+  );
+  return parseStudyTaskArray(payload);
+}
+
+export async function createStudyTask(input: StudyTaskWrite): Promise<StudyTask> {
+  const payload = await apiRequest("/v1/study/tasks", { method: "POST", body: JSON.stringify(compact(input)) });
+  return parseStudyTaskRead(payload);
+}
+
+export async function getStudyTask(taskId: number): Promise<StudyTask> {
+  assertId(taskId, "Die Lernaufgabe");
+  return parseStudyTaskRead(await apiRequest(resourcePath("study/tasks", taskId)));
+}
+
+export async function updateStudyTask(taskId: number, changes: StudyTaskChanges): Promise<StudyTask> {
+  assertId(taskId, "Die Lernaufgabe");
+  const payload = await apiRequest(resourcePath("study/tasks", taskId), {
+    method: "PATCH",
+    body: JSON.stringify(compact(changes)),
+  });
+  return parseStudyTaskRead(payload);
+}
+
+export async function deleteStudyTask(taskId: number): Promise<void> {
+  assertId(taskId, "Die Lernaufgabe");
+  await apiRequest(resourcePath("study/tasks", taskId), { method: "DELETE" });
+}
+
+/** `POST .../start` antwortet als einzige Aktion mit einer Session statt einer Aufgabe. */
+export async function startStudyTaskSession(taskId: number): Promise<StudySessionRecord> {
+  assertId(taskId, "Die Lernaufgabe");
+  const payload = await apiRequest(resourcePath("study/tasks", taskId, "start"), {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return parseStudySessionRead(payload);
+}
+
+/* -------------------------------------------------------------- Lernpläne */
+
+export async function getStudyPlans(): Promise<StudyPlan[]> {
+  return parseStudyPlanArray(await apiRequest("/v1/study/plans"));
+}
+
+export async function createStudyPlan(input: { title: string; description?: string | null }): Promise<StudyPlan> {
+  const payload = await apiRequest("/v1/study/plans", {
+    method: "POST",
+    body: JSON.stringify(compact({ title: input.title, description: input.description ?? null })),
+  });
+  return parseStudyPlanRead(payload);
+}
+
+export async function renameStudyPlan(planId: number, title: string): Promise<StudyPlan> {
+  assertId(planId, "Der Lernplan");
+  const payload = await apiRequest(resourcePath("study/plans", planId), {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  });
+  return parseStudyPlanRead(payload);
+}
+
+/**
+ * Löscht den Plan mitsamt Aufgaben, Serien und Lernsessions.
+ *
+ * Auch die Abhängigkeiten fallen mit: eine Abhängigkeit auf eine gelöschte
+ * Aufgabe könnte nie erfüllt werden, also wäre sie schlimmer als keine.
+ */
+export async function deleteStudyPlan(planId: number): Promise<void> {
+  assertId(planId, "Der Lernplan");
+  await apiRequest(resourcePath("study/plans", planId), { method: "DELETE" });
+}
+
+/* ------------------------------------------------------- Serien & Abhängigkeiten */
+
+export async function getStudySeries(studyPlanId?: number): Promise<StudyTaskSeries[]> {
+  const payload = await apiRequest(collectionPath("/v1/study/series", { study_plan_id: studyPlanId }));
+  return parseStudySeriesArray(payload);
+}
+
+export async function createStudySeries(input: StudyTaskSeriesInput): Promise<StudyTaskSeries> {
+  const payload = await apiRequest("/v1/study/series", {
+    method: "POST",
+    body: JSON.stringify(compact(input)),
+  });
+  return parseStudySeriesRead(payload);
+}
+
+/**
+ * Aendert die **Vorlage** einer Serie, nicht die bereits erzeugten Aufgaben.
+ *
+ * Wirkt also erst die naechste Occurrence. Eine Serie, deren Vergangenheit sich
+ * nachtraeglich umschreiben laesst, waere keine Serie mehr, sondern eine
+ * nachtraeglich umgeschriebene Liste.
+ */
+export async function updateStudySeries(
+  seriesId: number,
+  changes: Partial<Pick<StudyTaskSeriesInput, "title" | "description" | "duration_minutes" | "priority" | "until" | "occurrence_limit">>,
+): Promise<StudyTaskSeries> {
+  assertId(seriesId, "Die Serie");
+  const payload = await apiRequest(resourcePath("study/series", seriesId), {
+    method: "PATCH",
+    body: JSON.stringify(compact(changes)),
+  });
+  return parseStudySeriesRead(payload);
+}
+
+/** Beendet die Serie und storniert ihre offenen Aufgaben. Erledigte bleiben stehen. */
+export async function cancelStudySeries(seriesId: number): Promise<void> {
+  assertId(seriesId, "Die Serie");
+  await apiRequest(resourcePath("study/series", seriesId), { method: "DELETE" });
+}
+
+export async function getStudyDependencies(taskId: number): Promise<StudyTaskDependency[]> {
+  assertId(taskId, "Die Lernaufgabe");
+  return parseStudyDependencyArray(await apiRequest(resourcePath("study/tasks", taskId, "dependencies")));
+}
+
+/**
+ * Macht `dependsOnTaskId` zur Voraussetzung von `taskId`.
+ *
+ * Ein Zyklus kommt als 422 vom Backend, nicht als Fehler hier - der Aufrufer
+ * zeigt dann die Meldung an, statt sie zu erfinden.
+ */
+export async function addStudyDependency(taskId: number, dependsOnTaskId: number): Promise<StudyTaskDependency> {
+  assertId(taskId, "Die Lernaufgabe");
+  assertId(dependsOnTaskId, "Die Voraussetzung");
+  const payload = await apiRequest(resourcePath("study/tasks", taskId, "dependencies"), {
+    method: "POST",
+    body: JSON.stringify({ depends_on_task_id: dependsOnTaskId }),
+  });
+  return parseStudyDependencyRead(payload);
+}
+
+export async function removeStudyDependency(taskId: number, dependsOnTaskId: number): Promise<void> {
+  assertId(taskId, "Die Lernaufgabe");
+  assertId(dependsOnTaskId, "Die Voraussetzung");
+  await apiRequest(resourcePath("study/tasks", taskId, "dependencies", String(dependsOnTaskId)), { method: "DELETE" });
+}
+
+/**
+ * Erzeugt aus den Klausurthemen Aufgaben in einem Plan.
+ *
+ * Ein fachlich fehlgeschlagener Lauf kommt als 422 mit deutscher Meldung
+ * (etwa "keine Themen hinterlegt"), nicht als Verbindungsfehler - daran
+ * unterscheidet der Aufrufer, ob er den Nutzer informieren muss.
+ */
+export async function generateExamTasks(
+  examId: number,
+  input: {
+    study_plan_id: number;
+    duration_minutes?: number;
+    lead_days?: number;
+    scheduled_hour?: number;
+    only_missing?: boolean;
+    chain_dependencies?: boolean;
+  },
+): Promise<ExamTaskPlanResult> {
+  assertId(examId, "Die Klausur");
+  const payload = await apiRequest(resourcePath("exams", examId, "tasks"), {
+    method: "POST",
+    body: JSON.stringify(compact(input)),
+  });
+  return parseExamTaskPlanResult(payload);
+}
+
+/* ------------------------------------------------------------------- Dateien */
+
+/**
+ * Lädt eine Datei als `multipart/form-data` hoch.
+ *
+ * Das ist die einzige nicht-JSON-Route des Backends. Deshalb wird hier nicht
+ * `apiRequest` mit einem JSON-Body benutzt, sondern `FormData` - und der
+ * `Content-Type` bewusst **nicht** gesetzt, weil der Browser ihn inklusive
+ * Boundary selbst setzen muss. Ein manuell gesetzter Header ohne Boundary
+ * macht den Upload beim Backend unlesbar.
+ */
+export async function uploadFile(file: File): Promise<FileUploadResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const payload = await apiRequest("/v1/files", { method: "POST", body: form });
+  return parseFileUploadResponse(payload);
 }

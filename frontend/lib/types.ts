@@ -80,6 +80,14 @@ export interface DashboardStudyTask {
   status: StudyTaskStatus;
   progress: number;
   scheduledFor: string | null;
+  /** Faelligkeit der Aufgabe. Der Lernzeitpunkt ist davon unabhaengig. */
+  dueDate: string | null;
+  /** 0 bis 5. Hoeher heisst wichtiger. */
+  priority: number;
+  /** Titel der offenen Vorbedingungen. Nicht leer heisst: blockiert. */
+  blockedBy: string[];
+  /** Aus einer wiederkehrenden Serie erzeugt. */
+  isSeries: boolean;
   startedAt: string | null;
   session: StudySession | null;
 }
@@ -223,9 +231,217 @@ export interface DocumentAnswer {
   sources: DocumentSource[];
 }
 
+/**
+ * Die Rohformen der Stammdaten-Ressourcen.
+ *
+ * Sie tragen exakt die Feldnamen, die `parse*` aus `lib/schemas.ts`
+ * zurueckgibt. Bewusst `snake_case` und keine Umbenennung: die Namen stehen in
+ * den Fehlermeldungen des Backends, die die Oberflaeche anzeigt - ein
+ * umbenanntes Feld macht die Meldung unlesbar.
+ */
+export interface Subject {
+  id: number;
+  name: string;
+  color: string;
+  teacher_id: number | null;
+  description: string | null;
+  source: string;
+  external_id: string | null;
+  created_at: string;
+}
+
+export interface Homework {
+  id: number;
+  subject_id: number | null;
+  subject_name: string | null;
+  subject_color: string | null;
+  title: string;
+  description: string | null;
+  due_date: string;
+  completed: boolean;
+  completed_at: string | null;
+  source: string;
+  external_id: string | null;
+}
+
+export interface Exam {
+  id: number;
+  subject_id: number | null;
+  subject_name: string | null;
+  subject_color: string | null;
+  title: string;
+  description: string | null;
+  date: string;
+  days_until: number | null;
+  source: string;
+  external_id: string | null;
+}
+
+export interface CalendarEvent {
+  id: number;
+  title: string;
+  description: string | null;
+  start_time: string;
+  end_time: string;
+  all_day: boolean;
+  source: string;
+  external_id: string | null;
+}
+
+/** Die vier Zustaende, die `StudyTaskStatus` im Backend kennt. */
+export type StudyTaskState = "pending" | "in_progress" | "completed" | "cancelled";
+
+/** Die Serientypen aus `StudyTaskSeries.recurrence`. */
+export type StudyTaskRecurrence = "daily" | "weekly" | "biweekly" | "monthly";
+
+export type StudyTaskOrder = "priority" | "due" | "position";
+
+/** Hoechste Prioritaetsstufe. Spiegelt `MAX_PRIORITY` im Backend. */
+export const MAX_TASK_PRIORITY = 5;
+
+/**
+ * Eine offene Vorbedingung einer Aufgabe.
+ *
+ * Der Titel kommt mit, damit die Oberflaeche die Warteschlange anzeigen
+ * kann, ohne fuer jede Aufgabe einen zweiten Aufruf zu brauchen.
+ */
+export interface StudyTaskPrerequisite {
+  task_id: number;
+  title: string;
+  status: StudyTaskState;
+  due_date: string | null;
+}
+
+export interface StudyTask {
+  id: number;
+  study_plan_id: number;
+  topic_id: number | null;
+  subject_name: string | null;
+  subject_color: string | null;
+  topic_name: string | null;
+  exam_id: number | null;
+  exam_title: string | null;
+  series_id: number | null;
+  series_recurrence: StudyTaskRecurrence | null;
+  title: string;
+  description: string | null;
+  duration_minutes: number;
+  scheduled_for: string | null;
+  due_date: string | null;
+  priority: number;
+  status: StudyTaskState;
+  order_index: number;
+  completed_at: string | null;
+  blocked_by: StudyTaskPrerequisite[];
+  blocking_task_ids: number[];
+}
+
+export interface StudyPlan {
+  id: number;
+  title: string;
+  description: string | null;
+  status: "active" | "paused" | "finished";
+  starts_on: string | null;
+  ends_on: string | null;
+  task_count: number;
+  open_task_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StudyTaskSeries {
+  id: number;
+  study_plan_id: number;
+  topic_id: number | null;
+  subject_name: string | null;
+  subject_color: string | null;
+  topic_name: string | null;
+  title: string;
+  description: string | null;
+  recurrence: StudyTaskRecurrence;
+  duration_minutes: number;
+  priority: number;
+  starts_on: string | null;
+  until: string | null;
+  /** Die Occurrence, die als naechstes erzeugt wird. `null` heisst: zu Ende. */
+  next_due_on: string | null;
+  occurrences: number;
+  occurrence_limit: number | null;
+  status: "active" | "finished" | "cancelled";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StudyTaskDependency {
+  task_id: number;
+  depends_on_task_id: number;
+  created_at: string;
+}
+
+/** Das Ergebnis von `POST /v1/exams/{id}/tasks`. */
+export interface ExamTaskPlanResult {
+  exam_id: number;
+  study_plan_id: number;
+  created_tasks: StudyTask[];
+  created_count: number;
+  skipped_count: number;
+  first_due_on: string | null;
+  last_due_on: string | null;
+}
+
+/** Die Felder, die beim Anlegen und Bearbeiten einer Aufgabe abgeschickt werden. */
+export interface StudyTaskInput {
+  study_plan_id: number;
+  title: string;
+  topic_id?: number | null;
+  description?: string | null;
+  duration_minutes?: number;
+  scheduled_for?: string | null;
+  due_date?: string | null;
+  priority?: number;
+  order_index?: number;
+}
+
+export interface StudyTaskSeriesInput {
+  study_plan_id: number;
+  title: string;
+  recurrence: StudyTaskRecurrence;
+  starts_on: string;
+  topic_id?: number | null;
+  description?: string | null;
+  duration_minutes?: number;
+  priority?: number;
+  until?: string | null;
+  occurrence_limit?: number | null;
+}
+
+export interface StudySessionRecord {
+  id: number;
+  task_id: number;
+  started_at: string;
+  completed_at: string | null;
+  duration_minutes: number | null;
+  notes: string | null;
+}
+
+export interface FileUploadResult {
+  id: number;
+  filename: string;
+  mime_type: string | null;
+  path: string;
+  checksum: string | null;
+  status: string | null;
+  created_at: string | null;
+}
+
+/** Fach-Id und Anzeigename - so weit der Picker in Formularen braucht. */
+export interface SubjectOption {
+  id: number;
+  name: string;
+}
+
 // Helper functions
-function text(value: unknown, fallback: string) {
-  const normalized = typeof value === "string" ? value.trim() : "";
+function text(value: unknown, fallback: string) {  const normalized = typeof value === "string" ? value.trim() : "";
   return normalized ? normalized : fallback;
 }
 
@@ -296,6 +512,13 @@ export function normalizeStudySession(payload: unknown, fallbackTaskId: ApiIdent
   };
 }
 
+function normalizeBlockers(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => (typeof entry === "string" ? text(entry, "") : text((entry as { title?: unknown })?.title, "")))
+    .filter((title): title is string => title.length > 0);
+}
+
 export function normalizeStudyTask(task: unknown): DashboardStudyTask {
   const parsed: any = parseStudyTask(task);
   const rawSession = parsed.session ?? parsed.study_session ?? parsed.active_session;
@@ -314,6 +537,11 @@ export function normalizeStudyTask(task: unknown): DashboardStudyTask {
     status,
     progress,
     scheduledFor: parsed.scheduled_for ?? null,
+    // Eine fehlende Faelligkeit ist normal, ein unlesbares Datum nicht.
+    dueDate: typeof parsed.due_date === "string" ? parsed.due_date : null,
+    priority: Math.min(MAX_TASK_PRIORITY, Math.max(0, Math.round(numberValue(parsed.priority, 0)))),
+    blockedBy: normalizeBlockers(parsed.blocked_by),
+    isSeries: Boolean(parsed.is_series ?? parsed.series_id),
     startedAt: session?.startedAt ?? parsed.started_at ?? parsed.session_started_at ?? null,
     session,
   };
