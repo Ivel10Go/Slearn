@@ -41,6 +41,8 @@
 - [ ] Fine-Tuning-Pipeline für Lernplan-Modelle (lokal feinabgestimmt)
 - [ ] Lernplan-Erstellung: Stundenplan + offene Aufgaben + Klausuren → Lernplan
 - [ ] Fallback auf Online-Provider, Herkunft im UI (`local`/`provider`)
+- [ ] „Modelle lernen am Nutzer": persönlicher Trainingsdatensatz je Benutzer (eigene Noten, Aufgaben, hochgeladene Materialien), feinabgestimmtes Modell pro Nutzer statt geteiltem Prompt
+- [ ] Custom-KI ohne Docker: lokale OpenAI-kompatible Server (Ollama, LM Studio) als erste Klasse in `ai_provider`, inkl. `host.docker.internal`-Hinweis im UI (siehe AGENTS.md)
 
 ## Sprach-Assistent (STT + TTS)
 
@@ -63,6 +65,7 @@
 - [x] Chunking + Embeddings (KI-Provider oder lokales Modell), pgvector-Suche
 - [x] Antworten mit Quellenangaben
 - [x] KI-Gateway-Platzhalter im Dashboard durch echten Assistenten ersetzen
+- [x] Datei-Upload und „KI-Assistent zum Fragen" (`POST /api/v1/documents/ask`) sind damit abgedeckt
 
 ## Deployment
 
@@ -70,3 +73,47 @@
 - [ ] ARM64-Buildcheck (Raspberry Pi)
 - [ ] HTTPS/TLS, `SESSION_COOKIE_SECURE`, Reverse-Proxy
 - [ ] Secret-Rotation + Restore-Übung
+
+## Task-System (Ausbau)
+
+Das Grundsystem steht: `StudyPlanTask` mit `start`/`stop`/`complete` (`app/api/study.py`). Offen ist die Tiefe, nicht das Fundament.
+
+- [ ] Priorität und Fälligkeitsdatum an Aufgaben
+- [ ] Serientyp für wiederkehrende Aufgaben (Vokabeln, Wiederholungsblätter)
+- [ ] Aufgaben aus Klausurthemen erzeugen statt sie nur zu verlinken
+- [ ] Abhängigkeiten zwischen Aufgaben, damit ein Lernplan eine Reihenfolge hat
+
+## Noten
+
+- [ ] Alembic-Migration: eigenes `Grade`-Modell, `Exam` erweitert sich nicht (es hat heute nur Titel/Datum/Quelle)
+- [ ] Felder: Note, Art (Klassenarbeit, Test, mündlich), Gewichtung, Datum, Fach, Kommentar
+- [ ] Noten-UI im Dashboard: Schnitt je Fach und gesamt, Verlauf als schlichte Linie ohne Diagramm-Bibliothek
+- [ ] Manuelle Erfassung und Übernahme aus einem abgegebenen Dokument
+- [ ] Noten in Lernplan und KI-Kontext einbeziehen, damit Prioritäten am Notenstand hängen
+- [ ] Hochrechnung bestanden/nicht bestanden statt nur Rückblick
+- [ ] Eigenes Rechtemanagement: Noten nicht ungefragt in `documents/ask` oder an den Provider schicken
+
+## Lernfortschritt und Lernprozess
+
+- [ ] `LearningProgress` ist heute nur per Demo-Seed beschrieben und wird nirgends geschrieben: eigener Endpoint für `confidence` und `last_reviewed_at`
+- [ ] Lernprotokoll aus `StudySession` auswerten (Dauer je Fach, Wochentag), nicht nur anzeigen
+- [ ] Serien (Streaks) und Wochenziel, abgeleitet aus `StudySession`
+- [ ] Fortschrittskarte im Dashboard: Konfidenz, Lernzeit, nächste Wiederholung
+- [ ] Wiederholungsplanung als einfaches Intervall, kein vollständiges SRS
+
+## Benachrichtigungen
+
+- [ ] `User.notifications_enabled` ist eine tote Spalte: verdrahten oder aus der Migration entfernen
+- [ ] Push-Handler in `public/sw.js` ergänzen (bisher nur Caching, kein Push) und Cache-Namen bumpen
+- [ ] Erinnerungen an fällige Lernaufgaben und Klausuren; Scheduler fehlt komplett, siehe WebUntis-Sync
+- [ ] Web-Push plus lokale Benachrichtigungen als Fallback für den Browser
+- [ ] Einstellungen je Nutzer: Kanäle, Uhrzeit, Ruhezeiten
+
+## Reward-System
+
+- [ ] Punkte für erledigte Lernaufgaben und abgeschlossene Lernsessions
+- [ ] Auszeichnungen in eigener Tabelle, nicht in der UI-`badge`-Komponente
+- [ ] Fortschrittsanzeige im Dashboard, im vorhandenen eckigen Monochrom-Design
+- [ ] Belohnungen an Lerninhalte koppeln, damit es kein reines Zähler-Spiel bleibt
+- [ ] Punkte niemals in Noten- oder KI-Berechnungen einfließen lassen
+
