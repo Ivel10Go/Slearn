@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, type FormEvent } from "react";
 import { CheckCircle2, LoaderCircle, Plus, Repeat, RefreshCw, X } from "lucide-react";
@@ -20,8 +20,8 @@ import { cn } from "@/lib/utils";
 import { MAX_TASK_PRIORITY, type StudyPlan, type StudyTaskRecurrence, type StudyTaskSeries, type StudyTaskSeriesInput } from "@/lib/types";
 
 const WIEDERHOLUNG_LABEL: Record<StudyTaskRecurrence, string> = {
-  daily: "tÃ¤glich",
-  weekly: "wÃ¶chentlich",
+  daily: "täglich",
+  weekly: "wöchentlich",
   biweekly: "alle zwei Wochen",
   monthly: "monatlich",
 };
@@ -57,7 +57,7 @@ const leeresFormular = (): SerienFormular => ({
  *
  * `cancelStudySeries` ist ein `DELETE`, beendet aber die Serie und storniert
  * nur ihre **offenen** Aufgaben - erledigte bleiben stehen. Der Knopf heisst
- * darum "Serie beenden" und nicht "Serie lÃ¶schen", weil er etwas voellig
+ * darum "Serie beenden" und nicht "Serie löschen", weil er etwas voellig
  * Anderes tut als das, was der Pfeil erwarten laesst.
  */
 export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: StudyPlan[]; onChanged?: () => void; refreshKey?: number }) {
@@ -121,7 +121,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
     }
     const prioritaet = Number(formular.prioritaet);
     if (!Number.isInteger(prioritaet) || prioritaet < 0 || prioritaet > MAX_TASK_PRIORITY) {
-      setFormularFehler(`Die PrioritÃ¤t muss zwischen 0 und ${MAX_TASK_PRIORITY} liegen.`);
+      setFormularFehler(`Die Priorität muss zwischen 0 und ${MAX_TASK_PRIORITY} liegen.`);
       return;
     }
 
@@ -133,7 +133,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
 
     const bis = formular.bis.trim() ? toUtcIsoFromParts(formular.bis, "23:59") : null;
     if (formular.bis.trim() && !bis) {
-      setFormularFehler("Dieses Datum lÃ¤sst sich nicht lesen. Bitte erneut wÃ¤hlen.");
+      setFormularFehler("Dieses Datum lässt sich nicht lesen. Bitte erneut wählen.");
       return;
     }
 
@@ -141,7 +141,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
 
     if (bearbeitet !== null) {
       // Nur die Vorlage aendern. `starts_on` und `study_plan_id` gehoeren
-      // nicht dazu - eine bestehende Serie umzuhÃ¤ngen waere ein Verschieben
+      // nicht dazu - eine bestehende Serie umzuhängen waere ein Verschieben
       // ihrer Vergangenheit.
       const ergebnis = await sammlung.update(bearbeitet, {
         title: formular.titel.trim(),
@@ -160,11 +160,11 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
 
     const start = toUtcIsoFromParts(formular.start, "00:00");
     if (!start) {
-      setFormularFehler("Ab wann soll die Serie laufen? Ein Startdatum wird benÃ¶tigt.");
+      setFormularFehler("Ab wann soll die Serie laufen? Ein Startdatum wird benötigt.");
       return;
     }
     if (!formular.plan) {
-      setFormularFehler("WÃ¤hle den Lernplan, zu dem die Serie gehÃ¶rt.");
+      setFormularFehler("Wähle den Lernplan, zu dem die Serie gehört.");
       return;
     }
 
@@ -202,7 +202,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
           </Button>
           <Button type="button" size="sm" onClick={() => (formularOffen && bearbeitet === null ? schliessen() : oeffnen())} aria-expanded={formularOffen && bearbeitet === null} disabled={plans.length === 0}>
             {formularOffen && bearbeitet === null ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
-            {formularOffen && bearbeitet === null ? "SchlieÃŸen" : "Neu"}
+            {formularOffen && bearbeitet === null ? "Schließen" : "Neu"}
           </Button>
         </div>
       </CardHeader>
@@ -212,7 +212,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
 
         {plans.length === 0 ? (
           <p className="border border-dashed border-border bg-muted/30 px-4 py-3 text-xs leading-5 text-muted-foreground">
-            Eine Serie gehÃ¶rt zu einem Lernplan. Lege oben zuerst einen Plan an.
+            Eine Serie gehört zu einem Lernplan. Lege oben zuerst einen Plan an.
           </p>
         ) : null}
 
@@ -220,7 +220,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
           <form onSubmit={absenden} noValidate className="space-y-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-bold">{bearbeitet === null ? "Neue Serie" : "Serie bearbeiten"}</p>
-              <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schlieÃŸen">
+              <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
                 <X aria-hidden="true" />
               </Button>
             </div>
@@ -232,7 +232,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
                   value={formular.titel}
                   onChange={(event) => setFormular((current) => ({ ...current, titel: event.target.value }))}
                   disabled={istSpeichern}
-                  placeholder="Zum Beispiel: Vokabeln zehn Minuten tÃ¤glich"
+                  placeholder="Zum Beispiel: Vokabeln zehn Minuten täglich"
                 />
               )}
             </Field>
@@ -247,7 +247,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
                       onChange={(event) => setFormular((current) => ({ ...current, plan: event.target.value }))}
                       disabled={istSpeichern}
                     >
-                      <option value="">Bitte wÃ¤hlen</option>
+                      <option value="">Bitte wählen</option>
                       {plans.map((plan) => (
                         <option key={plan.id} value={plan.id}>
                           {plan.title}
@@ -258,7 +258,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
                 </Field>
               ) : null}
 
-              <Field id="serie-wiederholung" label="Wiederholung" required hint={bearbeitet !== null ? "Gilt erst ab der nÃ¤chsten Aufgabe." : undefined}>
+              <Field id="serie-wiederholung" label="Wiederholung" required hint={bearbeitet !== null ? "Gilt erst ab der nächsten Aufgabe." : undefined}>
                 {(props) => (
                   <Select
                     {...props}
@@ -292,7 +292,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
                 )}
               </Field>
 
-              <Field id="serie-prioritaet" label={`PrioritÃ¤t (0â€“${MAX_TASK_PRIORITY})`} required>
+              <Field id="serie-prioritaet" label={`Priorität (0–${MAX_TASK_PRIORITY})`} required>
                 {(props) => (
                   <Input
                     {...props}
@@ -322,7 +322,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field id="serie-bis" label="LÃ¤uft bis" hint="Optional. Danach endet die Serie.">
+              <Field id="serie-bis" label="Läuft bis" hint="Optional. Danach endet die Serie.">
                 {(props) => (
                   <Input
                     {...props}
@@ -334,7 +334,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
                 )}
               </Field>
 
-              <Field id="serie-grenze" label="HÃ¶chstzahl" hint="Optional. Anzahl der erzeugten Aufgaben, hÃ¶chstens 1000.">
+              <Field id="serie-grenze" label="Höchstzahl" hint="Optional. Anzahl der erzeugten Aufgaben, höchstens 1000.">
                 {(props) => (
                   <Input
                     {...props}
@@ -366,7 +366,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
             <div className="flex flex-wrap items-center gap-2">
               <Button type="submit" disabled={istSpeichern}>
                 {istSpeichern ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
-                {istSpeichern ? "Wird gespeichert â€¦" : bearbeitet === null ? "Serie anlegen" : "Vorlage speichern"}
+                {istSpeichern ? "Wird gespeichert …" : bearbeitet === null ? "Serie anlegen" : "Vorlage speichern"}
               </Button>
               <Button type="button" variant="ghost" onClick={schliessen} disabled={istSpeichern}>
                 Abbrechen
@@ -380,7 +380,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
             <Skeleton className="h-16 w-full" />
           </div>
         ) : sammlung.items.length === 0 ? (
-          <EmptyState icon={Repeat} title="Keine Serien" description="Eine Serie erzeugt aus einer Vorlage mehrere Aufgaben â€“ etwa tÃ¤gliche VokabelÃ¼bungen." />
+          <EmptyState icon={Repeat} title="Keine Serien" description="Eine Serie erzeugt aus einer Vorlage mehrere Aufgaben – etwa tägliche Vokabelübungen." />
         ) : (
           <ul className="space-y-2.5">
             {sammlung.items.map((serie) => (
@@ -394,19 +394,19 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
                   {serie.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{serie.description}</p> : null}
                   <p className="mt-1.5 text-xs font-semibold text-muted-foreground">
                     {formatDuration(serie.duration_minutes)}
-                    <span className="text-border"> Â· </span>
-                    PrioritÃ¤t {serie.priority}
-                    <span className="text-border"> Â· </span>
+                    <span className="text-border"> · </span>
+                    Priorität {serie.priority}
+                    <span className="text-border"> · </span>
                     {serie.occurrences} {serie.occurrences === 1 ? "Aufgabe" : "Aufgaben"}
                     {serie.next_due_on ? (
                       <>
-                        <span className="text-border"> Â· </span>
-                        als NÃ¤chstes {formatDate(serie.next_due_on, { day: "2-digit", month: "short" })}
+                        <span className="text-border"> · </span>
+                        als Nächstes {formatDate(serie.next_due_on, { day: "2-digit", month: "short" })}
                       </>
                     ) : null}
                     {serie.until ? (
                       <>
-                        <span className="text-border"> Â· </span>
+                        <span className="text-border"> · </span>
                         bis {formatDate(serie.until, { day: "2-digit", month: "short", year: "numeric" })}
                       </>
                     ) : null}

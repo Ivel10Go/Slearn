@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import Link from "next/link";
@@ -55,7 +55,7 @@ interface DashboardViewProps {
 
 const lessonStateLabels: Record<LessonState, string> = {
   completed: "Erledigt",
-  current: "LÃ¤uft gerade",
+  current: "Läuft gerade",
   upcoming: "Kommt gleich",
 };
 
@@ -176,7 +176,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 function FocusLessonCard({ lesson, reference }: { lesson: DashboardLesson | undefined; reference: Date }) {
   const state = lesson ? getLessonState(lesson, reference) : "upcoming";
   const isCurrent = state === "current";
-  const title = isCurrent ? "Du bist mittendrin." : lesson ? "Als NÃ¤chstes steht an" : "Dein Stundenplan ist frei.";
+  const title = isCurrent ? "Du bist mittendrin." : lesson ? "Als Nächstes steht an" : "Dein Stundenplan ist frei.";
 
   return (
     <Card id="focus" className={cn(anchorClass, "relative overflow-hidden border-foreground bg-card")}>
@@ -186,10 +186,10 @@ function FocusLessonCard({ lesson, reference }: { lesson: DashboardLesson | unde
             <Target className="h-4 w-4" aria-hidden="true" />
             Tagesfokus
           </div>
-          {lesson ? <Badge variant={isCurrent ? "success" : "info"}>{isCurrent ? "Jetzt" : "Als NÃ¤chstes"}</Badge> : <Badge variant="secondary">Kein Termin</Badge>}
+          {lesson ? <Badge variant={isCurrent ? "success" : "info"}>{isCurrent ? "Jetzt" : "Als Nächstes"}</Badge> : <Badge variant="secondary">Kein Termin</Badge>}
         </div>
         <CardTitle className="mt-3 text-2xl sm:text-3xl">{title}</CardTitle>
-        <CardDescription className="text-base">Ein klarer nÃ¤chster Schritt macht den Unterschied.</CardDescription>
+        <CardDescription className="text-base">Ein klarer nächster Schritt macht den Unterschied.</CardDescription>
       </CardHeader>
       <CardContent className="relative">
         {lesson ? (
@@ -203,7 +203,7 @@ function FocusLessonCard({ lesson, reference }: { lesson: DashboardLesson | unde
               <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
                   <Clock3 className="h-4 w-4" aria-hidden="true" />
-                  {formatTime(lesson.startTime)} â€“ {formatTime(lesson.endTime)} Uhr
+                  {formatTime(lesson.startTime)} – {formatTime(lesson.endTime)} Uhr
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <MapPin className="h-4 w-4" aria-hidden="true" />
@@ -221,7 +221,7 @@ function FocusLessonCard({ lesson, reference }: { lesson: DashboardLesson | unde
             </Link>
           </div>
         ) : (
-          <EmptyState icon={GraduationCap} title="Keine Unterrichtsstunden" description="FÃ¼r heute sind keine Stunden eingetragen. Nutze die Zeit fÃ¼r deine offenen Aufgaben." />
+          <EmptyState icon={GraduationCap} title="Keine Unterrichtsstunden" description="Für heute sind keine Stunden eingetragen. Nutze die Zeit für deine offenen Aufgaben." />
         )}
       </CardContent>
     </Card>
@@ -279,7 +279,7 @@ function GreetingHeader({ username }: { username?: string | null }) {
               Willkommen{username ? `, ${username}` : ""}.
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              {error ?? "Der Willkommenssatz ist gerade nicht verfÃ¼gbar."}
+              {error ?? "Der Willkommenssatz ist gerade nicht verfügbar."}
             </p>
           </>
         ) : (
@@ -294,8 +294,8 @@ function GreetingHeader({ username }: { username?: string | null }) {
               {greeting.source === "ai" && greeting.model ? <span>{greeting.model}</span> : null}
               {greeting.source === "ai" && greeting.generatedOn ? (
                 <>
-                  <span className="text-border">Â·</span>
-                  <span>fÃ¼r {formatDate(new Date(`${greeting.generatedOn}T12:00:00`))}</span>
+                  <span className="text-border">·</span>
+                  <span>für {formatDate(new Date(`${greeting.generatedOn}T12:00:00`))}</span>
                 </>
               ) : null}
             </p>
@@ -332,7 +332,7 @@ function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
       const result = action === "start" ? await startStudyTask(task.id) : action === "stop" ? await stopStudyTask(task.id) : await completeStudyTask(task.id);
       setTaskOverrides((current) => ({ ...current, [task.id]: mergeStudyAction(task, result, action) }));
     } catch (error) {
-      setActionError(error instanceof ApiError ? error.message : "Die Lernaktion konnte nicht ausgefÃ¼hrt werden.");
+      setActionError(error instanceof ApiError ? error.message : "Die Lernaktion konnte nicht ausgeführt werden.");
     } finally {
       setBusyTaskId(null);
     }
@@ -346,14 +346,14 @@ function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
             <Zap className="h-5 w-5 text-primary" aria-hidden="true" />
             Heute lernen
           </CardTitle>
-          <CardDescription className="mt-1">Kleine FokusblÃ¶cke, groÃŸer Fortschritt.</CardDescription>
+          <CardDescription className="mt-1">Kleine Fokusblöcke, großer Fortschritt.</CardDescription>
         </div>
         <Badge variant="info">{taskList.filter((task) => task.status !== "completed").length} Tasks</Badge>
       </CardHeader>
       <CardContent>
         {actionError ? <p className="mb-4 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">{actionError}</p> : null}
         {taskList.length === 0 ? (
-          <EmptyState icon={Timer} title="Keine Lernaufgaben" description="Deine nÃ¤chsten Lernschritte werden hier angezeigt, sobald sie geplant sind." />
+          <EmptyState icon={Timer} title="Keine Lernaufgaben" description="Deine nächsten Lernschritte werden hier angezeigt, sobald sie geplant sind." />
         ) : (
           <div className="space-y-3">
             {taskList.slice(0, 4).map((task) => {
@@ -373,7 +373,7 @@ function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
                         <p className={cn("truncate text-sm font-extrabold", completed && "text-muted-foreground line-through")}>{task.title}</p>
                         <Badge variant={taskVariant(task.status)}>{taskStatusLabels[task.status]}</Badge>
                       </div>
-                      <p className="mt-1 text-xs font-semibold text-muted-foreground">{task.subject} Â· {task.topic}</p>
+                      <p className="mt-1 text-xs font-semibold text-muted-foreground">{task.subject} · {task.topic}</p>
                       {active && startedAt ? <p className="mt-1 flex items-center gap-1 text-xs font-bold text-primary"><Timer className="h-3.5 w-3.5" aria-hidden="true" />{elapsedLabel(startedAt, now)} Min.</p> : null}
                     </div>
                     <span className="shrink-0 text-xs font-bold text-muted-foreground">{formatDuration(task.durationMinutes)}</span>
@@ -387,7 +387,7 @@ function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
                       </span>
                     ) : active ? (
                       <div className="flex items-center gap-2">
-                        <Button type="button" size="sm" variant="outline" onClick={() => void handleAction(task, "complete")} disabled={busy || demo} aria-label={`${task.title} abschlieÃŸen`}>
+                        <Button type="button" size="sm" variant="outline" onClick={() => void handleAction(task, "complete")} disabled={busy || demo} aria-label={`${task.title} abschließen`}>
                           <Check aria-hidden="true" />
                           Fertig
                         </Button>
@@ -422,7 +422,7 @@ function UsageCard({ data }: { data: DashboardData }) {
             <ShieldCheck className="h-5 w-5 text-primary" aria-hidden="true" />
             Nutzung & Datenschutz
           </CardTitle>
-          <CardDescription className="mt-1">Deine LernaktivitÃ¤t bleibt nachvollziehbar.</CardDescription>
+          <CardDescription className="mt-1">Deine Lernaktivität bleibt nachvollziehbar.</CardDescription>
         </div>
         <Badge variant="secondary">Privat</Badge>
       </CardHeader>
@@ -430,7 +430,7 @@ function UsageCard({ data }: { data: DashboardData }) {
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-xl bg-muted/50 p-3">
             <p className="text-lg font-extrabold">{data.summary.tasksCompleted}/{data.summary.tasksTotal}</p>
-            <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">FokusblÃ¶cke</p>
+            <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Fokusblöcke</p>
           </div>
           <div className="rounded-xl bg-muted/50 p-3">
             <p className="text-lg font-extrabold">{data.summary.lessonsCompleted}/{data.summary.lessonsTotal}</p>
@@ -455,7 +455,7 @@ function AnswerBadge({ answer }: { answer: DocumentAnswer }) {
     return <Badge variant="outline">Keine Treffer</Badge>;
   }
   if (answer.source === "ai") {
-    return <Badge variant="secondary">{answer.model ? `KI-Antwort Â· ${answer.model}` : "KI-Antwort"}</Badge>;
+    return <Badge variant="secondary">{answer.model ? `KI-Antwort · ${answer.model}` : "KI-Antwort"}</Badge>;
   }
   return <Badge variant="info">Aus deinen Dokumenten</Badge>;
 }
@@ -497,7 +497,7 @@ function AssistantCard() {
                 <CardTitle className="text-xl">Dein Lernassistent</CardTitle>
                 {answer ? <AnswerBadge answer={answer} /> : <Badge variant="secondary">Antwortet aus deinen Dokumenten</Badge>}
               </div>
-              <CardDescription className="mt-1">Stelle eine Frage zu deinen Unterlagen â€“ die Antwort kommt mit Quellenangabe.</CardDescription>
+              <CardDescription className="mt-1">Stelle eine Frage zu deinen Unterlagen – die Antwort kommt mit Quellenangabe.</CardDescription>
             </div>
           </div>
           <span className="hidden items-center gap-1.5 border border-border bg-background px-3 py-1.5 text-xs font-bold text-muted-foreground xl:inline-flex">
@@ -520,7 +520,7 @@ function AssistantCard() {
           />
           <Button type="submit" disabled={isAsking || !question.trim()}>
             {isAsking ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
-            {isAsking ? "Fragt â€¦" : "Fragen"}
+            {isAsking ? "Fragt …" : "Fragen"}
           </Button>
         </form>
 
@@ -554,7 +554,7 @@ function AssistantCard() {
             <Sparkles className="h-6 w-6 text-primary" aria-hidden="true" />
             <p className="text-sm font-bold">Noch keine Frage</p>
             <p className="max-w-md text-xs leading-5 text-muted-foreground">
-              Indexiere zuerst einen Dokumentordner unter Einstellungen â€“ dann beantwortet der Assistent deine Fragen zu diesen Unterlagen.
+              Indexiere zuerst einen Dokumentordner unter Einstellungen – dann beantwortet der Assistent deine Fragen zu diesen Unterlagen.
             </p>
           </div>
         )}
@@ -606,7 +606,7 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
               <span className="text-xs font-bold uppercase tracking-[0.18em] text-primary-foreground/70">Dein Tagesfortschritt</span>
             </div>
             <h2 className="text-2xl font-extrabold tracking-tight sm:text-3xl">Du machst den Unterschied.</h2>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-primary-foreground/75">Halte deinen Rhythmus. Jeder abgeschlossene Fokusblock zÃ¤hlt.</p>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-primary-foreground/75">Halte deinen Rhythmus. Jeder abgeschlossene Fokusblock zählt.</p>
             <div className="mt-7 grid max-w-xl grid-cols-3 gap-3 sm:gap-6">
               <div>
                 <p className="text-2xl font-extrabold">{data.summary.lessonsCompleted}/{data.summary.lessonsTotal}</p>
@@ -614,7 +614,7 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
               </div>
               <div>
                 <p className="text-2xl font-extrabold">{data.summary.tasksCompleted}/{data.summary.tasksTotal}</p>
-                <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-primary-foreground/65">FokusblÃ¶cke</p>
+                <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-primary-foreground/65">Fokusblöcke</p>
               </div>
               <div>
                 <p className="text-2xl font-extrabold">{data.summary.homeworkPending}</p>
@@ -633,8 +633,8 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
       </div>
 
       {/*
-        Der Stundenplan steht Ã¼ber die volle Breite. Sieben Tage brauchen
-        sieben gleich breite Spalten - in der frÃ¼heren Zweispalten-Schale blieben
+        Der Stundenplan steht über die volle Breite. Sieben Tage brauchen
+        sieben gleich breite Spalten - in der früheren Zweispalten-Schale blieben
         rund 120px je Tag, und die Stundenzeiten waren nicht mehr ausgerichtet.
       */}
       <ScheduleCard />
@@ -652,7 +652,7 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
       </div>
 
       <footer className="flex flex-col items-center justify-between gap-2 border-t border-border/70 pt-5 text-center text-xs text-muted-foreground sm:flex-row sm:text-left">
-        <span>Ein ruhiger Ort fÃ¼r deinen nÃ¤chsten Schritt.</span>
+        <span>Ein ruhiger Ort für deinen nächsten Schritt.</span>
         <span className="inline-flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />Lernraum</span>
       </footer>
     </div>

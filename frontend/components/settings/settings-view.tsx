@@ -10,6 +10,7 @@ import {
   FolderTree,
   KeyRound,
   LoaderCircle,
+  LogOut,
   Monitor,
   Moon,
   Plug,
@@ -109,7 +110,14 @@ function SettingsSkeleton() {
   );
 }
 
-function AccountCard({ user }: { user: UserResponse | null }) {
+interface AccountCardProps {
+  user: UserResponse | null;
+  onLogout: () => void;
+  isLoggingOut: boolean;
+}
+
+function AccountCard({ user, onLogout, isLoggingOut }: AccountCardProps) {
+  const [abmeldeOffen, setAbmeldeOffen] = useState(false);
   const displayName = user?.username ?? "Lernende:r";
   const details = [
     { label: "E-Mail", value: user?.email || "Nicht hinterlegt" },
@@ -141,6 +149,32 @@ function AccountCard({ user }: { user: UserResponse | null }) {
             </div>
           ))}
         </dl>
+
+        {/*
+          `POST /v1/auth/logout` loescht nur das Session-Cookie. Die Daten
+          bleiben, deshalb ist der Knopf erst nach einer Bestaetigung aktiv -
+          sonst waere ein Fehlklick der ganze Abmeldevorgang.
+        */}
+        {user ? (
+          <div className="flex flex-wrap items-center gap-2 border-t border-border/70 pt-4">
+            {abmeldeOffen ? (
+              <>
+                <Button type="button" size="sm" variant="destructive" onClick={onLogout} disabled={isLoggingOut}>
+                  {isLoggingOut ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <LogOut aria-hidden="true" />}
+                  {isLoggingOut ? "Wird abgemeldet …" : "Jetzt abmelden"}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setAbmeldeOffen(false)} disabled={isLoggingOut}>
+                  Abbrechen
+                </Button>
+              </>
+            ) : (
+              <Button type="button" size="sm" variant="outline" onClick={() => setAbmeldeOffen(true)} aria-expanded={abmeldeOffen}>
+                <LogOut aria-hidden="true" />
+                Abmelden
+              </Button>
+            )}
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -623,6 +657,8 @@ export interface SettingsViewProps {
   onTest: (integration: IntegrationRead) => void;
   onSync: (integration: IntegrationRead) => void;
   onDelete: (integration: IntegrationRead) => void;
+  onLogout: () => void;
+  isLoggingOut: boolean;
 }
 
 export function SettingsView({
@@ -641,6 +677,8 @@ export function SettingsView({
   onTest,
   onSync,
   onDelete,
+  onLogout,
+  isLoggingOut,
 }: SettingsViewProps) {
   if (status === "loading" && integrations.length === 0 && catalog.length === 0) {
     return <SettingsSkeleton />;
@@ -686,7 +724,7 @@ export function SettingsView({
           onDelete={onDelete}
         />
         <div className="space-y-6">
-          <AccountCard user={user} />
+          <AccountCard user={user} onLogout={onLogout} isLoggingOut={isLoggingOut} />
           <ThemeCard />
         </div>
       </div>
@@ -701,3 +739,5 @@ export function SettingsView({
     </div>
   );
 }
+
+

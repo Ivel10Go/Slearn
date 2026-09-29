@@ -71,17 +71,30 @@ describe("Kalender", () => {
 });
 
 describe("Lernaufgaben", () => {
+  // `priority`, `blocked_by` und `blocking_task_ids` sind im Backend immer
+  // gesetzt und im Schema bewusst **nicht** optional. Der Test gibt sie mit -
+  // fehlten sie, wuerde die Antwort abgewiesen, und eine echte kaputte
+  // Antwort ist dann von einer alten zu unterscheiden.
+  const aufgabenBausatz = { id: 1, study_plan_id: 9, title: "Ableitungen", duration_minutes: 25, order_index: 0, priority: 0, blocked_by: [], blocking_task_ids: [] };
+
   it("akzeptiert genau die vier Zustände des Backends", () => {
-    const basis = { id: 1, study_plan_id: 9, title: "Ableitungen", duration_minutes: 25, order_index: 0 };
     for (const status of ["pending", "in_progress", "completed", "cancelled"]) {
-      expect(parseStudyTaskArray([{ ...basis, status }])[0].status).toBe(status);
+      expect(parseStudyTaskArray([{ ...aufgabenBausatz, status }])[0].status).toBe(status);
     }
   });
 
   it("weist einen unbekannten Zustand zurück, statt ihn zu raten", () => {
     // `todo` steht in keinem Backend-Schema. Ein stilles Umdeuten wuerde eine
     // abgelehnte Aufgabe als "offen" anzeigen und den Fehler verstecken.
-    expect(() => parseStudyTaskArray([{ id: 1, study_plan_id: 9, title: "x", duration_minutes: 25, order_index: 0, status: "todo" }])).toThrow();
+    expect(() => parseStudyTaskArray([{ ...aufgabenBausatz, status: "todo" }])).toThrow();
+  });
+
+  it("weist eine Antwort ohne Prioritaet zurueck", () => {
+    // `delete` statt Rest-Operator mit Wegwerfvariable: so bleibt fuer den
+    // Linter sichtbar, dass `priority` wirklich fehlt und nicht nur leer ist.
+    const ohnePrioritaet: Record<string, unknown> = { ...aufgabenBausatz, status: "pending" };
+    delete ohnePrioritaet.priority;
+    expect(() => parseStudyTaskArray([ohnePrioritaet])).toThrow();
   });
 
   it("liest die Session von `POST .../start`", () => {

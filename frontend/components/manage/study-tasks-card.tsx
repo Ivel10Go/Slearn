@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useState, type FormEvent } from "react";
 import { BookOpen, Check, CheckCircle2, Link2, LoaderCircle, Plus, RefreshCw, X } from "lucide-react";
@@ -132,17 +132,17 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
     }
     const prioritaet = zahl(formular.prioritaet, 0, MAX_TASK_PRIORITY);
     if (prioritaet === null) {
-      setFormularFehler(`Die PrioritÃ¤t muss zwischen 0 und ${MAX_TASK_PRIORITY} liegen.`);
+      setFormularFehler(`Die Priorität muss zwischen 0 und ${MAX_TASK_PRIORITY} liegen.`);
       return;
     }
     const geplant = formular.geplant.trim() ? toUtcIso(formular.geplant) : null;
     if (formular.geplant.trim() && !geplant) {
-      setFormularFehler("Der geplante Zeitpunkt lÃ¤sst sich nicht lesen. Bitte erneut wÃ¤hlen.");
+      setFormularFehler("Der geplante Zeitpunkt lässt sich nicht lesen. Bitte erneut wählen.");
       return;
     }
     const faellig = formular.faellig.trim() ? toUtcIso(formular.faellig) : null;
     if (formular.faellig.trim() && !faellig) {
-      setFormularFehler("Die Frist lÃ¤sst sich nicht lesen. Bitte erneut wÃ¤hlen.");
+      setFormularFehler("Die Frist lässt sich nicht lesen. Bitte erneut wählen.");
       return;
     }
 
@@ -170,7 +170,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
     }
 
     if (!formular.plan) {
-      setFormularFehler("WÃ¤hle den Lernplan, zu dem die Aufgabe gehÃ¶rt.");
+      setFormularFehler("Wähle den Lernplan, zu dem die Aufgabe gehört.");
       return;
     }
     const ergebnis = await sammlung.create({ ...gemeinsam, study_plan_id: Number(formular.plan) });
@@ -185,7 +185,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-4">
         <div>
           <CardTitle>Lernaufgaben</CardTitle>
-          <CardDescription className="mt-1">Aufgaben mit PrioritÃ¤t, Frist und Voraussetzungen.</CardDescription>
+          <CardDescription className="mt-1">Aufgaben mit Priorität, Frist und Voraussetzungen.</CardDescription>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="info">
@@ -196,7 +196,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
           </Button>
           <Button type="button" size="sm" onClick={() => (formularOffen && bearbeitet === null ? schliessen() : oeffnen())} aria-expanded={formularOffen && bearbeitet === null} disabled={plans.length === 0}>
             {formularOffen && bearbeitet === null ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
-            {formularOffen && bearbeitet === null ? "SchlieÃŸen" : "Neu"}
+            {formularOffen && bearbeitet === null ? "Schließen" : "Neu"}
           </Button>
         </div>
       </CardHeader>
@@ -206,7 +206,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
 
         {plans.length === 0 ? (
           <p className="border border-dashed border-border bg-muted/30 px-4 py-3 text-xs leading-5 text-muted-foreground">
-            Jede Lernaufgabe gehÃ¶rt zu einem Lernplan. Lege oben zuerst einen Plan an.
+            Jede Lernaufgabe gehört zu einem Lernplan. Lege oben zuerst einen Plan an.
           </p>
         ) : null}
 
@@ -214,7 +214,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
           <form onSubmit={absenden} noValidate className="space-y-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-bold">{bearbeitet === null ? "Neue Lernaufgabe" : "Lernaufgabe bearbeiten"}</p>
-              <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schlieÃŸen">
+              <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
                 <X aria-hidden="true" />
               </Button>
             </div>
@@ -226,7 +226,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
                   value={formular.titel}
                   onChange={(event) => setFormular((current) => ({ ...current, titel: event.target.value }))}
                   disabled={istSpeichern}
-                  placeholder="Zum Beispiel: Ableitungen Ã¼ben"
+                  placeholder="Zum Beispiel: Ableitungen üben"
                 />
               )}
             </Field>
@@ -266,7 +266,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
                 )}
               </Field>
 
-              <Field id="aufgabe-prioritaet" label={`PrioritÃ¤t (0â€“${MAX_TASK_PRIORITY})`} required hint="HÃ¶her bedeutet wichtiger.">
+              <Field id="aufgabe-prioritaet" label={`Priorität (0–${MAX_TASK_PRIORITY})`} required hint="Höher bedeutet wichtiger.">
                 {(props) => (
                   <Input
                     {...props}
@@ -282,7 +282,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field id="aufgabe-geplant" label="Geplant fÃ¼r" hint="Optional. Wann du sie angehst.">
+              <Field id="aufgabe-geplant" label="Geplant für" hint="Optional. Wann du sie angehst.">
                 {(props) => (
                   <Input
                     {...props}
@@ -294,7 +294,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
                 )}
               </Field>
 
-              <Field id="aufgabe-faellig" label="FÃ¤llig bis" hint="Optional. Bestimmt die Reihenfolge nach Frist.">
+              <Field id="aufgabe-faellig" label="Fällig bis" hint="Optional. Bestimmt die Reihenfolge nach Frist.">
                 {(props) => (
                   <Input
                     {...props}
@@ -308,7 +308,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
             </div>
 
             {bearbeitet !== null ? (
-              <Field id="aufgabe-zustand" label="Zustand" hint="Abgesagte Aufgaben bleiben erhalten, zÃ¤hlen aber nicht als offen.">
+              <Field id="aufgabe-zustand" label="Zustand" hint="Abgesagte Aufgaben bleiben erhalten, zählen aber nicht als offen.">
                 {(props) => (
                   <Select
                     {...props}
@@ -343,7 +343,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
             <div className="flex flex-wrap items-center gap-2">
               <Button type="submit" disabled={istSpeichern}>
                 {istSpeichern ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
-                {istSpeichern ? "Wird gespeichert â€¦" : bearbeitet === null ? "Lernaufgabe anlegen" : "Ã„nderungen speichern"}
+                {istSpeichern ? "Wird gespeichert …" : bearbeitet === null ? "Lernaufgabe anlegen" : "Änderungen speichern"}
               </Button>
               <Button type="button" variant="ghost" onClick={schliessen} disabled={istSpeichern}>
                 Abbrechen
@@ -358,7 +358,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
             <Skeleton className="h-24 w-full" />
           </div>
         ) : sammlung.items.length === 0 ? (
-          <EmptyState icon={BookOpen} title="Keine Lernaufgaben" description="Lege deine ersten FokusblÃ¶cke an, oder erzeuge sie aus den Themen einer PrÃ¼fung." />
+          <EmptyState icon={BookOpen} title="Keine Lernaufgaben" description="Lege deine ersten Fokusblöcke an, oder erzeuge sie aus den Themen einer Prüfung." />
         ) : (
           <ul className="space-y-2.5">
             {sammlung.items.map((aufgabe) => (
@@ -425,12 +425,12 @@ function AufgabenZeile({
           <div className="flex flex-wrap items-center gap-2">
             <p className={cn("truncate text-sm font-extrabold", erledigt && "text-muted-foreground line-through")}>{aufgabe.title}</p>
             <Badge variant={zustandsVariante(aufgabe.status)}>{ZUSTANDS_LABEL[aufgabe.status]}</Badge>
-            {aufgabe.priority > 0 ? <Badge variant="warning">PrioritÃ¤t {aufgabe.priority}</Badge> : null}
+            {aufgabe.priority > 0 ? <Badge variant="warning">Priorität {aufgabe.priority}</Badge> : null}
           </div>
 
           {aufgabe.subject_name || aufgabe.topic_name || aufgabe.exam_title ? (
             <p className="mt-1 text-xs font-semibold text-muted-foreground">
-              {[aufgabe.subject_name, aufgabe.topic_name, aufgabe.exam_title].filter(Boolean).join(" Â· ")}
+              {[aufgabe.subject_name, aufgabe.topic_name, aufgabe.exam_title].filter(Boolean).join(" · ")}
             </p>
           ) : null}
           {aufgabe.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{aufgabe.description}</p> : null}
@@ -439,19 +439,19 @@ function AufgabenZeile({
             {formatDuration(aufgabe.duration_minutes)}
             {aufgabe.scheduled_for ? (
               <>
-                <span className="text-border"> Â· </span>
+                <span className="text-border"> · </span>
                 geplant {formatDateTime(aufgabe.scheduled_for)}
               </>
             ) : null}
             {aufgabe.due_date ? (
               <>
-                <span className="text-border"> Â· </span>
-                fÃ¤llig {formatDateTime(aufgabe.due_date)}
+                <span className="text-border"> · </span>
+                fällig {formatDateTime(aufgabe.due_date)}
               </>
             ) : null}
             {aufgabe.completed_at ? (
               <>
-                <span className="text-border"> Â· </span>
+                <span className="text-border"> · </span>
                 erledigt {formatDateTime(aufgabe.completed_at)}
               </>
             ) : null}
@@ -650,7 +650,7 @@ function AbhaengigkeitsBereich({
               Neue Voraussetzung
             </label>
             <Select id={`voraussetzung-${aufgabe.id}`} value={auswahl} onChange={(event) => setAuswahl(event.target.value)} disabled={laeuft}>
-              <option value="">Bitte wÃ¤hlen</option>
+              <option value="">Bitte wählen</option>
               {kandidaten.map((kandidat) => (
                 <option key={kandidat.id} value={kandidat.id}>
                   {kandidat.title}
@@ -669,12 +669,12 @@ function AbhaengigkeitsBereich({
             }}
           >
             {laeuft ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Link2 aria-hidden="true" />}
-            HinzufÃ¼gen
+            Hinzufügen
           </Button>
         </div>
       ) : alle.length > 1 ? (
         <p className="text-xs leading-5 text-muted-foreground">
-          Keine weitere Aufgabe in diesem Plan, die als Voraussetzung taugt. Das Backend lÃ¤sst AbhÃ¤ngigkeiten nur innerhalb eines Plans zu.
+          Keine weitere Aufgabe in diesem Plan, die als Voraussetzung taugt. Das Backend lässt Abhängigkeiten nur innerhalb eines Plans zu.
         </p>
       ) : null}
 

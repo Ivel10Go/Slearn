@@ -52,6 +52,7 @@ import {
 import { toDateTimeLocal, toUtcIso } from "@/lib/datetime";
 import { formatDateTime, formatDuration, formatDueDate } from "@/lib/format";
 import { errorMessage, useCollection } from "@/lib/use-collection";
+import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
 import type { StudyPlan, StudyTask, StudyTaskRecurrence, StudyTaskSeries, StudyTaskSeriesInput, StudyTaskState } from "@/lib/types";
 
@@ -767,11 +768,17 @@ function AufgabenZeile({
   onTrennen: (voraussetzungId: number) => void;
 }) {
   const [verknuepfenOffen, setVerknuepfenOffen] = useState(false);
+  // `Date.now()` direkt beim Rendern ist impure: unter nebenlaeufigem Rendern
+  // kann React die Zeile verwerfen und neu berechnen, und das Ergebnis haengt
+  // dann vom Zufall ab. `useNow` liefert dieselbe Zeit fuer alle Zeilen und
+  // aktualisiert sie im Sekundentakt - so wechselt die Markierung von selbst,
+  // wenn die Frist ablaeuft.
+  const jetzt = useNow();
   const erledigt = aufgabe.status === "completed";
   const abgesagt = aufgabe.status === "cancelled";
   const laeuft = aufgabe.status === "in_progress";
   const ueberfaellig =
-    !erledigt && !abgesagt && aufgabe.due_date !== null && new Date(aufgabe.due_date).getTime() < Date.now();
+    !erledigt && !abgesagt && aufgabe.due_date !== null && new Date(aufgabe.due_date).getTime() < (jetzt?.getTime() ?? 0);
   // Eine bereits erledigte Voraussetzung steht nicht mehr in `blocked_by`,
   // weil sie nichts mehr blockiert. Sie darf deshalb auch nicht neu gesetzt
   // werden - sonst entstuende eine Kette ohne Nutzen.
