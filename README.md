@@ -138,11 +138,18 @@ Die nichtöffentliche Backend-Basis lautet `http://backend:8000`. Über das Fron
 | Kalender | `GET, POST /api/v1/calendar` | Bevorstehende Ereignisse listen oder anlegen |
 | Kalender | `GET, POST /api/v1/calendar/events` | Alias der Kalenderrouten |
 | Kalenderereignis | `GET, PATCH, DELETE /api/v1/calendar/events/{event_id}` | Einzelnes Ereignis verwalten |
-| Lernaufgabe | `GET, POST /api/v1/study/tasks` | Aufgaben listen oder anlegen; Liste unterstützt `status` |
-| Lernaufgabe | `GET, PATCH, DELETE /api/v1/study/tasks/{task_id}` | Einzelne Lernaufgabe verwalten |
-| Lernsession | `POST /api/v1/study/tasks/{task_id}/start` | Lernsession starten; idempotent für denselben Benutzer und dieselbe Aufgabe |
+| Lernaufgabe | `GET, POST /api/v1/study/tasks` | Aufgaben listen oder anlegen; Liste unterstützt `status`, `study_plan_id` und `order` (`priority`, `due`, `position`) |
+| Lernaufgabe | `GET, PATCH, DELETE /api/v1/study/tasks/{task_id}` | Einzelne Lernaufgabe verwalten, inklusive Priorität und Fälligkeit |
+| Lernsession | `POST /api/v1/study/tasks/{task_id}/start` | Lernsession starten; idempotent für denselben Benutzer und dieselbe Aufgabe. Eine blockierte Aufgabe antwortet mit 409 |
 | Lernsession | `POST /api/v1/study/tasks/{task_id}/stop` | Offene Lernsession beenden und gelernte Sekunden speichern |
-| Lernsession | `POST /api/v1/study/tasks/{task_id}/complete` | Aufgabe als erledigt markieren und offene Session abschließen |
+| Lernsession | `POST /api/v1/study/tasks/{task_id}/complete` | Aufgabe als erledigt markieren und offene Session abschließen; erzeugt bei einer Serie die nächste Aufgabe |
+| Voraussetzung | `GET, POST /api/v1/study/tasks/{task_id}/dependencies` | Voraussetzungen einer Aufgabe lesen oder `depends_on_task_id` hinzufügen. Zyklen und plangrenzüberschreitende Kanten ergeben 422 |
+| Voraussetzung | `DELETE /api/v1/study/tasks/{task_id}/dependencies/{depends_on_task_id}` | Verknüpfung auflösen, damit die wartende Aufgabe wieder startbar wird |
+| Lernplan | `GET, POST /api/v1/study/plans` | Lernpläne listen oder anlegen; die Liste führt `task_count` und `open_task_count` mit |
+| Lernplan | `GET, PATCH, DELETE /api/v1/study/plans/{plan_id}` | Einzelplan verwalten; das Löschen nimmt Aufgaben, Serien, Sessions und Abhängigkeiten mit |
+| Serie | `GET, POST /api/v1/study/series` | Wiederkehrende Aufgaben listen oder anlegen; die erste Occurrence entsteht sofort, jede weitere erst beim Abschluss der vorigen |
+| Serie | `GET, PATCH, DELETE /api/v1/study/series/{series_id}` | Vorlage ändern (wirkt erst auf künftige Aufgaben) oder Serie beenden und offene Aufgaben stornieren |
+| Klausurvorbereitung | `POST /api/v1/exams/{exam_id}/tasks` | Aus den Klausurthemen Aufgaben in einem Lernplan erzeugen, nach Lernstand sortiert und verkettet. Ein zweiter Lauf legt nichts doppelt an |
 | Integrationen | `GET /api/v1/integrations` | Eigene Integrationen inklusive Status und `last_sync_at` |
 | Integration | `POST /api/v1/integrations` | Anlegen aus dem Katalog; Zugangsdaten werden verschlüsselt gespeichert |
 | Integration | `PATCH /api/v1/integrations/{integration_id}` | Name, Config, Zugangsdaten oder `enabled` ändern |
@@ -260,6 +267,10 @@ Die drei Host-Pfade dürfen in `.env` optional auf andere absolute Verzeichnisse
 
 - `20260925_0001_initial_schema` erstellt das vollständige Basisschema einschließlich pgvector-Unterstützung.
 - `20260925_0002_open_study_sessions` ergänzt die eindeutige Beschränkung für höchstens eine offene Lernsession je Benutzer und Aufgabe.
+- `20260925_0003_integration_credentials` legt die verschlüsselten Zugangsdaten der Integrationen an.
+- `20260925_0004_add_fields` ergänzt `subjects.short_name` und `lessons.is_cancelled`.
+- `20260925_0005_greeting_cache` hält den Willkommenssatz je Nutzer und Tag.
+- `20260929_0006_task_manager` ergänzt Priorität und Fälligkeit an Lernaufgaben und legt `study_task_series` sowie `study_task_dependencies` an. Die Änderungen an `study_plan_tasks` laufen über `batch_alter_table`, weil SQLite kein `ALTER TABLE ... ADD CONSTRAINT` kennt.
 
 Der Backend-Entrypoint ist eine POSIX-Shell-Datei und wird ausdrücklich mit `/bin/sh` gestartet. Er führt zuerst aus:
 

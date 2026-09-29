@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, type FormEvent } from "react";
+import { useCallback, useRef, useState, type FormEvent } from "react";
 import { BookOpen, Check, CheckCircle2, Link2, LoaderCircle, Plus, RefreshCw, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,8 +24,9 @@ import {
 import { toDateTimeLocal, toUtcIso } from "@/lib/datetime";
 import { formatDateTime, formatDuration } from "@/lib/format";
 import { useCollection } from "@/lib/use-collection";
+import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
-import { MAX_TASK_PRIORITY, type StudyPlan, type StudyTask, type StudyTaskDependency, type StudyTaskInput, type StudyTaskState } from "@/lib/types";
+import { MAX_TASK_PRIORITY, type StudyPlan, type StudyTask, type StudyTaskDependency, type StudyTaskInput, type StudyTaskOrder, type StudyTaskState } from "@/lib/types";
 
 const ZUSTANDS_LABEL: Record<StudyTaskState, string> = {
   pending: "Offen",
@@ -80,9 +81,29 @@ function zahl(feld: string, min: number, max: number) {
   return Number.isInteger(wert) && wert >= min && wert <= max ? wert : null;
 }
 
+/**
+ * Die Reihenfolge ist eine Serverfrage, keine Clientfrage.
+ *
+ * Das Backend kennt `priority`, `due` und `position` und verteilt die
+ * Reihenfolge selbst. Eine zweite Sortierung hier waere eine zweite Wahrheit
+ * ueber dieselbe Sache - und genau die laeuft auseinander, sobald das Backend
+ * eine Regel erweitert.
+ */
+const ORDNUNG_LABEL: Record<StudyTaskOrder, string> = {
+  priority: "Nach Wichtigkeit",
+  due: "Nach Frist",
+  position: "Nach Reihenfolge",
+};
+
 export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: StudyPlan[]; onChanged?: () => void; refreshKey?: number }) {
+  // `ordnungRef` statt `ordnung`: `useCollection` haelt die Ladefunktion in
+  // einer Ref, damit der Ladeeffekt nicht bei jedem Rendern feuert. Die
+  // Auswahl aendert sich in einem Ereignishandler, in dem ein
+  // Ref-Schreibzugriff erlaubt ist - im Render waere er verboten.
+  const ordnungRef = useRef<StudyTaskOrder>("priority");
+  const [ordnung, setOrdnung] = useState<StudyTaskOrder>("priority");
   const sammlung = useCollection<StudyTask, StudyTaskInput, AufgabenAenderung>(
-    () => getStudyTasks(),
+    () => getStudyTasks({ order: ordnungRef.current }),
     {
       create: createStudyTask,
       update: (taskId, changes) => updateStudyTask(taskId, changes),
@@ -103,12 +124,35 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
     zustand: "",
   });
   const [formularFehler, setFormularFehler] = useState<string | null>(null);
+  /**
+   * Der gemeinsame "jetzt" fuer alle Ueberfaellig-Markierungen.
+   *
+   * `useNow()` liefert erst nach dem Mount eine Zeit. Bis dahin markiert
+   * nichts als ueberfaellig - das ist der harmlose Zustand, ein
+   * `Date.now()` im Render wuerde die Liste dagegen schon vor dem Mount
+   * treiben und ohne jede Aenderung falsch machen.
+   */
+  const jetzt = useNow()?.getTime() ?? null;
 
   const istSpeichern = sammlung.pending === "create" || sammlung.pending === `update:${bearbeitet}`;
 
   function oeffnen(aufgabe?: StudyTask) {
     setBearbeitet(aufgabe?.id ?? null);
-    setFormular(aufgabe ? ausAufgabe(aufgabe) : { ...formular, titel: "", beschreibung: "", geplant: "", faellig: "", zustand: "" });
+    setFormular(
+      aufgabe
+        ? ausAufgabe(aufgabe)
+        : {
+            ...formular,
+            titel: "",
+            beschreibung: "",
+            geplant: "",
+            faellig: "",
+            zustand: "",
+            // Nach dem Loeschen eines Plans zeigt das Auswahlfeld sonst eine
+            // Id, die es nicht mehr gibt, und das Absenden ergaebe ein 404.
+            plan: plans.some((plan) => String(plan.id) === formular.plan) ? formular.plan : (plans[0] ? String(plans[0].id) : ""),
+          },
+    );
     setFormularFehler(null);
     setFormularOffen(true);
   }
@@ -203,6 +247,27 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
 
       <CardContent className="space-y-4">
         <SectionBanner error={sammlung.error} actionError={sammlung.actionError} onRetry={() => void sammlung.reload()} />
+
+        <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+          Sortieren
+          <Select
+            value={ordnung}
+            onChange={(event) => {
+              const next = event.target.value as StudyTaskOrder;
+              ordnungRef.current = next;
+              setOrdnung(next);
+              void sammlung.reload();
+            }}
+            className="h-9 w-48"
+            aria-label="Aufgaben sortieren"
+          >
+            {(Object.keys(ORDNUNG_LABEL) as StudyTaskOrder[]).map((wert) => (
+              <option key={wert} value={wert}>
+                {ORDNUNG_LABEL[wert]}
+              </option>
+            ))}
+          </Select>
+        </label>
 
         {plans.length === 0 ? (
           <p className="border border-dashed border-border bg-muted/30 px-4 py-3 text-xs leading-5 text-muted-foreground">
@@ -358,7 +423,11 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
             <Skeleton className="h-24 w-full" />
           </div>
         ) : sammlung.items.length === 0 ? (
-          <EmptyState icon={BookOpen} title="Keine Lernaufgaben" description="Lege deine ersten Fokusblöcke an, oder erzeuge sie aus den Themen einer Prüfung." />
+          <EmptyState
+            icon={BookOpen}
+            title="Keine Lernaufgaben"
+            description="Lege deine ersten Fokusblöcke an. Einen ganzen Plan aus den Themen einer Prüfung erzeugt die Kachel „Prüfungen“ auf dem Dashboard."
+          />
         ) : (
           <ul className="space-y-2.5">
             {sammlung.items.map((aufgabe) => (
@@ -367,6 +436,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
                 aufgabe={aufgabe}
                 alle={sammlung.items}
                 busy={sammlung.pending !== null}
+                now={jetzt}
                 onEdit={() => oeffnen(aufgabe)}
                 onDelete={async () => {
                   const entfernt = await sammlung.remove(aufgabe.id);
@@ -396,6 +466,7 @@ function AufgabenZeile({
   aufgabe,
   alle,
   busy,
+  now,
   onEdit,
   onDelete,
   onAenderung,
@@ -403,6 +474,8 @@ function AufgabenZeile({
   aufgabe: StudyTask;
   alle: StudyTask[];
   busy: boolean;
+  /** Ein festgehaltener Zeitpunkt, damit alle Zeilen dieselbe "jetzt" kennen. */
+  now: number | null;
   onEdit: () => void;
   onDelete: () => void;
   onAenderung: () => void;
@@ -413,6 +486,11 @@ function AufgabenZeile({
   // doppelt - aber ohne es wuerde ein spaeterer Backend-Wechsel hier
   // stumm Erledigtes als Blocker zeigen.
   const blockiert = aufgabe.blocked_by.filter((voraussetzung) => voraussetzung.status !== "completed" && voraussetzung.status !== "cancelled");
+  // Eine abgelaufene Frist ist das Einzige, was den Zustand einer Zeile
+  // aendert, ohne dass etwas geklickt wurde. Sie bekommt den gemeinsamen
+  // Zeitpunkt der Karte, nicht einen eigenen je Zeile.
+  const ueberfaellig =
+    now !== null && !erledigt && aufgabe.status !== "cancelled" && aufgabe.due_date !== null && new Date(aufgabe.due_date).getTime() < now;
 
   return (
     <li className="border border-border bg-card/60 p-3.5">
@@ -446,7 +524,10 @@ function AufgabenZeile({
             {aufgabe.due_date ? (
               <>
                 <span className="text-border"> · </span>
-                fällig {formatDateTime(aufgabe.due_date)}
+                <span className={cn(ueberfaellig && "text-destructive")}>
+                  {ueberfaellig ? "überfällig " : "fällig "}
+                  {formatDateTime(aufgabe.due_date)}
+                </span>
               </>
             ) : null}
             {aufgabe.completed_at ? (

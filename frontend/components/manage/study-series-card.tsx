@@ -88,10 +88,12 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
             wiederholung: serie.recurrence,
             dauer: String(serie.duration_minutes),
             prioritaet: String(serie.priority),
-            // `starts_on` ist bei einer Serie der Beginn der Reihe, nicht der
-            // naechste Termin. Die Bearbeitung aendert nur die Vorlage, also
-            // gehoert dieses Feld gar nicht in das Formular.
-            start: toDateInput(serie.starts_on),
+            // Kein `start`: `starts_on` ist der Beginn der Reihe und nicht
+            // der naechste Termin. Die Bearbeitung aendert nur die Vorlage
+            // fuer kuenftige Aufgaben, deshalb wird das Feld im
+            // Bearbeitungsformular gar nicht angeboten. Ein leerer Wert
+            // genuegt dem Typ, weil `absenden` es nur beim Anlegen liest.
+            start: "",
             bis: toDateInput(serie.until),
             grenze: serie.occurrence_limit === null ? "" : String(serie.occurrence_limit),
           }
