@@ -142,6 +142,411 @@ export function parseDocumentAnswer(payload: unknown) {
   };
 }
 
+/*
+ * Akademische Stammdaten und Aufgaben.
+ *
+ * Anders als die weiter unten liegenden Blöcke sind das *echte* Schemata: sie
+ * validieren, was das Backend garantiert. `extra="forbid"` bleibt hier
+ * bewusst weg, weil die Antworten des Backends je nach Version Felder
+ * ergänzen dürfen, ohne dass die Oberfläche daran bricht - `passthrough()`
+ * wäre aber auch nicht richtig, denn dann prüft nichts.
+ */
+
+/** Ein optionaler Text: `null` und fehlende Angabe sind dasselbe. */
+const optionalText = z.string().nullable().optional();
+/** Ein optionaler Bezug auf ein anderes Objekt. */
+const optionalId = z.number().int().nullable().optional();
+
+export const subjectReadSchema = z.object({
+  id: z.number().int(),
+  name: z.string(),
+  color: z.string(),
+  teacher_id: optionalId,
+  description: optionalText,
+  source: z.string(),
+  external_id: optionalText,
+  created_at: z.string(),
+});
+
+export const homeworkReadSchema = z.object({
+  id: z.number().int(),
+  subject_id: optionalId,
+  subject_name: optionalText,
+  subject_color: optionalText,
+  title: z.string(),
+  description: optionalText,
+  due_date: z.string(),
+  completed: z.boolean(),
+  completed_at: optionalText,
+  source: z.string(),
+  external_id: optionalText,
+});
+
+export const examReadSchema = z.object({
+  id: z.number().int(),
+  subject_id: optionalId,
+  subject_name: optionalText,
+  subject_color: optionalText,
+  title: z.string(),
+  description: optionalText,
+  date: z.string(),
+  days_until: z.number().int().nullable().optional(),
+  source: z.string(),
+  external_id: optionalText,
+});
+
+export const calendarEventReadSchema = z.object({
+  id: z.number().int(),
+  title: z.string(),
+  description: optionalText,
+  start_time: z.string(),
+  end_time: z.string(),
+  all_day: z.boolean(),
+  source: z.string(),
+  external_id: optionalText,
+});
+
+/** `pending | in_progress | completed | cancelled` - siehe `StudyTaskStatus` im Backend. */
+export const studyTaskStatusSchema = z.enum(["pending", "in_progress", "completed", "cancelled"]);
+
+/** Die Serientypen aus `StudyTaskSeries.recurrence`. */
+export const studyTaskRecurrenceSchema = z.enum(["daily", "weekly", "biweekly", "monthly"]);
+
+/**
+ * Eine offene Vorbedingung.
+ *
+ * `task_id` braucht die Oberflaeche, um die Verknuepfung ohne einen zweiten
+ * Aufruf wieder loeschen zu koennen.
+ */
+export const studyTaskPrerequisiteSchema = z.object({
+  task_id: z.number().int(),
+  title: z.string(),
+  status: studyTaskStatusSchema,
+  due_date: optionalText,
+});
+
+export const studyTaskReadSchema = z.object({
+  id: z.number().int(),
+  study_plan_id: z.number().int(),
+  topic_id: optionalId,
+  subject_name: optionalText,
+  subject_color: optionalText,
+  topic_name: optionalText,
+  exam_id: optionalId,
+  exam_title: optionalText,
+  series_id: optionalId,
+  series_recurrence: studyTaskRecurrenceSchema.nullable().optional(),
+  title: z.string(),
+  description: optionalText,
+  duration_minutes: z.number().int(),
+  scheduled_for: optionalText,
+  due_date: optionalText,
+  priority: z.number().int(),
+  status: studyTaskStatusSchema,
+  order_index: z.number().int(),
+  completed_at: optionalText,
+  blocked_by: z.array(studyTaskPrerequisiteSchema),
+  blocking_task_ids: z.array(z.number().int()),
+});
+
+export const studyPlanReadSchema = z.object({
+  id: z.number().int(),
+  title: z.string(),
+  description: optionalText,
+  status: z.enum(["active", "paused", "finished"]),
+  starts_on: optionalText,
+  ends_on: optionalText,
+  task_count: z.number().int(),
+  open_task_count: z.number().int(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const studyTaskSeriesReadSchema = z.object({
+  id: z.number().int(),
+  study_plan_id: z.number().int(),
+  topic_id: optionalId,
+  subject_name: optionalText,
+  subject_color: optionalText,
+  topic_name: optionalText,
+  title: z.string(),
+  description: optionalText,
+  recurrence: studyTaskRecurrenceSchema,
+  duration_minutes: z.number().int(),
+  priority: z.number().int(),
+  starts_on: optionalText,
+  until: optionalText,
+  next_due_on: optionalText,
+  occurrences: z.number().int(),
+  occurrence_limit: z.number().int().nullable().optional(),
+  status: z.enum(["active", "finished", "cancelled"]),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const studyTaskDependencyReadSchema = z.object({
+  task_id: z.number().int(),
+  depends_on_task_id: z.number().int(),
+  created_at: z.string(),
+});
+
+export const examTaskPlanResultSchema = z.object({
+  exam_id: z.number().int(),
+  study_plan_id: z.number().int(),
+  created_tasks: z.array(studyTaskReadSchema),
+  created_count: z.number().int(),
+  skipped_count: z.number().int(),
+  first_due_on: optionalText,
+  last_due_on: optionalText,
+});
+
+/** Antwort von `POST /v1/study/tasks/{id}/start` - die einzige Aktion mit eigener Form. */
+export const studySessionReadSchema = z.object({
+  id: z.number().int(),
+  task_id: z.number().int(),
+  started_at: z.string(),
+  completed_at: optionalText,
+  duration_minutes: z.number().int().nullable().optional(),
+  notes: optionalText,
+});
+
+export const fileUploadResponseSchema = z.object({
+  id: z.number().int(),
+  filename: z.string(),
+  mime_type: optionalText,
+  path: z.string(),
+  checksum: optionalText,
+  status: optionalText,
+  created_at: optionalText,
+});
+
+export function parseSubjectArray(payload: unknown) {
+  return z.array(subjectReadSchema).parse(payload).map((entry) => ({
+    id: entry.id,
+    name: entry.name,
+    color: entry.color,
+    teacher_id: entry.teacher_id ?? null,
+    description: entry.description ?? null,
+    source: entry.source,
+    external_id: entry.external_id ?? null,
+    created_at: entry.created_at,
+  }));
+}
+
+export function parseSubjectRead(payload: unknown) {
+  return parseSubjectArray([payload])[0];
+}
+
+export function parseHomeworkArray(payload: unknown) {
+  return z.array(homeworkReadSchema).parse(payload).map((entry) => ({
+    id: entry.id,
+    subject_id: entry.subject_id ?? null,
+    subject_name: entry.subject_name ?? null,
+    subject_color: entry.subject_color ?? null,
+    title: entry.title,
+    description: entry.description ?? null,
+    due_date: entry.due_date,
+    completed: entry.completed,
+    completed_at: entry.completed_at ?? null,
+    source: entry.source,
+    external_id: entry.external_id ?? null,
+  }));
+}
+
+export function parseHomeworkRead(payload: unknown) {
+  return parseHomeworkArray([payload])[0];
+}
+
+export function parseExamArray(payload: unknown) {
+  return z.array(examReadSchema).parse(payload).map((entry) => ({
+    id: entry.id,
+    subject_id: entry.subject_id ?? null,
+    subject_name: entry.subject_name ?? null,
+    subject_color: entry.subject_color ?? null,
+    title: entry.title,
+    description: entry.description ?? null,
+    date: entry.date,
+    days_until: entry.days_until ?? null,
+    source: entry.source,
+    external_id: entry.external_id ?? null,
+  }));
+}
+
+export function parseExamRead(payload: unknown) {
+  return parseExamArray([payload])[0];
+}
+
+export function parseCalendarEventArray(payload: unknown) {
+  return z.array(calendarEventReadSchema).parse(payload).map((entry) => ({
+    id: entry.id,
+    title: entry.title,
+    description: entry.description ?? null,
+    start_time: entry.start_time,
+    end_time: entry.end_time,
+    all_day: entry.all_day,
+    source: entry.source,
+    external_id: entry.external_id ?? null,
+  }));
+}
+
+export function parseCalendarEventRead(payload: unknown) {
+  return parseCalendarEventArray([payload])[0];
+}
+
+export function parseStudyTaskArray(payload: unknown) {
+  return z.array(studyTaskReadSchema).parse(payload).map((entry) => ({
+    id: entry.id,
+    study_plan_id: entry.study_plan_id,
+    topic_id: entry.topic_id ?? null,
+    subject_name: entry.subject_name ?? null,
+    subject_color: entry.subject_color ?? null,
+    topic_name: entry.topic_name ?? null,
+    exam_id: entry.exam_id ?? null,
+    exam_title: entry.exam_title ?? null,
+    series_id: entry.series_id ?? null,
+    series_recurrence: entry.series_recurrence ?? null,
+    title: entry.title,
+    description: entry.description ?? null,
+    duration_minutes: entry.duration_minutes,
+    scheduled_for: entry.scheduled_for ?? null,
+    due_date: entry.due_date ?? null,
+    priority: entry.priority,
+    status: entry.status,
+    order_index: entry.order_index,
+    completed_at: entry.completed_at ?? null,
+    // Die Abhaengigkeiten sind Pflicht im Task-Manager, deshalb steht hier
+    // bewusst kein `?? []`: eine Antwort ohne sie waere ein Rueckwaerts-
+    // kompatibilitaetsfehler und soll auffallen.
+    blocked_by: entry.blocked_by.map((prerequisite) => ({
+      task_id: prerequisite.task_id,
+      title: prerequisite.title,
+      status: prerequisite.status,
+      due_date: prerequisite.due_date ?? null,
+    })),
+    blocking_task_ids: entry.blocking_task_ids,
+  }));
+}
+
+export function parseStudyTaskRead(payload: unknown) {
+  return parseStudyTaskArray([payload])[0];
+}
+
+export function parseStudyPlanArray(payload: unknown) {
+  return z.array(studyPlanReadSchema).parse(payload).map((entry) => ({
+    id: entry.id,
+    title: entry.title,
+    description: entry.description ?? null,
+    status: entry.status,
+    starts_on: entry.starts_on ?? null,
+    ends_on: entry.ends_on ?? null,
+    task_count: entry.task_count,
+    open_task_count: entry.open_task_count,
+    created_at: entry.created_at,
+    updated_at: entry.updated_at,
+  }));
+}
+
+export function parseStudyPlanRead(payload: unknown) {
+  return parseStudyPlanArray([payload])[0];
+}
+
+export function parseStudySeriesArray(payload: unknown) {
+  return z.array(studyTaskSeriesReadSchema).parse(payload).map((entry) => ({
+    id: entry.id,
+    study_plan_id: entry.study_plan_id,
+    topic_id: entry.topic_id ?? null,
+    subject_name: entry.subject_name ?? null,
+    subject_color: entry.subject_color ?? null,
+    topic_name: entry.topic_name ?? null,
+    title: entry.title,
+    description: entry.description ?? null,
+    recurrence: entry.recurrence,
+    duration_minutes: entry.duration_minutes,
+    priority: entry.priority,
+    starts_on: entry.starts_on ?? null,
+    until: entry.until ?? null,
+    next_due_on: entry.next_due_on ?? null,
+    occurrences: entry.occurrences,
+    occurrence_limit: entry.occurrence_limit ?? null,
+    status: entry.status,
+    created_at: entry.created_at,
+    updated_at: entry.updated_at,
+  }));
+}
+
+export function parseStudySeriesRead(payload: unknown) {
+  return parseStudySeriesArray([payload])[0];
+}
+
+export function parseStudyDependencyArray(payload: unknown) {
+  return z.array(studyTaskDependencyReadSchema).parse(payload);
+}
+
+export function parseStudyDependencyRead(payload: unknown) {
+  return studyTaskDependencyReadSchema.parse(payload);
+}
+
+export function parseExamTaskPlanResult(payload: unknown) {
+  const parsed = examTaskPlanResultSchema.parse(payload);
+  return {
+    exam_id: parsed.exam_id,
+    study_plan_id: parsed.study_plan_id,
+    created_tasks: parseStudyTaskArray(parsed.created_tasks),
+    created_count: parsed.created_count,
+    skipped_count: parsed.skipped_count,
+    first_due_on: parsed.first_due_on ?? null,
+    last_due_on: parsed.last_due_on ?? null,
+  };
+}
+
+export function parseStudySessionRead(payload: unknown) {
+  const parsed = studySessionReadSchema.parse(payload);
+  return {
+    id: parsed.id,
+    task_id: parsed.task_id,
+    started_at: parsed.started_at,
+    completed_at: parsed.completed_at ?? null,
+    duration_minutes: parsed.duration_minutes ?? null,
+    notes: parsed.notes ?? null,
+  };
+}
+
+export function parseFileUploadResponse(payload: unknown) {
+  const parsed = fileUploadResponseSchema.parse(payload);
+  return {
+    id: parsed.id,
+    filename: parsed.filename,
+    mime_type: parsed.mime_type ?? null,
+    path: parsed.path,
+    checksum: parsed.checksum ?? null,
+    status: parsed.status ?? null,
+    created_at: parsed.created_at ?? null,
+  };
+}
+
+/**
+ * Die Fach-Ids, die in Aufgaben und Terminen auftauchen.
+ *
+ * Die Lernenden pflegen Fachkuerzel und Hausaufgaben ueber getrennte Formulare;
+ * fuer den Picker reicht die Liste, die ohnehin geladen ist. Ohne Fach gibt es
+ * `[]` - das ist kein Fehler, sondern der Zustand eines frischen Kontos.
+ */
+export function collectSubjectNames(payload: unknown): Array<{ id: number; name: string }> {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+  const byId = new Map<number, string>();
+  for (const entry of payload) {
+    const parsed = subjectReadSchema.safeParse(entry);
+    if (parsed.success) {
+      byId.set(parsed.data.id, parsed.data.name);
+    }
+  }
+  return [...byId.entries()]
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, "de"));
+}
+
 // Minimal passthrough schemas for other data structures
 export const dashboardApiResponseSchema = z.object({}).passthrough();
 export type DashboardApiResponse = z.infer<typeof dashboardApiResponseSchema>;

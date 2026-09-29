@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseIntegrationSyncResult } from "./schemas";
-import { isDemoTaskId, normalizeDashboard, normalizeStudyAction } from "./types";
+import { isDemoTaskId, normalizeDashboard, normalizeStudyAction, normalizeStudyTask } from "./types";
 
 describe("Study-Normalisierung", () => {
   it("normalisiert eine Backend-Session mit Startzeit", () => {
@@ -43,6 +43,48 @@ describe("Study-Normalisierung", () => {
   it("erkennt Demo-Aufgaben", () => {
     expect(isDemoTaskId("demo-task-1")).toBe(true);
     expect(isDemoTaskId(7)).toBe(false);
+  });
+
+  it("haelt Wichtigkeit, Frist und Warteschlange fuer die Kachel fest", () => {
+    // Das sind die Angaben, an denen die Kachel "Heute lernen" haengt. Ohne
+    // sie koennte sie eine ueberfaellige Aufgabe nicht von einer normalen
+    // unterscheiden und wuesste nichts von einer blockierten.
+    const aufgabe = normalizeStudyTask({
+      id: 7,
+      subject_name: "Mathematik",
+      title: "Ableitungen",
+      duration_minutes: 25,
+      status: "pending",
+      priority: 4,
+      due_date: "2026-10-01T21:59:00.000Z",
+      blocked_by: [{ task_id: 3, title: "Grundlagen", status: "pending", due_date: null }],
+    });
+    expect(aufgabe.priority).toBe(4);
+    expect(aufgabe.dueDate).toBe("2026-10-01T21:59:00.000Z");
+    expect(aufgabe.blockedBy).toEqual(["Grundlagen"]);
+    expect(aufgabe.isSeries).toBe(false);
+  });
+
+  it("behandelt fehlende Frist als null und klemmt die Wichtigkeit", () => {
+    const ohneFrist = normalizeStudyTask({ id: 7, title: "Ableitungen", status: "pending" });
+    expect(ohneFrist.dueDate).toBeNull();
+    expect(ohneFrist.priority).toBe(0);
+    expect(ohneFrist.blockedBy).toEqual([]);
+
+    // Eine Wichtigkeit ausserhalb 0..5 gibt das Backend nicht zurueck. Sie
+    // wird hier trotzdem geklemmt, damit eine kaputte Antwort die Anzeige
+    // nicht sprengt - und nicht auf einen leeren Fortschrittsbalken fuehrt.
+    const zuHoch = normalizeStudyTask({ id: 8, title: "Klausur", status: "pending", priority: 99 });
+    expect(zuHoch.priority).toBe(5);
+    const zuNiedrig = normalizeStudyTask({ id: 9, title: "Klausur", status: "pending", priority: -3 });
+    expect(zuNiedrig.priority).toBe(0);
+  });
+
+  it("erkennt eine Serienaufgabe an beiden Kennzeichen", () => {
+    expect(normalizeStudyTask({ id: 1, title: "Vokabeln", status: "pending", is_series: true }).isSeries).toBe(true);
+    // Manche Aeltere Antworten kennen `is_series` nicht, tragen aber eine
+    // Serien-Id. Ohne den zweiten Weg bliebe die Kachel ohne Badge.
+    expect(normalizeStudyTask({ id: 1, title: "Vokabeln", status: "pending", series_id: 4 }).isSeries).toBe(true);
   });
 });
 

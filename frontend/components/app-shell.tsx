@@ -4,12 +4,16 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BookOpen,
   CalendarDays,
+  FolderTree,
+  GraduationCap,
   LayoutDashboard,
   ListChecks,
+  Settings,
   ShieldCheck,
   Sparkles,
-  Settings,
+  TrendingUp,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getInitials } from "@/lib/format";
@@ -23,17 +27,28 @@ interface AppShellProps {
   user?: UserResponse | null;
 }
 
+/**
+ * Die Seiten, die es inzwischen gibt.
+ *
+ * Reihenfolge ist die des Lerntags: erst der Plan, dann der Stundenplan, dann
+ * das, was heute ansteht. `mobile` ist die kuerzere Beschriftung - auf 375px
+ * bleiben bei acht Eintraegen sonst keine drei Worte pro Knopf uebrig.
+ */
 const navigation = [
-  { label: "Übersicht", href: "/#overview", icon: LayoutDashboard },
-  { label: "Stundenplan", href: "/#schedule", icon: CalendarDays },
-  { label: "Lernaufgaben", href: "/#study-tasks", icon: ListChecks },
-  { label: "Kalender", href: "/#calendar", icon: CalendarDays },
-  { label: "Nutzung", href: "/#usage", icon: ShieldCheck },
-  { label: "Einstellungen", href: "/settings", icon: Settings },
+  { label: "Übersicht", mobile: "Start", href: "/#overview", icon: LayoutDashboard },
+  { label: "Stundenplan", mobile: "Plan", href: "/#schedule", icon: CalendarDays },
+  { label: "Hausaufgaben", mobile: "Aufgaben", href: "/#homework", icon: BookOpen },
+  { label: "Prüfungen", mobile: "Prüfen", href: "/#exams", icon: TrendingUp },
+  { label: "Kalender", mobile: "Kalender", href: "/#calendar", icon: CalendarDays },
+  { label: "Lernen", mobile: "Lernen", href: "/lernen", icon: ListChecks },
+  { label: "Fächer", mobile: "Fächer", href: "/faecher", icon: GraduationCap },
+  { label: "Dokumente", mobile: "Dokumente", href: "/dokumente", icon: FolderTree },
+  { label: "Nutzung", mobile: "Nutzung", href: "/#usage", icon: ShieldCheck },
+  { label: "Einstellungen", mobile: "Mehr", href: "/settings", icon: Settings },
 ];
 
 /** Die Anker, die das Dashboard verlinkt, in Dokumentreihenfolge. */
-const sectionIds = ["overview", "focus", "schedule", "exams", "homework", "study-tasks", "usage", "calendar"] as const;
+const sectionIds = ["overview", "focus", "schedule", "study-tasks", "exams", "homework", "calendar", "usage"] as const;
 
 export function AppShell({ children, user }: AppShellProps) {
   const pathname = usePathname();
@@ -148,8 +163,15 @@ export function AppShell({ children, user }: AppShellProps) {
         </main>
       </div>
 
+      {/*
+        Zehn Eintraege passen nicht in ein Raster auf 375px: bei `grid-cols-6`
+        blieben knapp 60px je Knopf, das-laengste Label haette abgeschnitten
+        werden muessen. Deshalb waagerecht scrollbar mit fester Mindestbreite
+        je Eintrag - der Nutzer sieht damit, dass es weitergeht, statt dass ein
+        Teil der Navigation einfach fehlt.
+      */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 lg:hidden" aria-label="Mobile Navigation">
-        <div className="mx-auto grid max-w-lg grid-cols-6 gap-1">
+        <div className="mx-auto flex max-w-lg snap-x gap-1 overflow-x-auto">
           {navigation.map((item) => {
             const Icon = item.icon;
             const active = isNavigationHrefActive(pathname, item.href, activeHash);
@@ -159,12 +181,12 @@ export function AppShell({ children, user }: AppShellProps) {
                 href={item.href}
                 aria-current={active ? "location" : undefined}
                 className={cn(
-                  "flex min-h-14 flex-col items-center justify-center gap-1 px-1 text-[11px] font-bold transition-colors active:opacity-80",
+                  "flex min-h-14 min-w-[4.5rem] shrink-0 snap-start flex-col items-center justify-center gap-1 px-2 text-[11px] font-bold transition-colors active:opacity-80",
                   active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
                 <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
-                <span>{item.label === "Stundenplan" ? "Plan" : item.label === "Lernaufgaben" ? "Lernen" : item.label}</span>
+                <span>{item.mobile}</span>
               </Link>
             );
           })}

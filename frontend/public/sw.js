@@ -1,4 +1,8 @@
-const CACHE_NAME = "lernraum-static-v4";
+// v5: die Navigation hat drei eigene Routen bekommen (`/lernen`, `/faecher`,
+// `/dokumente`). Ohne Bump liefert der Cache die alte App-Shell aus, und die
+// Lernenden sehen eine Navigation ohne diese Eintraege, bis sie den Browser
+// hart aktualisieren. Der `activate`-Handler raeumt die alte Fassung dann ab.
+const CACHE_NAME = "lernraum-static-v5";
 const APP_SHELL = ["/offline/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {

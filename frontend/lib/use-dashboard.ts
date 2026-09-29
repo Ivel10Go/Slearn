@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { ApiError, getDashboard, getSession } from "./api";
 import type { DashboardData, UserResponse } from "./types";
 
-type DashboardStatus = "loading" | "ready" | "error" | "redirecting";
+type DashboardStatus = "loading" | "ready" | "error";
 
 interface DashboardState {
   data: DashboardData | null;
@@ -25,7 +24,6 @@ function errorMessage(error: unknown) {
 }
 
 export function useDashboard() {
-  const router = useRouter();
   const requestId = useRef(0);
   const [state, setState] = useState<DashboardState>({
     data: null,
@@ -44,8 +42,7 @@ export function useDashboard() {
         return;
       }
       if (!user) {
-        setState((current) => ({ ...current, status: "redirecting" }));
-        router.replace("/login?next=%2F");
+        setState((current) => ({ ...current, status: "error", error: "Es ist kein Benutzerkonto vorhanden." }));
         return;
       }
 
@@ -59,13 +56,12 @@ export function useDashboard() {
         return;
       }
       if (error instanceof ApiError && error.status === 401) {
-        setState((current) => ({ ...current, status: "redirecting" }));
-        router.replace("/login?next=%2F");
+        setState((current) => ({ ...current, status: "error", error: "Die Anmeldung ist deaktiviert, aber der Server verlangt sie." }));
         return;
       }
       setState((current) => ({ ...current, error: errorMessage(error), status: "error" }));
     }
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     void load();

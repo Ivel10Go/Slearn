@@ -74,6 +74,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(homework.router)
     application.include_router(exams.router)
     application.include_router(calendar.router)
+    # Drei Router aus einem Modul: Plaene, Serien und Aufgaben teilen sich
+    # die Routen, aber nicht das Praefix. Ohne alle drei sind die
+    # Abhaengigkeiten und der Aufgaben-Generator nicht erreichbar.
+    application.include_router(study.plans_router)
+    application.include_router(study.series_router)
     application.include_router(study.router)
     from app.api import documents, files, integrations
     application.include_router(integrations.router)

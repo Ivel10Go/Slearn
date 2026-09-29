@@ -3,15 +3,12 @@
 import { useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import Link from "next/link";
 import {
-  AlarmClock,
   BookOpen,
-  CalendarDays,
   Check,
   CheckCircle2,
   ChevronRight,
   Clock3,
   GraduationCap,
-  ListChecks,
   LoaderCircle,
   MapPin,
   Play,
@@ -21,7 +18,6 @@ import {
   Sparkles,
   Target,
   Timer,
-  TrendingUp,
   UserRound,
   X,
   Zap,
@@ -31,14 +27,15 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { CalendarSection } from "@/components/manage/calendar-section";
+import { ExamsSection } from "@/components/manage/exams-section";
+import { HomeworkSection } from "@/components/manage/homework-section";
 import { ApiError, askDocuments, completeStudyTask, startStudyTask, stopStudyTask } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   formatDate,
-  formatDueDate,
   formatDuration,
   formatTime,
-  getCountdown,
   getDayProgress,
   getLessonState,
 } from "@/lib/format";
@@ -137,18 +134,21 @@ function DashboardSkeleton() {
         </div>
         <Skeleton className="h-10 w-32" />
       </div>
-      <Skeleton className="h-52 w-full rounded-2xl" />
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(330px,0.85fr)]">
+      <Skeleton className="h-52 w-full" />
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Skeleton className="h-56 w-full" />
+        <Skeleton className="h-56 w-full" />
+      </div>
+      <Skeleton className="h-80 w-full" />
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <div className="space-y-6">
-          <Skeleton className="h-72 w-full rounded-2xl" />
-          <Skeleton className="h-96 w-full rounded-2xl" />
-          <Skeleton className="h-80 w-full rounded-2xl" />
+          <Skeleton className="h-80 w-full" />
+          <Skeleton className="h-96 w-full" />
+          <Skeleton className="h-72 w-full" />
         </div>
         <div className="space-y-6">
-          <Skeleton className="h-80 w-full rounded-2xl" />
-          <Skeleton className="h-72 w-full rounded-2xl" />
-          <Skeleton className="h-80 w-full rounded-2xl" />
-          <Skeleton className="h-64 w-full rounded-2xl" />
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-72 w-full" />
         </div>
       </div>
     </div>
@@ -222,114 +222,6 @@ function FocusLessonCard({ lesson, reference }: { lesson: DashboardLesson | unde
           </div>
         ) : (
           <EmptyState icon={GraduationCap} title="Keine Unterrichtsstunden" description="Für heute sind keine Stunden eingetragen. Nutze die Zeit für deine offenen Aufgaben." />
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function ExamsCard({ data, reference }: { data: DashboardData; reference: Date }) {
-  return (
-    <Card id="exams" className={anchorClass}>
-      <CardHeader className="flex-row items-start justify-between space-y-0 pb-4">
-        <div>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <TrendingUp className="h-5 w-5 text-primary" aria-hidden="true" />
-            Nächste Prüfungen
-          </CardTitle>
-          <CardDescription className="mt-1">Mit Countdown und Vorbereitungsfortschritt.</CardDescription>
-        </div>
-        <Badge variant="warning">{data.summary.upcomingExams} offen</Badge>
-      </CardHeader>
-      <CardContent>
-        {data.upcomingExams.length === 0 ? (
-          <EmptyState icon={CheckCircle2} title="Keine Prüfungstermine" description="Keine anstehenden Prüfungen. Genieße den klaren Blick." />
-        ) : (
-          <div className="space-y-4">
-            {data.upcomingExams.slice(0, 4).map((exam) => {
-              const countdown = getCountdown(exam.date, reference);
-              return (
-                <div key={exam.id} className="border border-border p-4 transition-colors hover:border-foreground hover:bg-muted/40">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">{exam.subject}</p>
-                      <h3 className="mt-1 truncate text-sm font-extrabold">{exam.title}</h3>
-                    </div>
-                    <Badge variant={countdown.isOverdue ? "outline" : countdown.days <= 3 ? "warning" : "info"}>
-                      {countdown.isOverdue ? "Vorbei" : countdown.label}
-                    </Badge>
-                  </div>
-                  <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-                    <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
-                    {formatDate(exam.date, { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}
-                  </div>
-                  {exam.topics.length > 0 ? (
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {exam.topics.slice(0, 3).map((topic) => (
-                        <span key={topic} className="rounded-md bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">
-                          {topic}
-                        </span>
-                      ))}
-                      {exam.topics.length > 3 ? <span className="rounded-md bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">+{exam.topics.length - 3}</span> : null}
-                    </div>
-                  ) : null}
-                  <div className="mt-4 flex items-center justify-between gap-3 text-xs font-semibold">
-                    <span className="text-muted-foreground">Vorbereitung</span>
-                    <span className={exam.progress === null ? "text-muted-foreground" : "text-primary"}>
-                      {exam.progress === null ? "noch nicht erfasst" : `${exam.progress}%`}
-                    </span>
-                  </div>
-                  {exam.progress === null ? null : <ProgressBar value={exam.progress} label={`Vorbereitung ${exam.subject}`} className="mt-2 h-1.5" />}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function HomeworkCard({ data, reference }: { data: DashboardData; reference: Date }) {
-  const openHomework = data.homework.filter((item) => !item.completed);
-  return (
-    <Card id="homework" className={anchorClass}>
-      <CardHeader className="flex-row items-start justify-between space-y-0 pb-4">
-        <div>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <ListChecks className="h-5 w-5 text-primary" aria-hidden="true" />
-            Offene Hausaufgaben
-          </CardTitle>
-          <CardDescription className="mt-1">Was als Nächstes auf deinem Schreibtisch wartet.</CardDescription>
-        </div>
-        <Badge variant={openHomework.length ? "warning" : "success"}>{openHomework.length} offen</Badge>
-      </CardHeader>
-      <CardContent>
-        {openHomework.length === 0 ? (
-          <EmptyState icon={CheckCircle2} title="Alles erledigt" description="Für heute sind keine offenen Hausaufgaben eingetragen." />
-        ) : (
-          <div className="space-y-3">
-            {openHomework.slice(0, 4).map((item) => (
-              <div key={item.id} className="flex gap-3 rounded-2xl border border-border/70 p-3.5">
-                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center bg-muted text-foreground">
-                  <BookOpen className="h-4 w-4" aria-hidden="true" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="truncate text-sm font-extrabold">{item.title}</p>
-                    <span className="text-xs font-semibold text-primary">{item.subject}</span>
-                  </div>
-                  {item.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{item.description}</p> : null}
-                  <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                    <AlarmClock className="h-3.5 w-3.5" aria-hidden="true" />
-                    <span className={cn(formatDueDate(item.dueDate, reference) === "Überfällig" && "text-destructive")}>{formatDueDate(item.dueDate, reference)}</span>
-                    <span className="text-border">·</span>
-                    <span>{formatDate(item.dueDate, { day: "2-digit", month: "short" })}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
         )}
       </CardContent>
     </Card>
@@ -558,46 +450,6 @@ function UsageCard({ data }: { data: DashboardData }) {
   );
 }
 
-function CalendarCard({ events }: { events: DashboardData["calendarEvents"] }) {
-  return (
-    <Card id="calendar" className={anchorClass}>
-      <CardHeader className="flex-row items-start justify-between space-y-0 pb-4">
-        <div>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <CalendarDays className="h-5 w-5 text-primary" aria-hidden="true" />
-            Kalender
-          </CardTitle>
-          <CardDescription className="mt-1">Termine und Erinnerungen für deinen Lernalltag.</CardDescription>
-        </div>
-        <Badge variant="secondary">{events.length} Termine</Badge>
-      </CardHeader>
-      <CardContent>
-        {events.length === 0 ? (
-          <EmptyState icon={CalendarDays} title="Keine Termine" description="Dein Kalender ist aktuell frei. Ein guter Moment zum Durchatmen." />
-        ) : (
-          <div className="space-y-3">
-            {events.slice(0, 4).map((event) => (
-              <div key={event.id} className="flex gap-3 rounded-2xl border border-border/70 p-3">
-                <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl bg-secondary text-secondary-foreground">
-                  <span className="text-[11px] font-bold uppercase">{formatDate(event.startTime, { month: "short" })}</span>
-                  <span className="text-lg font-extrabold leading-5">{formatDate(event.startTime, { day: "2-digit" })}</span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-extrabold">{event.title}</p>
-                  <p className="mt-1 text-xs font-semibold text-muted-foreground">
-                    {event.allDay ? "Ganztägig" : `${formatTime(event.startTime)} – ${formatTime(event.endTime)}`}
-                  </p>
-                  {event.description ? <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{event.description}</p> : null}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 function AnswerBadge({ answer }: { answer: DocumentAnswer }) {
   if (answer.source === "none") {
     return <Badge variant="outline">Keine Treffer</Badge>;
@@ -648,7 +500,7 @@ function AssistantCard() {
               <CardDescription className="mt-1">Stelle eine Frage zu deinen Unterlagen – die Antwort kommt mit Quellenangabe.</CardDescription>
             </div>
           </div>
-          <span className="hidden items-center gap-1.5 border border-border bg-background px-3 py-1.5 text-xs font-bold text-muted-foreground sm:inline-flex">
+          <span className="hidden items-center gap-1.5 border border-border bg-background px-3 py-1.5 text-xs font-bold text-muted-foreground xl:inline-flex">
             <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
             Deine Daten, deine Worte
           </span>
@@ -775,18 +627,27 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
         </CardContent>
       </Card>
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(330px,0.85fr)]">
+      <div className="grid items-start gap-6 xl:grid-cols-2">
+        <FocusLessonCard lesson={focusLesson} reference={reference} />
+        <AssistantCard />
+      </div>
+
+      {/*
+        Der Stundenplan steht über die volle Breite. Sieben Tage brauchen
+        sieben gleich breite Spalten - in der früheren Zweispalten-Schale blieben
+        rund 120px je Tag, und die Stundenzeiten waren nicht mehr ausgerichtet.
+      */}
+      <ScheduleCard />
+
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <div className="space-y-6">
-          <FocusLessonCard lesson={focusLesson} reference={reference} />
-          <AssistantCard />
-          <ScheduleCard />
+          <StudyTasksCard tasks={data.studyTasks} />
+          <ExamsSection reference={reference} />
+          <HomeworkSection reference={reference} />
         </div>
         <div className="space-y-6">
-          <ExamsCard data={data} reference={reference} />
-          <HomeworkCard data={data} reference={reference} />
-          <StudyTasksCard tasks={data.studyTasks} />
+          <CalendarSection reference={reference} />
           <UsageCard data={data} />
-          <CalendarCard events={data.calendarEvents} />
         </div>
       </div>
 

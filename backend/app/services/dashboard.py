@@ -27,6 +27,7 @@ from app.schemas.dashboard import (
 )
 from app.schemas.study import StudyTaskStatus
 from app.services.academic import lesson_teacher_name, subject_values
+from app.services.study import open_prerequisites_by_task
 
 
 def serialize_dashboard_payload(payload: Mapping[str, Any]) -> DashboardResponse:
@@ -79,11 +80,20 @@ def serialize_dashboard(
                 StudyPlanTask.user_id == user_id,
                 or_(StudyPlanTask.scheduled_for.is_(None), StudyPlanTask.scheduled_for >= day_start),
             )
-            .order_by(StudyPlanTask.scheduled_for.is_(None), StudyPlanTask.scheduled_for, StudyPlanTask.id)
+            # Prioritaet zuerst, wie im Task-Manager. Sonst schiebt eine
+            # Serienaufgabe ohne Termin die wichtigen Aufgaben aus dem Bild.
+            .order_by(
+                StudyPlanTask.priority.desc(),
+                StudyPlanTask.scheduled_for.is_(None),
+                StudyPlanTask.scheduled_for,
+                StudyPlanTask.id,
+            )
             .limit(100)
         ).all()
         if task.status != "cancelled"
     ]
+    task_ids = {task.id for task in study_tasks}
+    blocked_by_task = open_prerequisites_by_task(db, user_id, task_ids)
     calendar_events = list(
         db.scalars(
             select(CalendarEvent)
@@ -177,8 +187,14 @@ def serialize_dashboard(
                 topic_name=task.topic.name if task.topic else None,
                 title=task.title,
                 scheduled_for=as_utc(task.scheduled_for) if task.scheduled_for else None,
+                due_date=as_utc(task.due_date) if task.due_date else None,
+                priority=task.priority,
                 duration_minutes=task.duration_minutes,
                 status=cast(StudyTaskStatus, task.status),
+                # Nur die Titel: das Dashboard zeigt die Warteschlange an,
+                # aber nicht die Aufgaben dahinter.
+                blocked_by=[prerequisite.title for prerequisite in blocked_by_task.get(task.id, [])],
+                is_series=task.series_id is not None,
             )
         )
 

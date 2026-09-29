@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Compass, Home, LogIn } from "lucide-react";
+import { Compass, Home, Settings } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -28,9 +28,9 @@ export default function NotFound() {
               <Home aria-hidden="true" />
               Zur Übersicht
             </Link>
-            <Link href="/login" className={cn(buttonVariants({ variant: "outline" }), "w-full sm:w-auto")}>
-              <LogIn aria-hidden="true" />
-              Zur Anmeldung
+            <Link href="/settings" className={cn(buttonVariants({ variant: "outline" }), "w-full sm:w-auto")}>
+              <Settings aria-hidden="true" />
+              Zu den Einstellungen
             </Link>
           </div>
         </CardContent>

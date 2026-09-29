@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -15,15 +15,14 @@ import {
   formatTime,
   formatWeekNumber,
   getLessonState,
-  groupLessonSlots,
   isSameDay,
-  pickSlotLesson,
   startOfDay,
   startOfWeek,
+  toDate,
   toIsoDate,
 } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
-import { useParallelChoice, useScheduleRange } from "@/lib/use-schedule-range";
+import { useScheduleRange } from "@/lib/use-schedule-range";
 import type { DashboardLesson } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -42,21 +41,16 @@ const RANGE_OPTIONS: RangeOption[] = [
   { id: "week", label: "1 Woche", days: 7 },
 ];
 
-function isWeekend(day: Date) {
-  return day.getDay() === 0 || day.getDay() === 6;
-}
-
-function columnClasses(days: number) {
-  if (days <= 1) {
-    return "grid-cols-1";
-  }
-  if (days === 3) {
-    return "grid-cols-1 sm:grid-cols-3";
-  }
-  // Sieben Tage: auf einem Tablet im Querformat ist die Sidebar weg, es ist also
-  // mehr Platz als die 280px-Schale am Desktop vermuten lassen.
-  return "grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-7";
-}
+/** Breite der Zeitspalte links: "07:45" plus Luft. */
+const TIME_GUTTER = "4.25rem";
+/**
+ * Mindestbreite einer Tagesspalte.
+ *
+ * Der Raster waechst mit: unterhalb dieser Breite wuerde ein Kuerzel plus Raum
+ * umbrechen, also scrollt der Plan auf dem Telefon waagerecht, statt die
+ * Information zu zerhacken.
+ */
+const DAY_MIN_WIDTH = "8.75rem";
 
 function SegmentedControl<T extends string>({
   options,
@@ -93,158 +87,97 @@ function SegmentedControl<T extends string>({
   );
 }
 
+/** Hoehe einer Zelle nach Dauer - eine Doppelstunde soll auch doppelt so hoch sein. */
+function durationHeight(startTime: string, endTime: string) {
+  const start = toDate(startTime)?.getTime();
+  const end = toDate(endTime)?.getTime();
+  if (start === undefined || end === undefined) {
+    return "min-h-14";
+  }
+  const minutes = Math.round((end - start) / 60_000);
+  if (minutes >= 120) {
+    return "min-h-24";
+  }
+  if (minutes >= 80) {
+    return "min-h-20";
+  }
+  if (minutes >= 55) {
+    return "min-h-16";
+  }
+  return "min-h-14";
+}
+
 /**
- * Eine Stunde als eine Zeile: Uhrzeit, Kuerzel und Raum.
+ * Eine Stunde als Zelle im Raster.
  *
- * Ausgeschriebener Fachname, Titel und Lehrkraft stehen im Tooltip. Das haelt
- * die Zeile auf einer Zeile, was bei sieben Tagen den Unterschied ausmacht.
+ * Im Uebersichtsmodus - mehr als ein Tag - reichen Kuerzel und Raum. Der
+ * ausgeschriebene Fachname, der Titel und die Lehrkraft stehen im Tooltip; die
+ * Zelle waere sonst zweizeilig und das Raster verliert seine Hoehe.
  */
-function LessonTile({ lesson, reference }: { lesson: DashboardLesson; reference: Date }) {
+function LessonCell({ lesson, reference, detailed }: { lesson: DashboardLesson; reference: Date; detailed: boolean }) {
   const state = getLessonState(lesson, reference);
   const isCurrent = state === "current";
   return (
     <div
       className={cn(
-        "flex items-baseline gap-1.5 border-l-2 px-1.5 py-1 leading-tight transition-colors hover:bg-muted/50",
+        "flex h-full flex-col gap-0.5 border-l-2 px-2 py-1.5 leading-tight transition-colors hover:bg-muted/60",
+        durationHeight(lesson.startTime, lesson.endTime),
         isCurrent ? "border-foreground bg-muted" : "border-border/70",
-        state === "completed" && !isCurrent && "opacity-55",
+        state === "completed" && !isCurrent && "opacity-50",
         lesson.isCancelled && "opacity-70",
       )}
       title={`${lesson.subject}${lesson.title ? ` · ${lesson.title}` : ""} · ${formatTime(lesson.startTime)} – ${formatTime(lesson.endTime)} Uhr · ${lesson.room} · ${lesson.teacher}${lesson.isCancelled ? " · Entfallen" : ""}`}
     >
-      <span
-        className={cn(
-          "shrink-0 text-[11px] font-bold tabular-nums",
-          isCurrent ? "text-primary" : "text-muted-foreground",
-        )}
-      >
-        {formatTime(lesson.startTime)}
-      </span>
-      <span
-        className={cn(
-          "min-w-0 flex-1 truncate text-xs font-extrabold",
-          lesson.isCancelled && "line-through",
-        )}
-      >
-        {lesson.subjectShort}
-      </span>
-      {lesson.isCancelled ? (
-        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-destructive">Entfall</span>
-      ) : null}
-      <span className="shrink-0 truncate text-[11px] tabular-nums text-muted-foreground">{lesson.room}</span>
-    </div>
-  );
-}
-
-/** Auswahlleiste "F | L" fuer eine Lage mit parallelen Faechern. */
-function SlotPicker({
-  lessons,
-  selectedId,
-  onChoose,
-}: {
-  lessons: DashboardLesson[];
-  selectedId: string;
-  onChoose: (id: string) => void;
-}) {
-  return (
-    <div className="flex items-center gap-1" role="group" aria-label="Paralleles Fach wählen">
-      {lessons.map((lesson) => {
-        const aktiv = lesson.id === selectedId;
-        return (
-          <button
-            key={lesson.id}
-            type="button"
-            onClick={() => onChoose(lesson.id)}
-            aria-pressed={aktiv}
-            title={`${lesson.subject} · ${lesson.room}`}
-            className={cn(
-              "border px-1 py-px text-[10px] font-extrabold leading-none transition-colors active:opacity-80",
-              aktiv
-                ? "border-foreground bg-foreground text-background"
-                : "border-border/70 text-muted-foreground hover:border-foreground hover:text-foreground",
-              lesson.isCancelled && "line-through",
-            )}
-          >
-            {lesson.subjectShort}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function DayColumn({
-  day,
-  lessons,
-  reference,
-  isToday,
-  choices,
-  onChoose,
-}: {
-  day: Date;
-  lessons: DashboardLesson[];
-  reference: Date;
-  isToday: boolean;
-  choices: Record<string, string>;
-  onChoose: (slotKey: string, lessonId: string) => void;
-}) {
-  const weekend = isWeekend(day);
-  const slots = useMemo(() => groupLessonSlots(lessons), [lessons]);
-  return (
-    <section
-      className="min-w-0 border-t-2 border-border pt-1"
-      aria-label={formatDate(day, { weekday: "long", day: "2-digit", month: "long" })}
-    >
-      <div className="mb-1 flex items-baseline justify-between gap-1">
-        <span
-          className={cn(
-            "text-[11px] font-bold uppercase tracking-[0.12em]",
-            isToday ? "text-foreground underline underline-offset-4" : "text-muted-foreground",
-          )}
-        >
-          {formatDate(day, { weekday: "short" })}
-        </span>
-        <span className={cn("text-xs font-extrabold tabular-nums", weekend && "text-muted-foreground")}>
-          {formatDate(day, { day: "2-digit" })}
-        </span>
-      </div>
-      {slots.length === 0 ? (
-        <p
-          className={cn(
-            "border border-dashed border-border/70 px-1 py-3 text-center text-[10px] leading-4",
-            weekend ? "text-border" : "text-muted-foreground",
-          )}
-        >
-          {weekend ? "Wochenende" : "Frei"}
-        </p>
+      {detailed ? (
+        <>
+          <span className="flex items-baseline justify-between gap-2">
+            <span className="text-[11px] font-bold tabular-nums text-muted-foreground">
+              {formatTime(lesson.startTime)} – {formatTime(lesson.endTime)}
+            </span>
+            {isCurrent ? <span className="text-[10px] font-bold uppercase tracking-wide text-primary">Jetzt</span> : null}
+          </span>
+          <span className={cn("truncate text-sm font-extrabold", lesson.isCancelled && "line-through")}>{lesson.subject}</span>
+          {lesson.title ? <span className="truncate text-xs text-muted-foreground">{lesson.title}</span> : null}
+          <span className="truncate text-[11px] text-muted-foreground">
+            {[lesson.room, lesson.teacher].filter(Boolean).join(" · ")}
+          </span>
+        </>
       ) : (
-        <div className="space-y-0.5">
-          {slots.map((slot) => {
-            const gewaehlt = pickSlotLesson(slot.lessons, choices[slot.key] ?? null);
-            return (
-              <div key={slot.key} className="space-y-0.5">
-                {slot.lessons.length > 1 ? (
-                  <SlotPicker
-                    lessons={slot.lessons}
-                    selectedId={gewaehlt.id}
-                    onChoose={(id) => onChoose(slot.key, id)}
-                  />
-                ) : null}
-                <LessonTile lesson={gewaehlt} reference={reference} />
-              </div>
-            );
-          })}
-        </div>
+        <>
+          <span className={cn("truncate text-xs font-extrabold", lesson.isCancelled && "line-through")}>
+            {lesson.subjectShort ?? lesson.subject}
+          </span>
+          <span className="truncate text-[10px] text-muted-foreground">{lesson.room}</span>
+        </>
       )}
-    </section>
+      {lesson.isCancelled ? (
+        <span className="text-[9px] font-bold uppercase tracking-wide text-destructive">Entfallen</span>
+      ) : null}
+    </div>
   );
+}
+
+/** Spaltenbreiten als Inline-Style, weil die Tageszahl zur Laufzeit feststeht. */
+function gridTemplate(dayCount: number) {
+  const column = dayCount <= 1 ? "minmax(0, 1fr)" : `minmax(${DAY_MIN_WIDTH}, 1fr)`;
+  return `${TIME_GUTTER} repeat(${dayCount}, ${column})`;
+}
+
+interface GridRow {
+  startTime: string;
+  label: string;
+  /** Zellen je Tag; parallele Faecher stehen als Liste in derselben Zelle. */
+  cells: Array<DashboardLesson[]>;
+  isNow: boolean;
 }
 
 export function ScheduleCard() {
   const now = useNow();
   // "heute" aus dem Sekundentakt ableiten: kein zweiter State, und der Wechsel über Mitternacht passiert mit.
   const today = now ? startOfDay(now) : null;
-  const reference = now ?? new Date();
+  // Ohne useMemo wäre `reference` ein neuer Wert je Render und das Raster
+  // darunter würde bei jedem Ticken des Sekundentakts neu gebaut.
+  const reference = useMemo(() => now ?? new Date(), [now]);
 
   const [rangeId, setRangeId] = useState<RangeId>("week");
   const [offset, setOffset] = useState(0);
@@ -265,7 +198,6 @@ export function ScheduleCard() {
   const endIso = end ? toIsoDate(end) : "";
 
   const { lessons, error, status, reload } = useScheduleRange(startIso, endIso);
-  const { choices, choose } = useParallelChoice();
   const isLoading = status === "loading";
 
   function selectRange(next: RangeId) {
@@ -273,32 +205,84 @@ export function ScheduleCard() {
     setOffset(0);
   }
 
-  const visibleDays = start && end ? eachDay(start, end) : [];
-  const lessonsByDay = useMemo(() => {
-    const grouped = new Map<string, DashboardLesson[]>();
+  const visibleDays = useMemo(() => (start && end ? eachDay(start, end) : []), [start, end]);
+
+  /**
+   * Das Raster.
+   *
+   * Zeilen sind die *unterschiedlichen Startzeiten im ganzen Zeitraum*, nicht die
+   * Stunden eines einzelnen Tages. Nur so liegen 08:00 des Montags und 08:00 des
+   * Dienstags in derselben Zeile - ein Stundenplan ist daran erkennbar, dass man
+   * eine Zeile quer lesen kann. Zellen ohne Stunde bleiben als Haarlinie stehen,
+   * sonst zerfällt das Raster.
+   */
+  const grid = useMemo(() => {
+    const proTag = new Map<string, Map<string, DashboardLesson[]>>(visibleDays.map((day) => [toIsoDate(day), new Map()]));
+    const startZeiten = new Set<string>();
+
     for (const lesson of lessons ?? []) {
-      const key = toIsoDate(lesson.startTime);
-      grouped.set(key, [...(grouped.get(key) ?? []), lesson]);
+      const dayKey = toIsoDate(toDate(lesson.startTime) ?? new Date());
+      const spalten = proTag.get(dayKey);
+      if (!spalten) {
+        // Ausserhalb des sichtbaren Zeitraums - ein Reload nach einem
+        // Zeitsprung kann eine Randstunde mitbringen.
+        continue;
+      }
+      startZeiten.add(lesson.startTime);
+      const vorhanden = spalten.get(lesson.startTime);
+      if (vorhanden) {
+        vorhanden.push(lesson);
+      } else {
+        spalten.set(lesson.startTime, [lesson]);
+      }
     }
-    return grouped;
-  }, [lessons]);
+
+    const rows: GridRow[] = [...startZeiten]
+      .sort()
+      .map((startTime) => ({
+        startTime,
+        label: formatTime(startTime),
+        cells: visibleDays.map((day) => {
+          const treffer = proTag.get(toIsoDate(day))?.get(startTime);
+          if (!treffer) {
+            return [];
+          }
+          // Parallele Faecher alphabetisch nach Kuerzel, damit die Reihenfolge
+          // nicht davon abhaengt, in welcher Reihenfolge das Portal antwortet.
+          return treffer.slice().sort((a, b) => (a.subjectShort ?? a.subject).localeCompare(b.subjectShort ?? b.subject, "de"));
+        }),
+        isNow: visibleDays.some(
+          (day) =>
+            proTag.get(toIsoDate(day))?.get(startTime)?.some((lesson) => getLessonState(lesson, reference) === "current") ?? false,
+        ),
+      }));
+
+    const proTagAnzahl = new Map<string, number>();
+    for (const [dayKey, spalten] of proTag) {
+      let anzahl = 0;
+      for (const zelle of spalten.values()) {
+        anzahl += zelle.length;
+      }
+      proTagAnzahl.set(dayKey, anzahl);
+    }
+
+    return { rows, proTagAnzahl };
+  }, [lessons, visibleDays, reference]);
 
   const total = lessons?.length ?? 0;
+  const detailed = visibleDays.length === 1;
 
   return (
     <Card id="schedule" className="scroll-mt-24">
-      {/* Zwei Zeilen statt einer: Titel oben, Bedienelemente darunter. Mit einer
-          Zeile laufen sieben Tage plus Segmente, Pfeile und Reload auf
-          schmalen Fenstern aus der Karte. */}
-      <CardHeader className="gap-3 pb-3">
+      <CardHeader className="gap-3 pb-4">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <CardTitle className="flex items-center gap-1.5 text-sm font-extrabold">
             <CalendarDays className="h-4 w-4 text-primary" aria-hidden="true" />
             Stundenplan
           </CardTitle>
-          <CardDescription className="text-xs tabular-nums">
+          <span className="text-xs font-semibold tabular-nums text-muted-foreground">
             {start && end ? `${formatWeekNumber(start)} · ${formatDateRange(start, end)}` : "lädt …"}
-          </CardDescription>
+          </span>
           <Badge variant="secondary">{total}</Badge>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -323,7 +307,7 @@ export function ScheduleCard() {
               disabled={offset === 0}
               className="h-7 border-x border-border px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:opacity-80 disabled:pointer-events-none disabled:opacity-40"
             >
-              {offset === 0 ? "Heute" : `${offset > 0 ? "+" : ""}${offset * option.days}T`}
+              {offset === 0 ? (option.days === 1 ? "Heute" : "Aktuell") : `${offset > 0 ? "+" : ""}${offset * option.days}T`}
             </button>
             <button
               type="button"
@@ -337,6 +321,9 @@ export function ScheduleCard() {
           <Button type="button" variant="ghost" size="icon" onClick={reload} disabled={isLoading} aria-label="Stundenplan neu laden">
             <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} aria-hidden="true" />
           </Button>
+          <p className="hidden text-[11px] text-muted-foreground lg:block">
+            Zeilen sind Startzeiten, Spalten sind Tage.
+          </p>
         </div>
       </CardHeader>
 
@@ -348,11 +335,11 @@ export function ScheduleCard() {
         ) : null}
 
         {!start || !end ? (
-          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-48 w-full" />
         ) : isLoading ? (
-          <div className={cn("grid gap-2", columnClasses(visibleDays.length))}>
+          <div className="grid gap-2" style={{ gridTemplateColumns: gridTemplate(visibleDays.length) }}>
             {visibleDays.map((day) => (
-              <Skeleton key={toIsoDate(day)} className="h-32 w-full" />
+              <Skeleton key={toIsoDate(day)} className="h-48 w-full" />
             ))}
           </div>
         ) : total === 0 && !error ? (
@@ -362,18 +349,104 @@ export function ScheduleCard() {
             description="Für die gewählten Tage ist nichts eingetragen. Mit „Stundenplan aktualisieren“ in den Einstellungen holst du den Plan aus deinem Schulportal."
           />
         ) : (
-          <div className={cn("grid gap-2", columnClasses(visibleDays.length))}>
-            {visibleDays.map((day) => (
-              <DayColumn
-                key={toIsoDate(day)}
-                day={day}
-                lessons={lessonsByDay.get(toIsoDate(day)) ?? []}
-                reference={reference}
-                isToday={today ? isSameDay(day, today) : false}
-                choices={choices}
-                onChoose={choose}
-              />
-            ))}
+          <div className="-mx-1 overflow-x-auto px-1">
+            <div className="min-w-max">
+              {/*
+                `grid` definiert die Spalten, jede Zeile ist ein `subgrid` darueber.
+                Das haelt die Tages-Spalten ueber alle Zeilen exakt auf derselben
+                Position - mit `display: contents` statt `subgrid` faellt die
+                Ausrichtung genau in dem Browser weg, der `role="row"` aus dem
+                A11y-Baum entfernt.
+              */}
+              <div
+                role="grid"
+                aria-label="Stundenplan nach Tagen"
+                style={{ gridTemplateColumns: gridTemplate(visibleDays.length) }}
+                className="grid"
+              >
+                <div role="row" className="col-span-full grid grid-cols-subgrid">
+                  <div aria-hidden="true" className="sticky left-0 z-10 border-b border-border bg-card" />
+                  {visibleDays.map((day) => {
+                    const dayKey = toIsoDate(day);
+                    const istHeute = today ? isSameDay(day, today) : false;
+                    const anzahl = grid.proTagAnzahl.get(dayKey) ?? 0;
+                    return (
+                      <div
+                        key={dayKey}
+                        role="columnheader"
+                        aria-label={formatDate(day, { weekday: "long", day: "2-digit", month: "long" })}
+                        className={cn(
+                          "border-b border-l border-border px-2 pb-1.5 pt-1",
+                          istHeute ? "bg-muted" : "bg-card",
+                        )}
+                      >
+                        <div className="flex items-baseline justify-between gap-1">
+                          <span
+                            className={cn(
+                              "text-[11px] font-bold uppercase tracking-[0.12em]",
+                              istHeute ? "text-foreground underline underline-offset-[5px]" : "text-muted-foreground",
+                            )}
+                          >
+                            {formatDate(day, { weekday: "short" })}
+                          </span>
+                          <span className={cn("text-sm font-extrabold tabular-nums", istHeute ? "text-foreground" : "text-muted-foreground")}>
+                            {formatDate(day, { day: "2-digit" })}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                          {anzahl === 0
+                            ? day.getDay() === 0 || day.getDay() === 6
+                              ? "Wochenende"
+                              : "Frei"
+                            : `${anzahl} ${anzahl === 1 ? "Stunde" : "Stunden"}`}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {grid.rows.map((row) => (
+                  <div key={row.startTime} role="row" className="col-span-full grid grid-cols-subgrid">
+                    <div
+                      className={cn(
+                        "sticky left-0 z-10 flex flex-col items-end border-l border-t border-border px-2 pb-1.5 pt-1.5",
+                        row.isNow ? "bg-muted" : "bg-card",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "text-[11px] font-bold tabular-nums",
+                          row.isNow ? "text-primary underline underline-offset-[3px]" : "text-muted-foreground",
+                        )}
+                      >
+                        {row.label}
+                      </span>
+                    </div>                    {row.cells.map((cellLessons, dayIndex) => {
+                      const day = visibleDays[dayIndex];
+                      const istHeute = today ? isSameDay(day, today) : false;
+                      return (
+                        <div
+                          key={toIsoDate(day)}
+                          role="gridcell"
+                          className={cn(
+                            "border-l border-t border-border",
+                            istHeute ? "bg-muted/40" : "bg-card",
+                          )}
+                        >
+                          {cellLessons.length === 0 ? null : (
+                            <div className="flex flex-col">
+                              {cellLessons.map((lesson) => (
+                                <LessonCell key={lesson.id} lesson={lesson} reference={reference} detailed={detailed} />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </CardContent>

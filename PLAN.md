@@ -78,10 +78,11 @@
 
 Das Grundsystem steht: `StudyPlanTask` mit `start`/`stop`/`complete` (`app/api/study.py`). Offen ist die Tiefe, nicht das Fundament.
 
-- [ ] Priorität und Fälligkeitsdatum an Aufgaben
-- [ ] Serientyp für wiederkehrende Aufgaben (Vokabeln, Wiederholungsblätter)
-- [ ] Aufgaben aus Klausurthemen erzeugen statt sie nur zu verlinken
-- [ ] Abhängigkeiten zwischen Aufgaben, damit ein Lernplan eine Reihenfolge hat
+- [x] Priorität und Fälligkeitsdatum an Aufgaben (`study_plan_tasks.priority` / `.due_date`, 0–5 bzw. UTC-Zeitpunkt)
+- [x] Serientyp für wiederkehrende Aufgaben (Vokabeln, Wiederholungsblätter) — `study_task_series`, pro Abschluss genau eine Occurrence
+- [x] Aufgaben aus Klausurthemen erzeugen statt sie nur zu verlinken — `POST /api/v1/exams/{id}/tasks`, nach Lernstand sortiert und verkettet
+- [x] Abhängigkeiten zwischen Aufgaben, damit ein Lernplan eine Reihenfolge hat — `study_task_dependencies`, blockiert den Start bis zur offenen Voraussetzung
+- [x] Lernpläne überhaupt verwaltbar machen: ohne `/api/v1/study/plans` war keine Aufgabe aus der Oberfläche anlegbar
 
 ## Noten
 

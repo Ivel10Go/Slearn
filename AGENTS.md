@@ -12,6 +12,34 @@ Lokal betreibbarer Docker-Compose-Stack: Next.js 16 Frontend, FastAPI Backend, P
 | `postgres/init/` | pgvector-Aktivierung bei neuer DB. |
 | `data/` | Gitignoriert (bis auf `.gitkeep`). |
 
+## Task-Manager (`feature/task-manager`)
+
+Vier Planpunkte aus `PLAN.md` sind umgesetzt. Das Verzeichnis, bevor hier jemand zum zweiten Mal ansetzt:
+
+### Frontend-Architektur der Lernverwaltung
+
+- **Verwaltung liegt auf `/lernen`, nicht im Dashboard.** Drei Karten: `study-plans-card` (Pläne), `study-series-card` (Serien), `study-tasks-card` (Aufgaben), zusammengesetzt in `app/lernen/page.tsx`.
+- **Die Planliste wird oben einmal geladen und nach unten gereicht.** Grund: Serien und Aufgaben brauchen dieselbe Liste für ihre Auswahlfelder. Drei eigene Ladevorgänge wären drei Anfragen, und nach dem Anlegen eines Plans wüssten die anderen Karten den neuen Plan erst nach einem Neuladen.
+- **Zustandsänderungen zwischen den Karten laufen über einen `refreshKey`-Zähler, nicht über einen Ereignisbus.** Ein Bus wäre ein zweiter Weg, den Zustand zu ändern, und beim Lesen wäre nicht sichtbar, wer ihn auslöst.
+- **Eine blockierte Aufgabe wird nicht gesperrt dargestellt, sondern mit ihrem Blocker.** Der Start scheitert serverseitig mit 409; die Oberfläche zeigt die Warteschlange, statt den Knopf zu verstecken.
+- **Eine tote Sektion `study-tasks-section.tsx` gab es einmal** (ein Monolith mit allem in einer Karte). Sie ist gelöscht. Bei Zweifeln, welches der beiden Aufgabenkarten die richtige ist: es ist `components/manage/study-tasks-card.tsx`, die in `app/lernen` hängt.
+- **`useCollection` erlaubt inzwischen read-only.** `actions` ist optional. Das ist nötig, weil `exams-section.tsx` die Planliste zum Generator braucht, dort aber nichts anlegt. Ohne diese Ausnahme müsste jede read-only Sektion drei Attrappen bereitstellen.
+
+### Backend-Fallstricke
+
+- **Eine Serie erzeugt immer nur die *nächste* Occurrence**, und zwar beim `complete`. Eine Serie im Voraus anzulegen hieße, eine Liste zu erzeugen, die man durchklickt statt erledigt. `next_due_on` ist dabei bereits die *kommende* Occurrence, `advance_series()` zählt und rückt nach.
+- **`monthly` ist kein Vielfaches von 30 Tagen.** `add_months()` klemmt auf den Monatsende; der 31. Januar plus ein Monat wäre sonst der 3. März. `RECURRENCE_DAYS` enthält `monthly` deshalb **nicht** — wer sie erweitert, umgeht die Monatsrechnung.
+- **`occurrence_limit` heißt nicht `limit`.** `limit` ist ein reserviertes SQL-Schlüsselwort; SQLite lehnt die Spalte im `CREATE TABLE` mit `near "limit": syntax error` ab.
+- **Der Primärschlüssel von `study_task_dependencies` ist nur das Paar** `(task_id, depends_on_task_id)`, nicht `user_id`. Mit drei PK-Spalten findet `db.get(StudyTaskDependency, (a, b))` nichts, weil der Tuple nicht passt — und das zweite Anlegen einer Kante endet als 409 statt als No-Op.
+- **Zyklen werden beim Anlegen geprüft, nicht beim Starten.** `would_create_cycle()` läuft vom neuen Vorgänger zurück zur wartenden Aufgabe. Ohne diese Prüfung wäre die Kette nie erfüllbar, und die Kachel zeigte dauerhaft „Wartet auf …".
+- **Abhängigkeiten dürfen nur innerhalb eines Plans.** Über Plangrenzen hinweg wäre eine Reihenfolge sichtbar, die beim Sortieren des einen Plans gilt und im anderen nicht. Deshalb 422, nicht 409.
+- **`cancelled` gilt als erledigt für Abhängigkeiten.** Eine stornierte Aufgabe wird nie fertig; ihre Warte-Aufgaben dürfen nicht für immer blockiert bleiben. Deshalb filtert `open_prerequisites_by_task()` auf `status NOT IN ('completed', 'cancelled')`.
+- **Beim Löschen einer Aufgabe werden Abhängigkeiten in beide Richtungen entfernt.** Sonst wartet die hintere Aufgabe auf etwas, das es nicht mehr gibt, und es gibt nichts zu lösen.
+- **`priority` ist 0–5 und sortiert absteigend.** Höher = wichtiger. Die Voreinstellung der Liste ist `order=priority`, weil genau das der Grund für die Spalte ist; `due` und `position` gibt es zusätzlich.
+- **Der Klausur-Generator verteilt Themen *vorwärts* über das Fenster, nicht rückwärts vom Klausurtag.** Das schwächste Thema (niedrigste `LearningProgress.confidence`, ohne Wert = 0) bekommt den frühesten Termin und die höchste Priorität, weil es am meisten Vorlauf braucht. Die Aufgaben werden in dieser Reihenfolge verkettet. Ein Thema ohne Fortschrittswert gilt als unsicher und kommt nach vorn — ein fehlender Lernstand ist keine gute Nachricht.
+- **Ohne `exam.subject_id` oder ohne Themen gibt es 422 mit Klartext**, kein leeres 201. Die Oberfläche zeigt die Meldung an, statt eine leere Liste zu melden.
+- **Der Generator ist beim zweiten Klick idempotent**, solange `only_missing` gilt: übersprungen wird ein Thema, für das im selben Plan für dieselbe Klausur und dasselbe Thema schon eine nicht-stornierte Aufgabe hängt.
+
 ## Befehle
 
 PowerShell blockiert `npm.ps1` (Execution Policy) — **`npm.cmd` / `npx.cmd` verwenden**, sonst `PSSecurityException`.
@@ -46,9 +74,9 @@ Für Lint-/Type-Caches im Notfall auf ein anderes Laufwerk legen, falls C: wiede
 
 Nicht als Regressionen fehlinterpretieren:
 
-- `npm.cmd test` → **1 Fehlschlag**: `lib/types.test.ts` › "lehnt fehlerhafte API-Daten ab" (37 grün).
-- `npm.cmd run lint` → **22 Fehler**, ausschließlich `@typescript-eslint/no-explicit-any` in `lib/schemas.ts` und `lib/types.ts`. Absichtliche Arbeitsumgehung, kommentiert in `lib/types.ts:8`: die Zod-Schemas sind `z.object({}).passthrough()`-Stubs, die nichts validieren. `typecheck` ist dagegen sauber.
-- `python -m pytest` → **126 grün**, `ruff` und `mypy` sauber.
+- `npm.cmd test` → **1 Fehlschlag**: `lib/types.test.ts` › "lehnt fehlerhafte API-Daten ab" (85 grün).
+- `npm.cmd run lint` → **22 Fehler**, ausschließlich `@typescript-eslint/no-explicit-any` in `lib/schemas.ts` und `lib/types.ts`. Absichtliche Arbeitsumgehung, kommentiert in `lib/types.ts:8`: die Zod-Schemas sind `z.object({}).passthrough()`-Stubs, die nichts validieren. Die Task-Schemas sind inzwischen echte Schemas, deshalb bleibt die Zahl gleich. `typecheck` ist dagegen sauber.
+- `python -m pytest` → **154 grün**, `ruff` und `mypy` sauber.
 - Worker-Tests: 4 grün.
 
 ## Proxy-/API-Pfad-Falle
@@ -145,7 +173,7 @@ Geschlossen:
 
 Offen:
 
-5. **README nennt 2 Alembic-Revisionen, es gibt 5** (`0003` Integration-Credentials, `0004` `subjects.short_name` + `lessons.is_cancelled`, `0005` `greeting_cache`).
+5. ~~**README nennt 2 Alembic-Revisionen, es gibt 5**~~ → jetzt sind es **6**, alle im README aufgeführt (`0003` Integration-Credentials, `0004` `subjects.short_name` + `lessons.is_cancelled`, `0005` `greeting_cache`, `0006` Task-Manager).
 6. **Migrations-Start doppelt definiert**: `backend/Dockerfile:15` (CMD) und `backend-entrypoint.sh`. Compose überschreibt per `entrypoint:` und bindet das Skript read-only ein — Änderungen am Dockerfile-CMD wirken unter Compose nicht.
 7. **Root-`.dockerignore` ist `**` + `!worker/` + `!worker/**`** und gilt nur für den Worker-Build (Kontext `.`). Backend und Frontend haben eigene Kontexte und eigene `.dockerignore`. Braucht der Worker neue Dateien, muss die Root-`.dockerignore` erweitert werden.
 
