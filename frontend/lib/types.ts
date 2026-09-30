@@ -424,6 +424,117 @@ export interface StudySessionRecord {
   notes: string | null;
 }
 
+/**
+ * Der Lernstand eines Themas, wie `GET /v1/progress/topics` ihn liefert.
+ *
+ * `confidence_label` und `interval_days` kommen aus **einer** Tabelle im
+ * Backend. Die Oberflaeche haelt deshalb keine eigene: sonst koennten
+ * Bezeichnung und Intervall auseinanderlaufen, ohne dass es auffaellt.
+ *
+ * `next_review_on` ist ein Datum (``YYYY-MM-DD``) in der Zeitzone des Nutzers
+ * und ausdruecklich *kein* Zeitstempel. Deshalb bleibt es ein String, und
+ * `new Date(...)` waere hier der erste Schritt in die falsche Zone.
+ */
+export interface TopicProgress {
+  topic_id: number;
+  name: string;
+  subject_id: number | null;
+  subject_name: string | null;
+  confidence: number;
+  /**
+   * Die untere Grenze der Stufe, in die `confidence` faellt.
+   *
+   * Nicht dasselbe wie `confidence`: ein Aufrufer per API darf einen Wert
+   * zwischen zwei Stufen setzen, und das Auswahlfeld braucht trotzdem einen
+   * Wert, den es anwaehlen kann. Angezeigt wird die Stufe, denn die bestimmt
+   * das Intervall.
+   */
+  confidence_step: number;
+  confidence_label: string;
+  last_reviewed_at: string | null;
+  notes: string | null;
+  /** Ohne `last_reviewed_at` gibt es keinen Anker und damit kein Intervall. */
+  interval_days: number | null;
+  next_review_on: string | null;
+  days_until_review: number | null;
+  is_due: boolean;
+  /** Aus den Lernsessions der Aufgaben dieses Themas, nicht aus der Konfidenz. */
+  studied_minutes: number;
+  session_count: number;
+  updated_at: string;
+}
+
+/** Eine Konfidenzstufe als Angebot fuer das Auswahlfeld. */
+export interface ConfidenceStep {
+  value: number;
+  label: string;
+  interval_days: number;
+}
+
+/** Das Wochenziel und der Ist-Stand derselben Woche (Montag bis Sonntag). */
+export interface WeeklyGoal {
+  goal_minutes: number;
+  studied_minutes: number;
+  goal_reached: boolean;
+  percent: number;
+  days_studied: number;
+  days_remaining: number;
+  week_starts_on: string;
+  week_ends_on: string;
+}
+
+/** Die Serie aufeinanderfolgender Lerntage. `studied_today` heisst "heute schon". */
+export interface Streak {
+  current_days: number;
+  longest_days: number;
+  studied_today: boolean;
+  last_studied_on: string | null;
+  days_since_last: number | null;
+  window_days: number;
+}
+
+export interface DayTotal {
+  date: string;
+  minutes: number;
+  sessions: number;
+}
+
+/** Lernzeit je Fach. `subject_id` ist null fuer Aufgaben ohne Thema. */
+export interface SubjectStudyTime {
+  subject_id: number | null;
+  subject_name: string;
+  minutes: number;
+  sessions: number;
+  share_percent: number;
+  last_studied_at: string | null;
+}
+
+/** `weekday` zaehlt ISO: 0 = Montag, 6 = Sonntag. */
+export interface WeekdayStudyTime {
+  weekday: number;
+  label: string;
+  minutes: number;
+  sessions: number;
+}
+
+export interface LearningInsights {
+  generated_at: string;
+  timezone: string;
+  today: DayTotal;
+  week: WeeklyGoal;
+  streak: Streak;
+  by_subject: SubjectStudyTime[];
+  by_weekday: WeekdayStudyTime[];
+  /** Die Stufentabelle fuer das Auswahlfeld - vom Backend, nicht lokal. */
+  confidence_steps: ConfidenceStep[];
+  total_minutes: number;
+  total_sessions: number;
+  /** Offene Sessions zaehlen nicht in den Summen - sonst waeren sie doppelt. */
+  open_sessions: number;
+  active_minutes: number;
+  weekday_window_days: number;
+}
+
 export interface FileUploadResult {
   id: number;
   filename: string;

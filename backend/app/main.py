@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api import auth, calendar, dashboard, exams, greeting, health, homework, lessons, study, subjects
+from app.api import auth, calendar, dashboard, exams, greeting, health, homework, lessons, progress, study, subjects
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, log_event
 from app.db.entities import User
@@ -80,6 +80,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(study.plans_router)
     application.include_router(study.series_router)
     application.include_router(study.router)
+    # Lernfortschritt und Lernprotokoll. Ohne diese Zeile waeren die
+    # Fortschrittskarte und der erste Ort, an dem `LearningProgress`
+    # geschrieben wird, nicht erreichbar.
+    application.include_router(progress.router)
     from app.api import documents, files, integrations
     application.include_router(integrations.router)
     application.include_router(files.router)
