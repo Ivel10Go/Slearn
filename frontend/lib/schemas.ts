@@ -22,8 +22,18 @@ export const integrationCatalogSchema = z.object({
   label: z.string(),
   description: z.string(),
   required_config: z.array(z.string()),
+  /**
+   * Gruppen, von denen mindestens ein Feld kommen muss.
+   *
+   * Für ein iCalendar-Abo ist das `{url, path}`: eine Adresse **oder** eine
+   * Datei. Als flache Pflichtliste erschiene die Forderung widersprüchlich, als
+   * zwei einzelne Fehler wüsste die Oberfläche nicht, dass eines reicht.
+   */
+  required_one_of: z.array(z.array(z.string())),
   required_credentials: z.array(z.string()),
   optional_credentials: z.array(z.string()),
+  /** Kann in dieser Quelle geschrieben werden? Bestimmt, ob ein Sync-Knopf sinnvoll ist. */
+  supports_writing: z.boolean(),
 });
 
 export const integrationTestResultSchema = z.object({
@@ -44,9 +54,43 @@ export const integrationSyncResultSchema = integrationTestResultSchema.extend({
   indexed_chunks: z.number(),
   removed_documents: z.number(),
   skipped_files: z.number(),
+  /** Neu aus einer Kalenderquelle übernommene Termine. */
+  imported_events: z.number(),
+  /** Aus der Quelle übernommene Änderungen an bestehenden Terminen. */
+  updated_events: z.number(),
+  /** In der Quelle geschriebene Termine - nur nach ausdrücklicher Freigabe. */
+  pushed_events: z.number(),
+  /** In der Quelle gelöschte Termine. */
+  deleted_events: z.number(),
+  /** Lokal verschwundene Termine, die es in der Quelle nicht mehr gab. */
+  removed_events: z.number(),
+  /** Termine, die an beiden Seiten geändert wurden und offen geblieben sind. */
+  conflicts: z.number(),
+  /** Termine, die in der Datei ohne Zeitzone standen. */
+  floating_events: z.number(),
   window_start: z.string().nullable(),
   window_end: z.string().nullable(),
   last_sync_at: z.string().nullable(),
+});
+
+export const integrationAuthorizeSchema = z.object({
+  authorization_url: z.string(),
+  state: z.string(),
+  scopes: z.array(z.string()),
+  message: z.string(),
+});
+
+export const calendarWritingSchema = z.object({
+  share_calendar_for_writing: z.boolean(),
+  preference_key: z.string(),
+  uses: z.array(z.string()),
+});
+
+export const calendarFeedSchema = z.object({
+  url_path: z.string(),
+  active: z.boolean(),
+  rotated: z.boolean(),
+  message: z.string(),
 });
 
 export function parseIntegrationRead(payload: unknown) {
@@ -67,6 +111,18 @@ export function parseIntegrationTestResult(payload: unknown) {
 
 export function parseIntegrationSyncResult(payload: unknown) {
   return integrationSyncResultSchema.parse(payload);
+}
+
+export function parseIntegrationAuthorize(payload: unknown) {
+  return integrationAuthorizeSchema.parse(payload);
+}
+
+export function parseCalendarWriting(payload: unknown) {
+  return calendarWritingSchema.parse(payload);
+}
+
+export function parseCalendarFeed(payload: unknown) {
+  return calendarFeedSchema.parse(payload);
 }
 
 export const documentReadSchema = z.object({

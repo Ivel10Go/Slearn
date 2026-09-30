@@ -3,17 +3,25 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
-from datetime import date, datetime, time, timedelta, timezone
+from dataclasses import replace
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
+from app.core import oauth_state
 from app.core.config import Settings, normalize_database_url
 from app.core.crypto import decrypt_credentials, encrypt_credentials
+from app.core.oauth_state import OAuthStateError
 from app.core.security import create_session_token, hash_password
 from app.core.time import as_utc
 from app.db.entities import (
+    SYNC_STATE_DELETED,
+    SYNC_STATE_EDITED,
+    SYNC_STATE_SYNCED,
+    CalendarEvent,
     GreetingCache,
     LearningProgress,
     Lesson,
@@ -30,6 +38,7 @@ from app.db.entities import (
 )
 from app.main import create_app
 from app.schemas.auth import UserRead
+from app.services import calendar_consent, calendar_feed, calendar_sync, google_calendar
 from app.services import grades as grades_service
 from app.services import integrations as integrations_service
 from app.services.ai_provider import (
@@ -42,15 +51,31 @@ from app.services.ai_provider import (
     build_embeddings_url,
     build_models_url,
 )
+from app.services.caldav import CalDavClient
+from app.services.calendar_sync import (
+    CalendarAuthError,
+    CalendarConfigError,
+    CalendarConflictError,
+    CalendarNotWritableError,
+    CalendarSyncError,
+    CalendarSyncOutcome,
+    IcalAdapter,
+    RemoteBatch,
+    RemoteEvent,
+    sync_calendar,
+    window_bounds,
+)
 from app.services.dashboard import serialize_dashboard
 from app.services.demo_seed import seed_demo_data
 from app.services.documents import chunk_text, read_document_text
+from app.services.google_calendar import GoogleCalendarClient, GoogleOAuthError, OAuthTokens
 from app.services.grades import (
     GradeImportError,
     WeightedGrade,
     grade_priority,
     project_average,
 )
+from app.services.ical import ICalError, ICalEvent, build_calendar, parse_calendar
 from app.services.integration_scheduler import (
     IntegrationSyncScheduler,
     ScheduledSyncReport,
@@ -1085,10 +1110,37 @@ def test_integration_catalog_lists_all_kinds(app_client: TestClient) -> None:
     response = app_client.get("/api/v1/integrations/catalog")
     assert response.status_code == 200
     catalog = response.json()
-    assert [entry["kind"] for entry in catalog] == ["webuntis", "ai_provider", "documents"]
+    assert [entry["kind"] for entry in catalog] == [
+        "webuntis",
+        "ai_provider",
+        "documents",
+        "ical",
+        "google_calendar",
+        "caldav",
+    ]
     webuntis = next(entry for entry in catalog if entry["kind"] == "webuntis")
     assert webuntis["required_config"] == ["base_url", "school"]
     assert webuntis["required_credentials"] == ["username", "password"]
+
+    ical = next(entry for entry in catalog if entry["kind"] == "ical")
+    # `ical` verlangt **eine** von zwei Adressen, nicht beide. Das steht als
+    # `required_one_of` in der Antwort, damit die Oberfläche genau eine
+    # Alternatives-Feld-Alternative bauen kann.
+    assert ical["required_config"] == []
+    assert ical["required_one_of"] == [["url", "path"]]
+    assert ical["supports_writing"] is False
+
+    google = next(entry for entry in catalog if entry["kind"] == "google_calendar")
+    # `client_secret` ist ein Credential und kein Konfigurationsfeld: die
+    # Konfiguration steht im Klartext in einer JSON-Spalte.
+    assert google["required_config"] == ["client_id", "calendar_id", "redirect_uri"]
+    assert google["required_credentials"] == ["client_secret"]
+    assert google["optional_credentials"] == ["refresh_token", "token_scope"]
+    assert google["supports_writing"] is True
+
+    caldav_entry = next(entry for entry in catalog if entry["kind"] == "caldav")
+    assert caldav_entry["required_credentials"] == ["username", "password"]
+    assert caldav_entry["supports_writing"] is True
 
 
 def test_integrations_require_authentication(app_client: TestClient) -> None:
@@ -2329,8 +2381,10 @@ def test_sync_rejects_unknown_integration_type(
     app_context: tuple[TestClient, Session, User], settings: Settings
 ) -> None:
     _, db, user = app_context
+    # `ical` ist inzwischen eine echte Integrationsart und taugt hier nicht mehr
+    # als Beispiel für eine unbekannte - deshalb `mystery`.
     source = SyncSource(
-        user_id=user.id, source_type="ical", name="Kalender", configuration={"path": tmp_path_value()}
+        user_id=user.id, source_type="mystery", name="Kalender", configuration={"path": tmp_path_value()}
     )
     db.add(source)
     db.commit()
@@ -2612,7 +2666,7 @@ def test_run_integration_sync_rejects_an_unknown_kind(
     _client, db, user = app_context
     source = SyncSource(
         user_id=user.id,
-        source_type="ical",
+        source_type="mystery",
         name="Kalender",
         configuration={"path": tmp_path_value()},
     )
@@ -4631,3 +4685,1541 @@ def test_backup_status_of_a_disabled_runner_stays_read_only(app_client: TestClie
     assert "connection refused" in result["backup"]["last_error"]
     for method in ("post", "put", "patch", "delete"):
         assert getattr(app_client, method)("/api/v1/backups/status").status_code == 405
+
+
+# ===========================================================================
+# Kalender-Integrationen: ICS, Google, CalDAV und der Abgleich in beide Richtungen
+# ===========================================================================
+
+BERLIN = ZoneInfo("Europe/Berlin")
+
+
+def ics(*events: str, name: str = "Schulkalender") -> str:
+    """Baut einen iCalendar-Text aus fertigen ``VEVENT``-Bloecken."""
+    kopf = (
+        "BEGIN:VCALENDAR\r\n"
+        "VERSION:2.0\r\n"
+        "PRODID:-//test//DE\r\n"
+        f"X-WR-CALNAME:{name}\r\n"
+    )
+    return kopf + "".join(events) + "END:VCALENDAR\r\n"
+
+
+def vevent(
+    uid: str,
+    summary: str,
+    start: str,
+    end: str,
+    *,
+    params: str = "",
+    extra: str = "",
+) -> str:
+    return (
+        "BEGIN:VEVENT\r\n"
+        f"UID:{uid}\r\n"
+        "DTSTAMP:20260901T000000Z\r\n"
+        f"DTSTART{params}:{start}\r\n"
+        f"DTEND{params}:{end}\r\n"
+        f"SUMMARY:{summary}\r\n"
+        f"{extra}"
+        "END:VEVENT\r\n"
+    )
+
+
+def write_ics(root: Path, name: str = "schule.ics") -> Path:
+    """Legt eine ICS-Datei an, deren Termin **im Abruffenster** liegt.
+
+    Das Fenster beginnt am Montag der laufenden Woche; ein fest verdrahtetes
+    Datum aus einem Test von 2026 läge ausserhalb und der Abruf würde - völlig
+    richtig - nichts importieren.
+    """
+    ziel = root / name
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    tag = date.today() + timedelta(days=1)
+    ziel.write_text(
+        ics(
+            vevent(
+                "mathe-1",
+                "Mathe",
+                tag.strftime("%Y%m%dT080000"),
+                (tag + timedelta(hours=1)).strftime("%Y%m%dT090000"),
+                extra="SEQUENCE:1\r\n",
+            )
+        ),
+        encoding="utf-8",
+    )
+    return ziel
+
+
+def ics_ohne_schluessel(monkeypatch: pytest.MonkeyPatch, modul: object, handler: object) -> None:
+    """Schickt jeden von ``modul`` gebauten ``httpx.Client`` durch eine Attrappe."""
+    original = httpx.Client
+
+    def factory(*args: object, **kwargs: object) -> httpx.Client:
+        kwargs.pop("transport", None)
+        return original(*args, **kwargs, transport=httpx.MockTransport(handler))  # type: ignore[arg-type]
+
+    monkeypatch.setattr(modul.httpx, "Client", factory)
+
+
+def mock_google(monkeypatch: pytest.MonkeyPatch, handler: object) -> None:
+    """Derselbe Trick, aber global - die Google-Adapter bauen ihre Clients selbst.
+
+    ``original`` wird **vor** dem Patch festgehalten. Ohne das ruft die Attrappe
+    sich selbst auf, weil ``httpx.Client`` dann die Attrappe ist.
+    """
+    ics_ohne_schluessel(monkeypatch, SimpleNamespace(httpx=httpx), handler)
+
+
+class FakeAdapter:
+    """Ein Kalenderadapter, dessen Gegenseite für den Test vollständig bekannt ist.
+
+    Bewusst **kein** HTTP: die Regel in ``calendar_sync.sync_calendar`` ist der
+    Gegenstand dieser Tests, und eine Attrappe mit steuerbarem ``etag`` und
+    steuerbaren Antworten prüft sie ohne Netz, ohne Wartezeit und ohne Zufall.
+    Die drei echten Adapter haben eigene Tests mit gemockten Antworten.
+    """
+
+    kind = "caldav"
+    supports_writing = True
+
+    def __init__(self, events: list[RemoteEvent] | None = None) -> None:
+        self.remote = list(events or [])
+        self.pushed: list[tuple[RemoteEvent, str | None]] = []
+        self.deleted: list[tuple[str, str | None]] = []
+        self.conflict_on: set[str] = set()
+
+    def check_connection(self) -> str:
+        return "Die Gegenseite ist erreichbar."
+
+    def fetch_events(self, start: datetime, end: datetime) -> RemoteBatch:
+        return RemoteBatch(
+            events=tuple(ereignis for ereignis in self.remote if _overlaps(ereignis.start, ereignis.end, start, end)),
+        )
+
+    def push_event(self, event: RemoteEvent, etag: str | None) -> RemoteEvent:
+        if event.uid in self.conflict_on:
+            raise CalendarConflictError("Die Gegenseite hat zwischenzeitlich geändert.")
+        self.pushed.append((event, etag))
+        return replace(event, etag=f"neu-{event.uid}")
+
+    def delete_event(self, uid: str, etag: str | None) -> None:
+        if uid in self.conflict_on:
+            raise CalendarConflictError("Die Gegenseite hat zwischenzeitlich geändert.")
+        self.deleted.append((uid, etag))
+
+
+def _overlaps(start: datetime, end: datetime, window_start: datetime, window_end: datetime) -> bool:
+    return as_utc(start) < window_end and as_utc(end) > window_start
+
+
+def calendar_source(db: Session, user: User, kind: str = "caldav") -> SyncSource:
+    konfiguration = (
+        {"base_url": "https://kalender.example.org"}
+        if kind == "caldav"
+        else {"url": "https://kalender.example.org/k.ics"}
+    )
+    quelle = SyncSource(
+        user_id=user.id,
+        source_type=kind,
+        name="Kalender",
+        enabled=True,
+        configuration=konfiguration,
+        credentials=encrypt_credentials(
+            {"username": "lernende", "password": "app-passwort"}, "test-integration-encryption-key"
+        ),
+    )
+    db.add(quelle)
+    db.commit()
+    db.refresh(quelle)
+    return quelle
+
+
+def remote_event(uid: str, *, title: str = "Mathematik", etag: str = "v1") -> RemoteEvent:
+    return RemoteEvent(
+        uid=uid,
+        title=title,
+        start=datetime(2026, 9, 7, 8, 0, tzinfo=BERLIN),
+        end=datetime(2026, 9, 7, 9, 0, tzinfo=BERLIN),
+        etag=etag,
+    )
+
+
+def run_engine(
+    db: Session,
+    source: SyncSource,
+    adapter: FakeAdapter,
+    *,
+    allow_writing: bool = False,
+    timezone_name: str = "Europe/Berlin",
+) -> CalendarSyncOutcome:
+    return sync_calendar(
+        db,
+        source,
+        adapter,  # type: ignore[arg-type]
+        window_start=date(2026, 9, 7),
+        window_end=date(2026, 9, 11),
+        timezone_name=timezone_name,
+        allow_writing=allow_writing,
+    )
+
+
+def events_of(db: Session, user: User) -> list[CalendarEvent]:
+    db.expire_all()
+    return list(db.scalars(select(CalendarEvent).where(CalendarEvent.user_id == user.id)).all())
+
+
+def create_ical(client: TestClient, config: dict[str, str]) -> int:
+    antwort = client.post("/api/v1/integrations", json={"kind": "ical", "name": "Abo", "config": config})
+    assert antwort.status_code == 201, antwort.text
+    return int(antwort.json()["id"])
+
+
+GOOGLE_CONFIG = {
+    "client_id": "client.apps.googleusercontent.com",
+    "calendar_id": "primary",
+    "redirect_uri": "https://lernraum.example.org/api/backend/v1/integrations/1/oauth/callback",
+}
+
+
+def create_google(client: TestClient) -> int:
+    antwort = client.post(
+        "/api/v1/integrations",
+        json={"kind": "google_calendar", "name": "Google", "config": GOOGLE_CONFIG, "credentials": {"client_secret": "geheim"}},
+    )
+    assert antwort.status_code == 201, antwort.text
+    return int(antwort.json()["id"])
+
+
+# -- iCalendar lesen und schreiben -----------------------------------------
+
+
+def test_ics_liest_utc_und_feste_zone_unterschiedlich() -> None:
+    kalender = parse_calendar(
+        ics(
+            vevent("a", "In UTC", "20260907T060000Z", "20260907T070000Z", extra="SEQUENCE:1\r\n"),
+            vevent("b", "In Berlin", "20260908T080000", "20260908T090000", params=";TZID=Europe/Berlin"),
+        ),
+        BERLIN,
+    )
+    nach_utc, nach_berlin = kalender.events
+    assert nach_utc.start == datetime(2026, 9, 7, 6, 0, tzinfo=UTC)
+    assert nach_utc.floating is False
+    # 08:00 Europe/Berlin ist im September 06:00 UTC. Ohne die Umrechnung stuende
+    # hier 08:00 UTC und der Termin waere zwei Stunden daneben.
+    assert nach_berlin.start == datetime(2026, 9, 8, 6, 0, tzinfo=UTC)
+    assert nach_berlin.floating is False
+    assert kalender.name == "Schulkalender"
+
+
+def test_ics_liest_schwebende_zeit_in_der_nutzerzone() -> None:
+    """Ohne Zone in der Datei gibt es keine richtige Antwort, nur eine getroffene."""
+    kalender = parse_calendar(ics(vevent("a", "Ohne Zone", "20260907T080000", "20260907T090000")), BERLIN)
+    termin = kalender.events[0]
+    assert termin.floating is True
+    assert termin.start == datetime(2026, 9, 7, 8, 0, tzinfo=BERLIN)
+    assert as_utc(termin.start) == datetime(2026, 9, 7, 6, 0, tzinfo=UTC)
+
+
+def test_ics_liest_ganztaegige_und_gefaltene_termin_e() -> None:
+    text = (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//DE\r\n"
+        "BEGIN:VEVENT\r\nUID:ganz\r\nDTSTAMP:20260901T000000Z\r\n"
+        "DTSTART;VALUE=DATE:20260907\r\nDTEND;VALUE=DATE:20260909\r\n"
+        "SUMMARY:Freizeit\r\nEND:VEVENT\r\n"
+        # Absichtlich auf 75 Oktett gefaltet: die Fortsetzungszeile beginnt mit
+        # einem Leerzeichen und gehoert zum selben Termin.
+        "BEGIN:VEVENT\r\nUID:lang\r\nDTSTAMP:20260901T000000Z\r\n"
+        "DTSTART:20260910T080000Z\r\nDTEND:20260910T090000Z\r\n"
+        "SUMMARY:Ein sehr langer Titel, der ueber die Faltgrenze\r\n  hinausgeht\r\n"
+        "END:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+    ganz, lang = parse_calendar(text, BERLIN).events
+    assert ganz.all_day is True
+    # Ganztaegig ist DTEND exklusiv: der 7. und 8. enden am 9.
+    assert ganz.start.date() == date(2026, 9, 7)
+    assert ganz.end.date() == date(2026, 9, 9)
+    assert lang.summary == "Ein sehr langer Titel, der ueber die Faltgrenze hinausgeht"
+
+
+def test_ics_ueberspringt_wiederholungen_und_zaehlt_sie() -> None:
+    kalender = parse_calendar(
+        ics(
+            vevent("woche", "Mathe", "20260907T080000", "20260907T090000", extra="RRULE:FREQ=WEEKLY\r\n"),
+            vevent("einzeln", "Deutsch", "20260907T100000", "20260907T110000"),
+            vevent("", "Ohne UID", "20260907T120000", "20260907T130000"),
+        ),
+        BERLIN,
+    )
+    assert [termin.uid for termin in kalender.events] == ["einzeln"]
+    assert kalender.skipped == 2
+    assert any("Wiederholungen" in grund for grund in kalender.reasons)
+
+
+def test_ics_rundlauf_behaelt_utc_und_ganztaegig() -> None:
+    ursprung = [
+        ICalEvent(
+            uid="mit-umlaut",
+            summary="Mathe; Algebra, 2. Teil\\nZeile 2",
+            start=datetime(2026, 9, 7, 6, 0, tzinfo=UTC),
+            end=datetime(2026, 9, 7, 7, 0, tzinfo=UTC),
+        ),
+        ICalEvent(
+            uid="ganz",
+            summary="Ferien",
+            start=datetime(2026, 9, 7, 0, 0, tzinfo=UTC),
+            end=datetime(2026, 9, 9, 0, 0, tzinfo=UTC),
+            all_day=True,
+        ),
+    ]
+    text = build_calendar(ursprung, "Lernraum", "Europe/Berlin")
+    assert "DTSTART:20260907T060000Z" in text
+    assert "DTSTART;VALUE=DATE:20260907" in text
+    zurueck = parse_calendar(text, BERLIN)
+    assert zurueck.events[0].summary == ursprung[0].summary
+    assert zurueck.events[0].end == ursprung[0].end
+    assert zurueck.events[1].all_day is True
+
+
+def test_ics_weist_text_ab_der_kein_kalender_ist() -> None:
+    with pytest.raises(ICalError):
+        parse_calendar("Das ist kein Kalender.\r\n", BERLIN)
+
+
+def test_ics_fehlt_die_endzeit_und_die_dauer_wird_gestimmt() -> None:
+    text = (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//DE\r\n"
+        "BEGIN:VEVENT\r\nUID:kurz\r\nDTSTAMP:20260901T000000Z\r\nDTSTART:20260907T080000Z\r\n"
+        "SUMMARY:Kurz\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:lang\r\nDTSTAMP:20260901T000000Z\r\nDTSTART:20260907T080000Z\r\n"
+        "DURATION:PT90M\r\nSUMMARY:Lang\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:kaputt\r\nDTSTAMP:20260901T000000Z\r\nDTSTART:kein-datum\r\n"
+        "SUMMARY:Kaputt\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+    kalender = parse_calendar(text, BERLIN)
+    kurz, lang = kalender.events
+    assert kurz.end - kurz.start == timedelta(hours=1)
+    assert lang.end - lang.start == timedelta(minutes=90)
+    assert kalender.skipped == 1
+
+
+def test_ics_datei_ausserhalb_des_ablageordners_wird_abgelehnt(tmp_path: Path) -> None:
+    ordner = tmp_path / "ablage"
+    ordner.mkdir()
+    ausserhalb = tmp_path / "fremd.ics"
+    ausserhalb.write_text(ics(vevent("a", "Fremd", "20260907T080000Z", "20260907T090000Z")), encoding="utf-8")
+    adapter = IcalAdapter(url="", path=str(ausserhalb), storage_root=str(ordner), timezone_name="UTC", timeout_seconds=5.0)
+    with pytest.raises(CalendarConfigError, match="außerhalb"):
+        adapter.check_connection()
+
+
+def test_ical_liest_ueber_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    text = ics(vevent("a", "Mathe", "20260907T060000Z", "20260907T070000Z"))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/k.ics"
+        return httpx.Response(200, text=text)
+
+    ics_ohne_schluessel(monkeypatch, calendar_sync, handler)
+    adapter = IcalAdapter(
+        url="https://kalender.example.org/k.ics",
+        path="",
+        storage_root=".",
+        timezone_name="Europe/Berlin",
+        timeout_seconds=5.0,
+    )
+    assert "1 lesbare Termine" in adapter.check_connection()
+    assert adapter.fetch_events(datetime(2026, 9, 1, tzinfo=UTC), datetime(2026, 10, 1, tzinfo=UTC)).events[0].uid == "a"
+
+
+def test_ical_meldet_einen_fehlenden_server(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)
+
+    ics_ohne_schluessel(monkeypatch, calendar_sync, handler)
+    adapter = IcalAdapter(
+        url="https://kalender.example.org/k.ics", path="", storage_root=".", timezone_name="UTC", timeout_seconds=5.0
+    )
+    with pytest.raises(CalendarSyncError, match="HTTP 404"):
+        adapter.check_connection()
+
+
+# -- Die Regel: bei wem die Aenderung gewinnt ------------------------------
+
+
+def test_erster_abruf_importiert_und_merkt_sich_die_fassung(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    quelle = calendar_source(db, user)
+
+    ergebnis = run_engine(db, quelle, FakeAdapter([remote_event("mathe-1")]))
+
+    assert (ergebnis.imported_events, ergebnis.updated_events, ergebnis.conflicts) == (1, 0, 0)
+    termin = events_of(db, user)[0]
+    assert termin.title == "Mathematik"
+    assert termin.sync_state == SYNC_STATE_SYNCED
+    assert termin.remote_etag == "v1"
+    assert termin.source == "caldav"
+    # Der Schluessel traegt die Quellen-Id, sonst wuerfen zwei Abos mit derselben
+    # UID sich gegenseitig ueberschreiben.
+    assert termin.external_id == f"{quelle.id}:mathe-1"
+    # SQLite legt Zeitstempel ohne Zone ab; `as_utc` ist die Art, wie dieser
+    # Stack überall liest.
+    assert as_utc(termin.start_time) == datetime(2026, 9, 7, 6, 0, tzinfo=UTC)
+
+
+def test_fremde_aenderung_wird_uebernommen_wenn_lokal_nichts_passiert(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    quelle = calendar_source(db, user)
+    run_engine(db, quelle, FakeAdapter([remote_event("mathe-1")]))
+
+    ergebnis = run_engine(db, quelle, FakeAdapter([remote_event("mathe-1", title="Mathematik 2", etag="v2")]))
+
+    assert ergebnis.updated_events == 1
+    termin = events_of(db, user)[0]
+    assert termin.title == "Mathematik 2"
+    assert termin.remote_etag == "v2"
+
+
+def test_unveraenderter_fuehr_wird_nicht_neu_geschrieben(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    quelle = calendar_source(db, user)
+    run_engine(db, quelle, FakeAdapter([remote_event("mathe-1")]))
+
+    ergebnis = run_engine(db, quelle, FakeAdapter([remote_event("mathe-1")]))
+
+    assert (ergebnis.updated_events, ergebnis.imported_events) == (0, 0)
+
+
+def test_lokale_aenderung_gewinnt_gegen_das_ueberschreiben_durch_den_abruf(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """Der Kern der Bidirektionalitaet: was hier geaendert wurde, bleibt."""
+    _client, db, user = app_context
+    quelle = calendar_source(db, user)
+    run_engine(db, quelle, FakeAdapter([remote_event("mathe-1")]))
+
+    termin = events_of(db, user)[0]
+    termin.title = "Mathe (verschoben)"
+    termin.sync_state = SYNC_STATE_EDITED
+    db.commit()
+
+    ergebnis = run_engine(db, quelle, FakeAdapter([remote_event("mathe-1", title="Fremde Änderung", etag="v2")]))
+
+    assert ergebnis.updated_events == 0
+    nachher = events_of(db, user)[0]
+    assert nachher.title == "Mathe (verschoben)"
+    # Das etag bleibt auf v1 stehen: der Schreibvorgang vergleicht spaeter mit der
+    # Fassung, auf der sich die lokale Aenderung bezieht.
+    assert nachher.remote_etag == "v1"
+    assert nachher.sync_state == SYNC_STATE_EDITED
+    assert ergebnis.conflicts == 1
+
+
+def test_lokale_aenderung_wird_nachgeschoben(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    quelle = calendar_source(db, user)
+    gegner = FakeAdapter([remote_event("mathe-1")])
+    run_engine(db, quelle, gegner)
+
+    termin = events_of(db, user)[0]
+    termin.title = "Mathe (verschoben)"
+    termin.sync_state = SYNC_STATE_EDITED
+    db.commit()
+
+    ergebnis = run_engine(db, quelle, gegner, allow_writing=True)
+
+    assert ergebnis.pushed_events == 1
+    geschoben, etag = gegner.pushed[0]
+    assert geschoben.title == "Mathe (verschoben)"
+    assert etag == "v1"
+    nachher = events_of(db, user)[0]
+    assert nachher.sync_state == "synced"
+    assert nachher.remote_etag == "neu-mathe-1"
+
+
+def test_ohne_einwilligung_wird_nicht_geschrieben(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    quelle = calendar_source(db, user)
+    gegner = FakeAdapter([remote_event("mathe-1")])
+    run_engine(db, quelle, gegner)
+
+    termin = events_of(db, user)[0]
+    termin.sync_state = SYNC_STATE_EDITED
+    db.commit()
+
+    ergebnis = run_engine(db, quelle, gegner, allow_writing=False)
+
+    assert gegner.pushed == []
+    assert ergebnis.pushed_events == 0
+    # Der offene Zustand wird gezaehlt statt verschwiegen.
+    assert ergebnis.conflicts == 1
+    assert "offen geblieben" in ergebnis.describe()
+
+
+def test_widerspruch_bleibt_offen_und_verschleisst_nichts(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    quelle = calendar_source(db, user)
+    gegner = FakeAdapter([remote_event("mathe-1")])
+    run_engine(db, quelle, gegner)
+
+    termin = events_of(db, user)[0]
+    termin.title = "Lokal"
+    termin.sync_state = SYNC_STATE_EDITED
+    db.commit()
+    gegner.conflict_on.add("mathe-1")
+
+    ergebnis = run_engine(db, quelle, gegner, allow_writing=True)
+
+    assert ergebnis.conflicts == 1
+    nachher = events_of(db, user)[0]
+    assert nachher.title == "Lokal"
+    assert nachher.sync_state == SYNC_STATE_EDITED
+    assert nachher.remote_etag == "v1"
+
+
+def test_ein_konflikt_bricht_den_lauf_nicht_ab(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """Ein Abruf, der beim ersten Widerspruch abbricht, waere der schlechtere."""
+    _client, db, user = app_context
+    quelle = calendar_source(db, user)
+    gegner = FakeAdapter([remote_event("a"), remote_event("b"), remote_event("c")])
+    run_engine(db, quelle, gegner)
+    for termin in events_of(db, user):
+        termin.sync_state = SYNC_STATE_EDITED
+    db.commit()
+    gegner.conflict_on.add("a")
+
+    ergebnis = run_engine(db, quelle, gegner, allow_writing=True)
+
+    assert ergebnis.conflicts == 1
+    assert ergebnis.pushed_events == 2
+    assert sorted(geschoben.uid for geschoben, _ in gegner.pushed) == ["b", "c"]
+
+
+def test_geloeschter_termin_bleibt_grabstein_und_wird_dort_geloescht(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    quelle = calendar_source(db, user)
+    gegner = FakeAdapter([remote_event("mathe-1")])
+    run_engine(db, quelle, gegner)
+
+    termin = events_of(db, user)[0]
+    termin.sync_state = SYNC_STATE_DELETED
+    db.commit()
+
+    ergebnis = run_engine(db, quelle, gegner, allow_writing=True)
+
+    assert ergebnis.deleted_events == 1
+    assert gegner.deleted == [("mathe-1", "v1")]
+    assert events_of(db, user) == []
+
+
+def test_grabstein_ohne_einwilligung_bleibt_liegen(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    quelle = calendar_source(db, user)
+    gegner = FakeAdapter([remote_event("mathe-1")])
+    run_engine(db, quelle, gegner)
+
+    termin = events_of(db, user)[0]
+    termin.sync_state = SYNC_STATE_DELETED
+    db.commit()
+
+    ergebnis = run_engine(db, quelle, gegner, allow_writing=False)
+
+    assert gegner.deleted == []
+    assert ergebnis.conflicts == 1
+    assert events_of(db, user)[0].sync_state == SYNC_STATE_DELETED
+
+
+def test_in_der_quelle_geloeschte_termin_e_verschwinden_lokal(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    quelle = calendar_source(db, user)
+    run_engine(db, quelle, FakeAdapter([remote_event("mathe-1")]))
+
+    ergebnis = run_engine(db, quelle, FakeAdapter([]))
+
+    assert ergebnis.removed_events == 1
+    assert events_of(db, user) == []
+
+
+def test_lokal_geaenderter_termin_der_in_der_quelle_fehlt_wird_neu_angelegt(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    quelle = calendar_source(db, user)
+    gegner = FakeAdapter([remote_event("mathe-1")])
+    run_engine(db, quelle, gegner)
+
+    termin = events_of(db, user)[0]
+    termin.title = "Mathe (verschoben)"
+    termin.sync_state = SYNC_STATE_EDITED
+    db.commit()
+
+    run_engine(db, quelle, FakeAdapter([]))
+
+    nachher = events_of(db, user)[0]
+    assert nachher.title == "Mathe (verschoben)"
+    # Ohne etag legt der Schreibvorgang neu an, statt mit einem If-Match zu
+    # arbeiten, das garantiert fehlschlaegt.
+    assert nachher.remote_etag is None
+    run_engine(db, quelle, gegner, allow_writing=True)
+    assert gegner.pushed[0][1] is None
+
+
+def test_manuelle_termine_werden_vom_abruf_nicht_beruehrt(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    quelle = calendar_source(db, user)
+    db.add(
+        CalendarEvent(
+            user_id=user.id,
+            title="Klavierschule",
+            start_time=datetime(2026, 9, 7, 10, 0, tzinfo=UTC),
+            end_time=datetime(2026, 9, 7, 11, 0, tzinfo=UTC),
+        )
+    )
+    db.commit()
+
+    ergebnis = run_engine(db, quelle, FakeAdapter([]))
+
+    assert ergebnis.removed_events == 0
+    assert [termin.title for termin in events_of(db, user)] == ["Klavierschule"]
+
+
+def test_termine_einer_anderen_quelle_werden_nicht_beruehrt(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    erste = calendar_source(db, user)
+    zweite = SyncSource(
+        user_id=user.id,
+        source_type="caldav",
+        name="Zweiter Kalender",
+        enabled=True,
+        configuration={"base_url": "https://zwei.example.org"},
+    )
+    db.add(zweite)
+    db.commit()
+    db.refresh(zweite)
+    db.add(
+        CalendarEvent(
+            user_id=user.id,
+            sync_source_id=zweite.id,
+            title="Aus dem anderen Kalender",
+            source="caldav",
+            external_id=f"{zweite.id}:x",
+            start_time=datetime(2026, 9, 7, 10, 0, tzinfo=UTC),
+            end_time=datetime(2026, 9, 7, 11, 0, tzinfo=UTC),
+        )
+    )
+    db.commit()
+
+    run_engine(db, erste, FakeAdapter([]))
+
+    assert [termin.title for termin in events_of(db, user)] == ["Aus dem anderen Kalender"]
+
+
+def test_zwei_abos_mit_gleicher_uid_ueberschreiben_sich_nicht(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    erste = calendar_source(db, user)
+    zweite = calendar_source(db, user, kind="ical")
+
+    run_engine(db, erste, FakeAdapter([remote_event("gleich", title="Erster")]))
+    run_engine(db, zweite, FakeAdapter([remote_event("gleich", title="Zweiter")]))
+
+    assert sorted(termin.title for termin in events_of(db, user)) == ["Erster", "Zweiter"]
+
+
+def test_ical_wird_nie_geschrieben(tmp_path: Path) -> None:
+    """Ein Abo gehoert jemand anderem - unabhaengig von der Einwilligung."""
+    adapter = integrations_service.calendar_adapter(
+        "ical",
+        config={"url": "https://a.example/k.ics"},
+        credentials={},
+        document_storage_path=str(tmp_path),
+        timezone_name="Europe/Berlin",
+        timeout_seconds=5.0,
+    )
+    assert adapter.supports_writing is False
+    with pytest.raises(CalendarNotWritableError):
+        adapter.push_event(remote_event("x"), None)  # type: ignore[arg-type]
+    with pytest.raises(CalendarNotWritableError):
+        adapter.delete_event("x", None)  # type: ignore[arg-type]
+
+
+def test_abgleich_braucht_ein_aktiviertes_konto(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    quelle = calendar_source(db, user)
+    quelle.enabled = False
+    db.commit()
+    with pytest.raises(CalendarConfigError, match="deaktiviert"):
+        run_engine(db, quelle, FakeAdapter([]))
+
+
+def test_kein_kalenderadapter_fuer_unbekannte_art() -> None:
+    with pytest.raises(IntegrationValidationError, match="Kalenderadapter"):
+        integrations_service.calendar_adapter(
+            "webuntis", config={}, credentials={}, document_storage_path=".", timezone_name="UTC", timeout_seconds=1.0
+        )
+
+
+def test_fenster_ist_lokal_gerechnet() -> None:
+    """Mitternacht in Berlin ist am Vorabend in UTC - das Fenster beginnt also frueher."""
+    start, ende = window_bounds(date(2026, 9, 7), date(2026, 9, 7), BERLIN)
+    assert start == datetime(2026, 9, 6, 22, 0, tzinfo=UTC)
+    # Rechts offen einen Tag weiter, damit ein ganztaegiger Termin am letzten
+    # Tag nicht aus dem Fenster faellt.
+    assert ende == datetime(2026, 9, 7, 22, 0, tzinfo=UTC)
+
+
+# -- Google Kalender --------------------------------------------------------
+
+
+def test_google_baut_eine_autorisierungs_url_mit_offline_und_schreibrecht() -> None:
+    url = google_calendar.build_authorization_url(client_id="client.apps.googleusercontent.com", redirect_uri="https://a.example/r", state="signiert")
+    assert url.startswith(google_calendar.AUTHORIZATION_ENDPOINT)
+    assert "access_type=offline" in url
+    assert "response_type=code" in url
+    assert "state=signiert" in url
+    assert "calendar.events" in url
+
+
+def test_google_verlangt_client_id_und_weiterleitung() -> None:
+    with pytest.raises(GoogleOAuthError, match="Client-ID"):
+        google_calendar.build_authorization_url(client_id="", redirect_uri="https://a.example", state="s")
+    with pytest.raises(GoogleOAuthError, match="Weiterleitungs"):
+        google_calendar.build_authorization_url(client_id="id", redirect_uri="  ", state="s")
+
+
+def test_google_tauscht_den_code_gegen_ein_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/token"
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "zugriff",
+                "refresh_token": "dauer",
+                "expires_in": 3600,
+                "scope": google_calendar.SCOPES[0],
+            },
+        )
+
+    ics_ohne_schluessel(monkeypatch, google_calendar, handler)
+    tokens = google_calendar.exchange_code(
+        client_id="id", client_secret="geheim", code="der-code", redirect_uri="https://a.example"
+    )
+    assert tokens.refresh_token == "dauer"
+    assert tokens.access_token == "zugriff"
+
+
+def test_google_ohne_refresh_token_ist_ein_fehler(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ein Token ohne Refresh-Token waere nach einer Stunde tot."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"access_token": "kurz", "expires_in": 3600})
+
+    ics_ohne_schluessel(monkeypatch, google_calendar, handler)
+    with pytest.raises(GoogleOAuthError, match="Refresh-Token"):
+        google_calendar.exchange_code(
+            client_id="id", client_secret="geheim", code="code", redirect_uri="https://a.example"
+        )
+
+
+def test_google_braucht_einen_code() -> None:
+    with pytest.raises(GoogleOAuthError, match="Autorisierungscode"):
+        google_calendar.exchange_code(
+            client_id="id", client_secret="geheim", code="  ", redirect_uri="https://a.example"
+        )
+
+
+def test_access_token_landet_nicht_in_der_credential_blase() -> None:
+    """Nur der Refresh-Token ist langlebig; ein Zugriffstoken waere ein zweiter Weg."""
+    blase = google_calendar.tokens_to_credentials(
+        google_calendar.OAuthTokens(refresh_token="dauer", access_token="kurz", scope="calendar.events"),
+        {"client_secret": "geheim", "access_token": "alt"},
+    )
+    assert blase == {"client_secret": "geheim", "refresh_token": "dauer", "token_scope": "calendar.events"}
+    assert "kurz" not in str(blase)
+    assert "alt" not in str(blase)
+
+
+def google_client(calendar_id: str = "primary") -> GoogleCalendarClient:
+    return GoogleCalendarClient(
+        client_id="id",
+        client_secret="geheim",
+        calendar_id=calendar_id,
+        tokens=OAuthTokens(refresh_token="dauer", access_token="zugriff"),
+    )
+
+
+def test_google_holt_und_liest_termine(monkeypatch: pytest.MonkeyPatch) -> None:
+    gesehene: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/token":
+            return httpx.Response(200, json={"access_token": "neu", "expires_in": 3600})
+        gesehene.append(request.url.path)
+        return httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "id": "g1",
+                        "summary": "Sport",
+                        "etag": '"v9"',
+                        "updated": "2026-09-07T10:11:12.000Z",
+                        "start": {"dateTime": "2026-09-07T08:00:00+02:00"},
+                        "end": {"dateTime": "2026-09-07T09:30:00+02:00"},
+                    },
+                    {"id": "g2", "status": "cancelled", "start": {"dateTime": "2026-09-07T08:00:00+02:00"}},
+                    {"id": "g3", "start": {"date": "2026-09-08"}},
+                ]
+            },
+        )
+
+    mock_google(monkeypatch, handler)
+    with google_client() as client:
+        charge = client.fetch_events(datetime(2026, 9, 7, tzinfo=UTC), datetime(2026, 9, 14, tzinfo=UTC))
+    assert "/calendar/v3/calendars/primary/events" in gesehene
+    # Der abgebrochene Termin wird gezaehlt und nicht importiert.
+    assert charge.skipped == 1
+    sport, ganztag = charge.events
+    assert sport.uid == "g1"
+    assert sport.start == datetime(2026, 9, 7, 6, 0, tzinfo=UTC)
+    assert sport.etag == '"v9"'
+    assert ganztag.all_day is True
+
+
+def test_google_verbindungstest_nennt_den_kalender(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"summary": "Schule", "accessRole": "owner", "canWrite": True})
+
+    mock_google(monkeypatch, handler)
+    with google_client() as client:
+        text = client.check_connection()
+    assert "Schule" in text
+    assert "anlegen und ändern" in text
+
+
+def test_google_meldet_wenn_nur_gelesen_werden_kann(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"summary": "Fremd", "accessRole": "reader", "canWrite": False})
+
+    mock_google(monkeypatch, handler)
+    with google_client() as client:
+        assert "nicht anlegen oder ändern" in client.check_connection()
+
+
+def test_google_bei_401_ist_das_kein_konflikt_sondern_ein_zugang(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"error": {"message": "Invalid Credentials"}})
+
+    mock_google(monkeypatch, handler)
+    with google_client() as client, pytest.raises(CalendarAuthError, match="Invalid Credentials"):
+        client.fetch_events(datetime(2026, 9, 7, tzinfo=UTC), datetime(2026, 9, 14, tzinfo=UTC))
+
+
+def test_google_bei_412_ist_es_ein_konflikt(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(412, json={"error": {"message": "conditionNotMet"}})
+
+    mock_google(monkeypatch, handler)
+    with google_client() as client, pytest.raises(CalendarConflictError):
+        client.push_event(remote_event("g1"), '"alt"')
+
+
+def test_google_geloeschter_termin_gilt_als_erledigt(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"error": {"message": "notFound"}})
+
+    mock_google(monkeypatch, handler)
+    with google_client() as client:
+        client.delete_event("g1", '"v1"')
+
+
+def test_google_unbekannter_kalender_ist_ein_konfigurationsfehler(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"error": {"message": "Not Found"}})
+
+    mock_google(monkeypatch, handler)
+    with google_client() as client, pytest.raises(CalendarConfigError, match="Not Found"):
+        client.check_connection()
+
+
+def test_google_braucht_kalender_und_zugriff() -> None:
+    with pytest.raises(CalendarConfigError, match="Kalender-Id"):
+        google_client(calendar_id="")
+    with pytest.raises(CalendarAuthError, match="nicht eingerichtet"):
+        GoogleCalendarClient(
+            client_id="id",
+            client_secret="geheim",
+            calendar_id="primary",
+            tokens=OAuthTokens(refresh_token=""),
+        )
+
+
+def test_google_ohne_token_beschreibt_nur_die_lage() -> None:
+    assert "noch nicht eingerichtet" in google_calendar.describe_token_credentials({})
+    text = google_calendar.describe_token_credentials({"refresh_token": "d", "token_scope": "calendar.events"})
+    assert "Lesen und Schreiben" in text
+
+
+# -- CalDAV -----------------------------------------------------------------
+
+
+def caldav_client() -> CalDavClient:
+    return CalDavClient(
+        base_url="https://caldav.icloud.com/",
+        username="lernende@example.org",
+        password="app-spezifisches-passwort",
+        timezone_name="Europe/Berlin",
+        timeout_seconds=5.0,
+    )
+
+
+def test_caldav_verbindungstest_erkennt_das_schreibrecht(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "PROPFIND"
+        assert request.headers["depth"] == "0"
+        return httpx.Response(
+            207,
+            text=(
+                '<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:propstat><d:prop>'
+                "<d:current-user-principal><d:href>/principals/users/lernende</d:href></d:current-user-principal>"
+                "<d:current-user-privilege-set><d:privilege><d:write/></d:privilege>"
+                "</d:current-user-privilege-set></d:prop></d:propstat></d:response></d:multistatus>"
+            ),
+        )
+
+    mock_google(monkeypatch, handler)
+    with caldav_client() as client:
+        text = client.check_connection()
+    assert "lernende" in text
+    assert "anlegen und ändern" in text
+
+
+def test_caldav_verbindungstest_meldet_leserecht(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            207,
+            text=(
+                '<d:multistatus xmlns:d="DAV:"><d:response><d:propstat><d:prop>'
+                "<d:current-user-privilege-set><d:privilege><d:read/></d:privilege>"
+                "</d:current-user-privilege-set></d:prop></d:propstat></d:response></d:multistatus>"
+            ),
+        )
+
+    mock_google(monkeypatch, handler)
+    with caldav_client() as client:
+        assert "keine Termine anlegen" in client.check_connection()
+
+
+def test_caldav_liest_termine_mit_etag(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "REPORT"
+        assert "time-range" in request.content.decode()
+        kalender = ics(vevent("uid-1", "Orchester", "20260907T180000", "20260907T193000", params=";TZID=Europe/Berlin"))
+        eingebettet = kalender.replace("<", "&lt;").replace(">", "&gt;")
+        return httpx.Response(
+            207,
+            text=(
+                '<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+                "<d:response><d:href>/calendars/privat/uid-1.ics</d:href><d:propstat><d:prop>"
+                '<d:getetag>"a1b2"</d:getetag>'
+                "<d:getlastmodified>Mon, 07 Sep 2026 08:00:00 GMT</d:getlastmodified>"
+                f"<c:calendar-data>{eingebettet}</c:calendar-data>"
+                "</d:prop></d:propstat></d:response></d:multistatus>"
+            ),
+        )
+
+    mock_google(monkeypatch, handler)
+    with caldav_client() as client:
+        charge = client.fetch_events(datetime(2026, 9, 7, tzinfo=UTC), datetime(2026, 9, 14, tzinfo=UTC))
+    termin = charge.events[0]
+    assert termin.uid == "uid-1"
+    assert termin.etag == '"a1b2"'
+    assert termin.start == datetime(2026, 9, 7, 18, 0, tzinfo=BERLIN)
+    assert termin.modified_at == datetime(2026, 9, 7, 8, 0, tzinfo=UTC)
+
+
+def test_caldav_setzt_beim_ersetzen_eine_bedingung(monkeypatch: pytest.MonkeyPatch) -> None:
+    gesendet: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        gesendet.append(request)
+        return httpx.Response(201, headers={"ETag": '"neu"'})
+
+    mock_google(monkeypatch, handler)
+    with caldav_client() as client:
+        gespeichert = client.push_event(remote_event("uid-2"), '"alt"')
+        client.push_event(remote_event("uid-3"), None)
+    assert gesendet[0].headers["if-match"] == '"alt"'
+    assert "UID:uid-2" in gesendet[0].content.decode()
+    # Beim allerersten Anlegen gibt es nichts zu ueberschreiben, also keine
+    # Bedingung - eine Bedingung auf eine noch nicht existierende Fassung
+    # wuerde das Anlegen verhindern.
+    assert "if-match" not in gesendet[1].headers
+    assert gespeichert.etag == '"neu"'
+
+
+def test_caldav_412_ist_ein_konflikt_und_404_beim_loeschen_ist_erledigt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(412 if request.method == "PUT" else 404)
+
+    mock_google(monkeypatch, handler)
+    with caldav_client() as client, pytest.raises(CalendarConflictError):
+        client.push_event(remote_event("uid-4"), '"alt"')
+    with caldav_client() as client:
+        client.delete_event("uid-4", '"alt"')
+
+
+def test_caldav_401_nennt_den_typischen_fehler(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401)
+
+    mock_google(monkeypatch, handler)
+    with caldav_client() as client, pytest.raises(CalendarAuthError, match="app-spezifische"):
+        client.check_connection()
+
+
+def test_caldav_weist_unbrauchbare_adressen_ab() -> None:
+    with pytest.raises(CalendarConfigError, match="http"):
+        CalDavClient(base_url="nicht-eine-url", username="a", password="b")
+    with pytest.raises(CalendarConfigError, match="Abfrage"):
+        CalDavClient(base_url="https://a.example/x?y=1", username="a", password="b")
+    with pytest.raises(CalendarAuthError, match="app-spezifische"):
+        CalDavClient(base_url="https://a.example", username="a", password="")
+    with pytest.raises(CalendarAuthError, match="Apple-ID"):
+        CalDavClient(base_url="https://a.example", username="", password="b")
+
+
+def test_caldav_kalenderpfad_kann_gewaehlt_werden() -> None:
+    client = CalDavClient(
+        base_url="https://caldav.example.org",
+        username="a",
+        password="b",
+        calendar_path="/dav/calendars/lernende/privat/",
+    )
+    assert client._calendar_url().endswith("/dav/calendars/lernende/privat/")
+
+
+# -- Der signierte state ----------------------------------------------------
+
+
+def test_state_uebersteht_den_rundlauf() -> None:
+    token = oauth_state.sign_state(7, 3, "geheimer-schluessel")
+    claims = oauth_state.verify_state(token, "geheimer-schluessel")
+    assert (claims.subject, claims.actor) == (7, 3)
+    assert claims.nonce
+
+
+def test_state_ist_unveraenderlich() -> None:
+    token = oauth_state.sign_state(7, 3, "geheimer-schluessel")
+    with pytest.raises(OAuthStateError, match="verändert"):
+        oauth_state.verify_state(token, "anderer-schluessel")
+    with pytest.raises(OAuthStateError, match="state"):
+        oauth_state.verify_state(token[:-2] + "xy", "geheimer-schluessel")
+    with pytest.raises(OAuthStateError, match="state"):
+        oauth_state.verify_state("ohne-punkt", "geheimer-schluessel")
+
+
+def test_state_ist_zeitlich_befristet() -> None:
+    jetzt = 1_800_000_000.0
+    token = oauth_state.sign_state(7, 3, "geheimer-schluessel", now=jetzt)
+    with pytest.raises(OAuthStateError, match="abgelaufen"):
+        oauth_state.verify_state(token, "geheimer-schluessel", now=jetzt + oauth_state.DEFAULT_TTL_SECONDS + 1)
+    assert oauth_state.verify_state(token, "geheimer-schluessel", now=jetzt + 60)
+
+
+def test_state_aus_der_zukunft_wird_abgelehnt() -> None:
+    jetzt = 1_800_000_000.0
+    token = oauth_state.sign_state(7, 3, "geheimer-schluessel", now=jetzt)
+    with pytest.raises(OAuthStateError, match="Zukunft"):
+        oauth_state.verify_state(token, "geheimer-schluessel", now=jetzt - 3600)
+
+
+def test_state_braucht_einen_geheimen_schluessel_und_positive_werte() -> None:
+    token = oauth_state.sign_state(7, 3, "geheimer-schluessel")
+    with pytest.raises(OAuthStateError, match="geheime"):
+        oauth_state.verify_state(token, "")
+    with pytest.raises(OAuthStateError, match="positiv"):
+        oauth_state.sign_state(0, 3, "geheimer-schluessel")
+
+
+# -- Endpunkte --------------------------------------------------------------
+
+
+def test_kalender_routen_sind_registriert(app_client: TestClient) -> None:
+    pfade = {route.path for route in app_client.app.routes}
+    assert "/api/v1/calendar/events" in pfade
+    assert "/api/v1/calendar/writing" in pfade
+    assert "/api/v1/calendar/feed" in pfade
+    assert "/api/v1/calendar/feed/{token}" in pfade
+    assert "/api/v1/integrations/{integration_id}/authorize" in pfade
+    assert "/api/v1/integrations/{integration_id}/oauth/callback" in pfade
+
+
+def test_freigabe_zum_schreiben_ist_standardmaessig_aus(app_client: TestClient) -> None:
+    login(app_client)
+    koerper = app_client.get("/api/v1/calendar/writing").json()
+    assert koerper["share_calendar_for_writing"] is False
+    assert koerper["preference_key"] == "share_calendar_for_writing"
+    assert koerper["uses"]
+
+    assert app_client.put("/api/v1/calendar/writing", json={"enabled": True}).json()["share_calendar_for_writing"] is True
+    assert app_client.get("/api/v1/calendar/writing").json()["share_calendar_for_writing"] is True
+    assert app_client.put("/api/v1/calendar/writing", json={"enabled": False}).json()["share_calendar_for_writing"] is False
+    # Die anderen Schluessel in `preferences` bleiben stehen.
+    assert app_client.get("/api/v1/calendar/writing").status_code == 200
+
+
+def test_freigabe_und_kalender_brauchen_eine_sitzung(app_client: TestClient) -> None:
+    assert app_client.get("/api/v1/calendar/writing").status_code == 401
+    assert app_client.put("/api/v1/calendar/writing", json={"enabled": True}).status_code == 401
+    assert app_client.get("/api/v1/calendar/feed").status_code == 401
+    assert app_client.post("/api/v1/calendar/feed").status_code == 401
+
+
+def test_kaputte_kalendereinstellung_schaltet_die_freigabe_nicht_von_selbst_ein(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    db.add(UserSettings(user_id=user.id, preferences={"share_calendar_for_writing": "ja"}))
+    db.commit()
+    login(client)
+    assert client.get("/api/v1/calendar/writing").json()["share_calendar_for_writing"] is False
+    assert calendar_consent.calendar_writing_allowed(db, user.id) is False
+
+
+def test_freigabe_bleibt_je_nutzer_getrennt(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    fremder = User(username="fremd", password_hash=hash_password("x"), is_active=True, timezone="UTC")
+    db.add(fremder)
+    db.commit()
+    login(client)
+    assert client.put("/api/v1/calendar/writing", json={"enabled": True}).status_code == 200
+    assert calendar_consent.calendar_writing_allowed(db, user.id) is True
+    assert calendar_consent.calendar_writing_allowed(db, fremder.id) is False
+
+
+def test_abruf_von_google_ohne_die_freigabe(app_client: TestClient) -> None:
+    login(app_client)
+    id_ = create_google(app_client)
+
+    ohne_freigabe = app_client.post(f"/api/v1/integrations/{id_}/authorize")
+    assert ohne_freigabe.status_code == 422
+    assert "Freigabe zum Schreiben" in ohne_freigabe.json()["detail"]
+
+    app_client.put("/api/v1/calendar/writing", json={"enabled": True})
+    mit_freigabe = app_client.post(f"/api/v1/integrations/{id_}/authorize")
+    assert mit_freigabe.status_code == 200
+    koerper = mit_freigabe.json()
+    assert koerper["authorization_url"].startswith(google_calendar.AUTHORIZATION_ENDPOINT)
+    assert koerper["scopes"] == [google_calendar.SCOPES[0]]
+    assert app_client.get(f"/api/v1/integrations/{id_}").json()["status"] == "pending"
+
+
+def test_autorisierung_braucht_vollstaendige_angaben(app_client: TestClient) -> None:
+    login(app_client)
+    unvollstaendig = app_client.post(
+        "/api/v1/integrations",
+        json={"kind": "google_calendar", "name": "Unvollständig", "config": {"client_id": "abc"}},
+    )
+    assert unvollstaendig.status_code == 422
+
+
+def test_autorisierung_gibt_es_nur_fuer_google(app_client: TestClient) -> None:
+    login(app_client)
+    dokumente = app_client.post(
+        "/api/v1/integrations", json={"kind": "documents", "name": "Dokumente", "config": {"path": "dok"}}
+    )
+    assert dokumente.status_code == 201
+    # 404 statt 400: eine fremde Art zu autorisieren wuerde sonst verraten, dass
+    # die Id ueberhaupt existiert.
+    assert app_client.post(f"/api/v1/integrations/{dokumente.json()['id']}/authorize").status_code == 404
+    assert app_client.get(f"/api/v1/integrations/{dokumente.json()['id']}/oauth/callback").status_code == 404
+
+
+def test_autorisierung_ist_je_nutzer_getrennt(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    fremde = SyncSource(user_id=user.id + 100, source_type="google_calendar", name="Fremd", configuration={})
+    db.add(fremde)
+    db.commit()
+    login(client)
+    assert client.post(f"/api/v1/integrations/{fremde.id}/authorize").status_code == 404
+
+
+def test_rueckkehr_legt_das_token_verschluesselt_ab(
+    app_context: tuple[TestClient, Session, User], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, db, user = app_context
+    login(client)
+    id_ = create_google(client)
+    client.put("/api/v1/calendar/writing", json={"enabled": True})
+    state = client.post(f"/api/v1/integrations/{id_}/authorize").json()["state"]
+
+    monkeypatch.setattr(
+        google_calendar,
+        "exchange_code",
+        lambda **_: OAuthTokens(refresh_token="dauer-token", access_token="kurz", scope="calendar.events"),
+    )
+    antwort = client.get(f"/api/v1/integrations/{id_}/oauth/callback", params={"code": "der-code", "state": state})
+    assert antwort.status_code == 200
+    assert "text/html" in antwort.headers["content-type"]
+    assert "Google Kalender ist verbunden" in antwort.text
+    # Kein Geheimnis in der Seite, und ein Weg zurueck in die Einstellungen.
+    assert "der-code" not in antwort.text
+    assert 'href="/settings"' in antwort.text
+
+    db.expire_all()
+    quelle = db.get(SyncSource, id_)
+    assert quelle is not None and quelle.credentials is not None
+    assert quelle.credentials.startswith("sa1.")
+    assert "dauer-token" not in quelle.credentials
+    blase = decrypt_credentials(quelle.credentials, "test-integration-encryption-key")
+    assert blase["refresh_token"] == "dauer-token"
+    # Der Client-Schluessel ist nicht verloren gegangen, und der Zugriffstoken
+    # liegt nirgends im Klartext.
+    assert blase["client_secret"] == "geheim"
+    assert "kurz" not in str(blase)
+    assert client.get(f"/api/v1/integrations/{id_}").json()["status"] == "configured"
+
+
+def test_rueckkehr_mit_falschem_state_speichert_nichts(
+    app_context: tuple[TestClient, Session, User], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, db, user = app_context
+    login(client)
+    id_ = create_google(client)
+
+    def darf_nie_rufen(**_: object) -> OAuthTokens:
+        raise AssertionError("Ohne gültigen state darf der Code nicht getauscht werden.")
+
+    monkeypatch.setattr(google_calendar, "exchange_code", darf_nie_rufen)
+    antwort = client.get(f"/api/v1/integrations/{id_}/oauth/callback", params={"code": "x", "state": "gefaelscht"})
+    assert antwort.status_code == 200
+    assert "passt nicht" in antwort.text
+    db.expire_all()
+    quelle = db.get(SyncSource, id_)
+    assert quelle is not None
+    blase = decrypt_credentials(quelle.credentials or "", "test-integration-encryption-key")
+    assert "refresh_token" not in blase
+
+
+def test_rueckkehr_mit_state_einer_anderen_integration(
+    app_context: tuple[TestClient, Session, User], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, db, user = app_context
+    login(client)
+    erste = create_google(client)
+    zweite = client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "google_calendar",
+            "name": "Zweite",
+            "config": GOOGLE_CONFIG,
+            "credentials": {"client_secret": "geheim"},
+        },
+    ).json()["id"]
+    client.put("/api/v1/calendar/writing", json={"enabled": True})
+    fremder_state = client.post(f"/api/v1/integrations/{erste}/authorize").json()["state"]
+
+    monkeypatch.setattr(google_calendar, "exchange_code", lambda **_: OAuthTokens(refresh_token="dauer", access_token="k"))
+    antwort = client.get(f"/api/v1/integrations/{zweite}/oauth/callback", params={"code": "x", "state": fremder_state})
+    assert "anderen Autorisierung" in antwort.text
+
+
+def test_rueckkehr_mit_abgebrochener_einwilligung(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    id_ = create_google(client)
+    client.put("/api/v1/calendar/writing", json={"enabled": True})
+    state = client.post(f"/api/v1/integrations/{id_}/authorize").json()["state"]
+    antwort = client.get(
+        f"/api/v1/integrations/{id_}/oauth/callback",
+        params={"code": "x", "state": state, "error": "access_denied"},
+    )
+    assert "abgebrochen" in antwort.text
+    assert "access_denied" in antwort.text
+    db.expire_all()
+    quelle = db.get(SyncSource, id_)
+    assert quelle is not None and quelle.credentials is not None
+    assert "refresh_token" not in decrypt_credentials(quelle.credentials, "test-integration-encryption-key")
+
+
+def test_rueckkehr_ohne_sitzung_geht_nicht(app_client: TestClient) -> None:
+    id_ = 999
+    assert app_client.get(f"/api/v1/integrations/{id_}/oauth/callback", params={"code": "x"}).status_code == 401
+
+
+def test_ical_verlangt_eine_adresse_oder_einen_pfad(app_client: TestClient) -> None:
+    login(app_client)
+    ohne = app_client.post("/api/v1/integrations", json={"kind": "ical", "name": "Abo", "config": {}})
+    assert ohne.status_code == 422
+    assert "url oder path" in ohne.json()["detail"]
+
+    mit_url = app_client.post(
+        "/api/v1/integrations", json={"kind": "ical", "name": "Abo", "config": {"url": "https://a.example/k.ics"}}
+    )
+    assert mit_url.status_code == 201
+    assert mit_url.json()["missing_fields"] == []
+    assert mit_url.json()["config"]["url"] == "https://a.example/k.ics"
+
+
+def test_sync_endpoint_meldet_die_kalenderzahlen(
+    app_context: tuple[TestClient, Session, User], tmp_path: Path
+) -> None:
+    client, db, user = app_context
+    login(client)
+    id_ = create_ical(client, {"path": str(write_ics(tmp_path))})
+
+    koerper = client.post(f"/api/v1/integrations/{id_}/sync").json()
+    assert koerper["ok"] is True
+    assert koerper["imported_events"] == 1
+    assert koerper["window_start"] is not None
+    assert koerper["window_end"] is not None
+    assert client.get("/api/v1/calendar/events").json()[0]["title"] == "Mathe"
+    # Ein zweiter Abruf darf nichts doppelt anlegen.
+    assert client.post(f"/api/v1/integrations/{id_}/sync").json()["imported_events"] == 0
+    assert len(client.get("/api/v1/calendar/events").json()) == 1
+
+
+def test_kalenderverbindungstest_liest_die_quelle(
+    app_context: tuple[TestClient, Session, User], tmp_path: Path
+) -> None:
+    client, db, user = app_context
+    datei = write_ics(tmp_path)
+    login(client)
+    id_ = create_ical(client, {"path": str(datei)})
+
+    koerper = client.post(f"/api/v1/integrations/{id_}/test").json()
+    assert koerper["ok"] is True
+    assert "lesbare Termine" in koerper["message"]
+
+    datei.unlink()
+    defekt = client.post(f"/api/v1/integrations/{id_}/test").json()
+    assert defekt["ok"] is False
+    assert defekt["status"] == "error"
+    assert "nicht gefunden" in defekt["message"]
+
+
+def test_sync_meldet_keine_fehlende_freigabe_als_fehler(
+    app_context: tuple[TestClient, Session, User], tmp_path: Path
+) -> None:
+    """Lesen darf ohne Freigabe stattfinden - nur das Schreiben nicht."""
+    client, db, user = app_context
+    login(client)
+    id_ = create_ical(client, {"path": str(write_ics(tmp_path))})
+    assert client.post(f"/api/v1/integrations/{id_}/sync").json()["ok"] is True
+    assert client.get("/api/v1/calendar/writing").json()["share_calendar_for_writing"] is False
+
+
+def test_terminaenderung_merkt_sich_die_lokale_entscheidung(
+    app_context: tuple[TestClient, Session, User], tmp_path: Path
+) -> None:
+    client, db, user = app_context
+    datei = write_ics(tmp_path)
+    login(client)
+    id_ = create_ical(client, {"path": str(datei)})
+    client.post(f"/api/v1/integrations/{id_}/sync")
+    ereignis = client.get("/api/v1/calendar/events").json()[0]
+
+    geaendert = client.patch(f"/api/v1/calendar/events/{ereignis['id']}", json={"title": "Mathe (verschoben)"}).json()
+    assert geaendert["sync_state"] == "edited"
+
+    # Und die Quelle liefert danach dieselbe Zeile: die Aenderung darf nicht
+    # beim naechsten Abruf verschwinden.
+    client.post(f"/api/v1/integrations/{id_}/sync")
+    assert client.get("/api/v1/calendar/events").json()[0]["title"] == "Mathe (verschoben)"
+
+
+def test_terminloeschung_bei_einer_quelle_wird_zum_grabstein(
+    app_context: tuple[TestClient, Session, User], tmp_path: Path
+) -> None:
+    client, db, user = app_context
+    login(client)
+    id_ = create_ical(client, {"path": str(write_ics(tmp_path))})
+    client.post(f"/api/v1/integrations/{id_}/sync")
+    ereignis = client.get("/api/v1/calendar/events").json()[0]
+
+    assert client.delete(f"/api/v1/calendar/events/{ereignis['id']}").status_code == 200
+    assert client.get("/api/v1/calendar/events").json() == []
+    assert client.get(f"/api/v1/calendar/events/{ereignis['id']}").status_code == 404
+
+    db.expire_all()
+    zeile = db.get(CalendarEvent, ereignis["id"])
+    assert zeile is not None
+    assert zeile.sync_state == SYNC_STATE_DELETED
+    assert zeile.is_tombstone is True
+
+
+def test_handtermine_werden_beim_loeschen_echt_entfernt(app_client: TestClient) -> None:
+    login(app_client)
+    ereignis = app_client.post(
+        "/api/v1/calendar/events",
+        json={"title": "Klavierschule", "start_time": "2026-09-07T10:00:00Z", "end_time": "2026-09-07T11:00:00Z"},
+    ).json()
+    assert ereignis["sync_state"] == "synced"
+    assert ereignis["sync_source_id"] is None
+    assert app_client.delete(f"/api/v1/calendar/events/{ereignis['id']}").status_code == 200
+    assert app_client.get("/api/v1/calendar/events").json() == []
+
+
+def test_grabstein_laesst_sich_nicht_bearbeiten(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    ereignis = client_calendar_event(client, user, db, title="Orchester")
+    db.get(CalendarEvent, ereignis).sync_state = SYNC_STATE_DELETED  # type: ignore[union-attr]
+    db.commit()
+    assert client.patch(f"/api/v1/calendar/events/{ereignis}", json={"title": "Neu"}).status_code == 404
+
+
+def client_calendar_event(client: TestClient, user: User, db: Session, *, title: str) -> int:
+    login(client)
+    zeile = CalendarEvent(
+        user_id=user.id,
+        title=title,
+        start_time=datetime(2026, 9, 8, 10, 0, tzinfo=UTC),
+        end_time=datetime(2026, 9, 8, 12, 0, tzinfo=UTC),
+    )
+    db.add(zeile)
+    db.commit()
+    db.refresh(zeile)
+    return int(zeile.id)
+
+
+# -- Die abonnierbare ICS-Quelle -------------------------------------------
+
+
+def test_abo_adresse_ist_nur_mit_gueltigem_schluessel_abrufbar(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    login(client)
+    assert client.get("/api/v1/calendar/feed").json()["active"] is False
+
+    erzeugt = client.post("/api/v1/calendar/feed")
+    assert erzeugt.status_code == 201
+    pfad = erzeugt.json()["url_path"]
+    assert pfad.startswith("/api/v1/calendar/feed/")
+    assert client.get("/api/v1/calendar/feed").json()["active"] is True
+
+    inhalt = client.get(pfad)
+    assert inhalt.status_code == 200
+    assert "text/calendar" in inhalt.headers["content-type"]
+    assert inhalt.text.startswith("BEGIN:VCALENDAR")
+
+    # Ohne Sitzung: ein abonnierender Kalender hat kein Cookie.
+    ohne = TestClient(client.app)
+    assert ohne.get(pfad).status_code == 200
+    # Ein falscher Schluessel liefert nichts - und keine Auskunft darueber.
+    assert ohne.get(f"/api/v1/calendar/feed/{'x' * 43}").status_code == 404
+    assert ohne.get("/api/v1/calendar/feed/kurz").status_code == 404
+
+
+def test_neuer_schluessel_macht_die_alte_adresse_unbrauchbar(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    login(client)
+    erster = client.post("/api/v1/calendar/feed").json()["url_path"]
+    zweiter = client.post("/api/v1/calendar/feed").json()["url_path"]
+    assert erster != zweiter
+    assert client.get(zweiter).status_code == 200
+    assert client.get(erster).status_code == 404
+
+
+def test_abo_zeigt_die_eigenen_termine_und_keine_grabsteine(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    login(client)
+    pfad = client.post("/api/v1/calendar/feed").json()["url_path"]
+    client.post(
+        "/api/v1/calendar/events",
+        json={"title": "Orchester", "start_time": "2026-09-08T10:00:00Z", "end_time": "2026-09-08T12:00:00Z"},
+    )
+    wegwerfen = client.post(
+        "/api/v1/calendar/events",
+        json={"title": "Wegwerfen", "start_time": "2026-09-09T10:00:00Z", "end_time": "2026-09-09T12:00:00Z"},
+    ).json()
+    client.delete(f"/api/v1/calendar/events/{wegwerfen['id']}")
+
+    text = client.get(pfad).text
+    assert "Orchester" in text
+    assert "Wegwerfen" not in text
+    # Zeiten gehen mit Zone hinaus - so braucht der Weg zurueck keine Annahme.
+    assert "DTSTART:20260908T100000Z" in text
+
+
+def test_abo_zeigt_termine_auch_in_der_vergangenheit(app_context: tuple[TestClient, Session, User]) -> None:
+    """Ein importierter alter Termin darf beim naechsten Abruf nicht verschwinden."""
+    client, db, user = app_context
+    login(client)
+    pfad = client.post("/api/v1/calendar/feed").json()["url_path"]
+    heute = date.today()
+    alt = heute - timedelta(days=2)
+    client.post(
+        "/api/v1/calendar/events",
+        json={
+            "title": "Vor dem Fenster",
+            "start_time": f"{alt.isoformat()}T10:00:00Z",
+            "end_time": f"{alt.isoformat()}T12:00:00Z",
+        },
+    )
+    assert "Vor dem Fenster" in client.get(pfad).text
+
+
+def test_abo_zeigt_nur_die_eigenen_termine(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    fremder = User(username="fremd", password_hash=hash_password("x"), is_active=True, timezone="UTC")
+    db.add(fremder)
+    db.commit()
+    login(client)
+    client.post(
+        "/api/v1/calendar/events",
+        json={"title": "Privat", "start_time": "2026-09-08T10:00:00Z", "end_time": "2026-09-08T12:00:00Z"},
+    )
+    pfad = client.post("/api/v1/calendar/feed").json()["url_path"]
+    assert "Privat" in client.get(pfad).text
+
+    db.add(UserSettings(user_id=fremder.id, preferences={"calendar_feed_token": "f" * 43}))
+    db.commit()
+    fremder_text = calendar_feed.build_feed(db, fremder.id, timezone_name="UTC")
+    assert "Privat" not in fremder_text
+
+
+def test_abo_adresse_ist_ein_reiner_pfad(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    token = calendar_feed.rotate_feed_token(db, user.id).token
+    assert calendar_feed.feed_path(token) == f"/api/v1/calendar/feed/{token}"
+    # Der Schluessel ist lang genug, dass ihn niemand erraten kann.
+    assert len(token) >= 40

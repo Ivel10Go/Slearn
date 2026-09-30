@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from sqlalchemy import (
     Boolean,
@@ -26,6 +26,18 @@ from .identity import Room, Subject, SyncSource, Teacher, User
 
 if TYPE_CHECKING:
     from .content import Document
+
+
+#: Drei Zustaende eines Termins gegenueber seiner Gegenseite. Sie stehen hier,
+#: weil das Modell sie festlegt - ein Abruf darf sie lesen, aber nicht erfinden.
+SYNC_STATE_SYNCED: Final[str] = "synced"
+SYNC_STATE_EDITED: Final[str] = "edited"
+SYNC_STATE_DELETED: Final[str] = "deleted"
+CALENDAR_SYNC_STATES: Final[tuple[str, ...]] = (
+    SYNC_STATE_SYNCED,
+    SYNC_STATE_EDITED,
+    SYNC_STATE_DELETED,
+)
 
 
 class Lesson(Base):
@@ -194,11 +206,50 @@ class Grade(Base):
 
 
 class CalendarEvent(Base):
+    """Ein Termin im Kalender, von Hand, aus einem Abo oder aus einer Gegenseite.
+
+    Die **Herkunft** steht seit dem Basisschema hier: ``sync_source_id``, ``source``
+    und ``external_id`` mit der eindeutigen Kombination
+    ``(user_id, source, external_id)``. Für einen *einseitigen* Abruf - WebUntis
+    liefert, die App nimmt - reicht das vollkommen, weil die Gegenseite der
+    Wahrheitsgeber ist.
+
+    Für einen **bidirektionalen** Abgleich fehlt die zweite Hälfte, und sie
+    heißt ``sync_state``:
+
+    ``synced``
+        Beide Seiten sind gleich. Ein Abruf darf die Gegenseite unbedenklich
+        übernehmen.
+    ``edited``
+        In der App wurde der Termin geändert. Ein Abruf darf ihn **nicht**
+        überschreiben, und der nächste Lauf schiebt die Änderung zur Gegenseite
+        nach. Genau diese Zelle verhindert, dass ein Abruf eine lokale Änderung
+        zerstört.
+    ``deleted``
+        In der App wurde der Termin gelöscht, die Gegenseite weiß es noch nicht.
+        Die Zeile bleibt als Grabstein erhalten, weil das ``DELETE`` dort noch
+        geschehen muss und dafür das ``remote_etag`` gebraucht wird - ein
+        Grabstein ohne ETag könnte genau den falschen Termin löschen. Aus jeder
+        Liste wird er ausgefiltert.
+
+    ``remote_etag`` und ``remote_modified_at`` beschreiben ausschließlich die
+    **Gegenseite**: den Stand, den der letzte Abruf dort vorgefunden hat. Sie sind
+    nicht das Gleiche wie ``updated_at``, das nur lokale Änderungen zählt, und
+    sie sind der Grund, warum ein Lauf eine fremde Änderung überhaupt erkennen
+    kann. Der Präfix im Namen ist Absicht: die Spalten stehen für die Gegenseite,
+    nicht für uns.
+    """
+
     __tablename__ = "calendar_events"
     __table_args__ = (
         CheckConstraint("end_time >= start_time", name="calendar_events_end_after_start"),
+        CheckConstraint(
+            "sync_state IN ('synced', 'edited', 'deleted')",
+            name="calendar_events_known_sync_state",
+        ),
         UniqueConstraint("user_id", "source", "external_id", name="uq_calendar_events_user_source_external"),
         Index("ix_calendar_events_user_start", "user_id", "start_time"),
+        Index("ix_calendar_events_user_sync_state", "user_id", "sync_state"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -213,6 +264,12 @@ class CalendarEvent(Base):
     all_day: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     source: Mapped[str] = mapped_column(String(64), nullable=False, default="manual", server_default="manual")
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sync_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=SYNC_STATE_SYNCED, server_default=SYNC_STATE_SYNCED
+    )
+    remote_etag: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    remote_modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now, server_default=text("CURRENT_TIMESTAMP")
     )
@@ -223,5 +280,20 @@ class CalendarEvent(Base):
     user: Mapped[User] = relationship(back_populates="calendar_events")
     sync_source: Mapped[SyncSource | None] = relationship(back_populates="calendar_events")
 
+    @property
+    def is_tombstone(self) -> bool:
+        """Ein gelöschter Termin, der auf sein ``DELETE`` in der Gegenseite wartet."""
+        return self.sync_state == SYNC_STATE_DELETED
 
-__all__ = ["CalendarEvent", "Exam", "Grade", "Homework", "Lesson"]
+
+__all__ = [
+    "CALENDAR_SYNC_STATES",
+    "SYNC_STATE_DELETED",
+    "SYNC_STATE_EDITED",
+    "SYNC_STATE_SYNCED",
+    "CalendarEvent",
+    "Exam",
+    "Grade",
+    "Homework",
+    "Lesson",
+]
