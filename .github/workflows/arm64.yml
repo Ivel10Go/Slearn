@@ -1,0 +1,93 @@
+name: ARM64 build check
+
+# Builds the three images for linux/arm64, which is the architecture of the
+# target device (Raspberry Pi).
+#
+# Why this is not part of ci.yml: the runner is amd64, so every RUN step of an
+# arm64 build runs under QEMU emulation. `npm ci` plus `next build` under
+# emulation is the expensive case, and it does not belong in the pull request
+# path -- it would make every PR wait for a check that only matters when a
+# dependency, a base image or a Dockerfile changes.
+#
+# Why the check is still worth something on every pull request: the cheap
+# arm64-wheels job in ci.yml already proves the property that actually breaks
+# (a pin that has no aarch64 wheel). This workflow proves the rest -- that the
+# Dockerfiles themselves assemble for arm64 -- once a week, on demand, and
+# before a release.
+#
+# Triggers:
+#   workflow_dispatch  manual, for "did the new base image tag still exist?"
+#   schedule           weekly, Monday 04:17 UTC (an odd minute on purpose, so
+#                      the run does not queue behind every other scheduled
+#                      workflow on the same runner pool)
+#
+# Not verified here: nothing in this repository has ever been built for arm64.
+# See the README section "ARM64-Buildcheck" for what a Raspberry Pi run still
+# has to prove beyond a successful build (startup, pgvector, resource use).
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  images:
+    name: ${{ matrix.name }} (linux/arm64)
+    runs-on: ubuntu-latest
+    # The frontend leg is the slow one. A timeout that is too small would look
+    # like a build failure; too large would keep a runner busy for an hour.
+    timeout-minutes: 90
+    strategy:
+      # One image per matrix entry, so a broken Dockerfile names itself.
+      fail-fast: false
+      matrix:
+        include:
+          # Contexts are not interchangeable: the worker image is built from the
+          # repository root and filtered by the root .dockerignore, the other
+          # two are their own contexts.
+          - name: backend
+            context: backend
+            dockerfile: backend/Dockerfile
+          - name: worker
+            context: .
+            dockerfile: worker/Dockerfile
+          - name: frontend
+            context: frontend
+            dockerfile: frontend/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@v3
+      - name: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/arm64
+          tags: school-assistant/${{ matrix.name }}:arm64-check
+          # Single platform, so the image can be loaded locally and inspected.
+          # Without this the job would prove nothing beyond "buildx exited 0".
+          load: true
+          # Attestation manifests are pointless for a check and can make a
+          # --load export ambiguous.
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=arm64-${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=arm64-${{ matrix.name }}
+      - name: verify the architecture of the result
+        run: |
+          arch="$(docker image inspect --format '{{.Architecture}}' "school-assistant/${{ matrix.name }}:arm64-check")"
+          echo "built architecture: ${arch}"
+          if [ "${arch}" != "arm64" ]; then
+            echo "::error::expected arm64, got ${arch}"
+            exit 1
+          fi
