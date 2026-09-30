@@ -1,14 +1,16 @@
 from datetime import datetime, timedelta
 from typing import cast
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUser, DatabaseSession
+from app.api.deps import AppSettings, CurrentUser, DatabaseSession
 from app.api.helpers import normalized_datetime, owned_or_404
-from app.core.time import as_utc, utc_now
+from app.core.config import Settings
+from app.core.time import as_utc, resolve_timezone_name, utc_now, zone_or_utc
 from app.db.entities import (
     Exam,
     StudyPlan,
@@ -39,6 +41,7 @@ from app.schemas.study import (
     StudyTaskSeriesUpdate,
     StudyTaskUpdate,
 )
+from app.services import rewards as rewards_service
 from app.services import study as study_service
 from app.services.study import StudyPlanError
 
@@ -194,6 +197,45 @@ def _owned_exam(db: Session, exam_id: int | None, user_id: int) -> None:
     exam = db.get(Exam, exam_id)
     if exam is None or exam.user_id != user_id:
         raise _not_found("Exam not found")
+
+
+def _zone(current_user: User, settings: Settings) -> ZoneInfo:
+    """Die Zeitzone des Nutzers, in der auch der Tagespunkt der Punkte faellt.
+
+    Bewusst dieselbe Aufloesung wie im Lernfortschritt und im Willkommenssatz:
+    die Lernsessions liegen als UTC in der Datenbank, und ohne diese Zone waere ein
+    kurz vor Mitternacht begonnener Block ein *gestriger* Lerntag - und damit ein
+    anderes Punktekonto.
+    """
+    return zone_or_utc(resolve_timezone_name(current_user.timezone, settings.timezone))
+
+
+def _belohnen(
+    db: Session,
+    current_user: User,
+    settings: Settings,
+    *,
+    task: StudyPlanTask | None = None,
+    sessions: list[StudySession] | None = None,
+    now: datetime | None = None,
+) -> bool:
+    """Punkte und Auszeichnungen fuer dieses Ereignis vergeben - ohne Commit.
+
+    Der Aufruf committet absichtlich nicht: die Buchung gehoert in dieselbe
+    Transaktion wie die Aenderung, die sie ausgeloest hat. Ein Abschluss ohne
+    Punkte waere ein halber Zustand, und ein Punktehalt ohne Abschluss ein anderer.
+
+    Zurueck kommt, ob ueberhaupt etwas geschrieben wurde - ein Aufruf, der nichts
+    neues zu sagen hat, soll nicht jedes Mal eine Aenderung vormerken.
+    """
+    return rewards_service.record_progress(
+        db,
+        current_user.id,
+        zone=_zone(current_user, settings),
+        task=task,
+        sessions=tuple(sessions or ()),
+        now=now,
+    ).changed
 
 
 # --------------------------------------------------------------------------
@@ -506,6 +548,7 @@ def complete_task(
     task_id: int,
     current_user: CurrentUser,
     db: DatabaseSession,
+    settings: AppSettings,
     payload: StudyTaskCompleteRequest | None = Body(default=None),
 ) -> StudyTaskRead:
     task = _owned_task_for_update(db, task_id, current_user.id)
@@ -516,6 +559,12 @@ def complete_task(
         if open_sessions:
             completed_at = as_utc(task.completed_at or utc_now())
             _close_sessions(open_sessions, completed_at, 1)
+            # Auch hier wird gepunktet: eine spaet beendete Session ist genauso
+            # gelernte Zeit wie eine im ersten Aufruf geschlossene. Dass der
+            # Aufruf idempotent ist, steht nicht an dieser Zeile, sondern in
+            # ``reward_entries`` - eine Buchung, die es schon gibt, wird nicht
+            # wiederholt, egal wie oft man hier vorbeikommt.
+            _belohnen(db, current_user, settings, sessions=open_sessions, now=completed_at)
             db.commit()
         return _read_task(db, current_user.id, task)
     if task.status not in {"pending", "in_progress"}:
@@ -539,10 +588,18 @@ def complete_task(
             notes=notes,
         )
         db.add(session)
+        # Die erfundene Session gehoert zur Belohnung dazu. Sie ist die einzige
+        # Lernzeit dieses Abschlusses, und ein leeres `open_sessions` wuerde den
+        # Fachtag buchen, den es ohne sie gar nicht gibt.
+        open_sessions = [session]
     task.status = "completed"
     task.completed_at = completed_at
     spawned = _spawn_next_occurrence(db, current_user, task)
     try:
+        # Die Buchung gehoert in dieselbe Transaktion wie der Abschluss. Sie
+        # steht deshalb **vor** dem Commit und nicht danach: entweder ist die
+        # Aufgabe erledigt *und* gepunktet, oder gar nichts.
+        _belohnen(db, current_user, settings, task=task, sessions=open_sessions, now=completed_at)
         db.commit()
         if spawned is not None:
             db.refresh(spawned)
@@ -554,15 +611,21 @@ def complete_task(
 
 
 @router.post("/{task_id}/stop", response_model=StudyTaskRead)
-def stop_task(task_id: int, current_user: CurrentUser, db: DatabaseSession) -> StudyTaskRead:
+def stop_task(task_id: int, current_user: CurrentUser, db: DatabaseSession, settings: AppSettings) -> StudyTaskRead:
     task = _owned_task_for_update(db, task_id, current_user.id)
     if task.status not in {"pending", "in_progress"}:
         raise _conflict("Study task cannot be stopped in its current status")
     completed_at = utc_now()
-    _close_sessions(_open_sessions(db, current_user.id, task.id), completed_at, 0)
+    open_sessions = _open_sessions(db, current_user.id, task.id)
+    _close_sessions(open_sessions, completed_at, 0)
     task.status = "pending"
     task.completed_at = None
     try:
+        # Auch ein Stopp zaehlt als gelernte Zeit: der Block fand statt, er wurde
+        # nur nicht zu Ende gebracht. Ohne Thema gibt es trotzdem keinen Fachtag -
+        # die Buchung entscheidet das, nicht dieser Endpunkt.
+        if open_sessions:
+            _belohnen(db, current_user, settings, sessions=open_sessions, now=completed_at)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -577,7 +640,7 @@ def get_task(task_id: int, current_user: CurrentUser, db: DatabaseSession) -> St
 
 @router.patch("/{task_id}", response_model=StudyTaskRead)
 def update_task(
-    task_id: int, payload: StudyTaskUpdate, current_user: CurrentUser, db: DatabaseSession
+    task_id: int, payload: StudyTaskUpdate, current_user: CurrentUser, db: DatabaseSession, settings: AppSettings
 ) -> StudyTaskRead:
     task = owned_or_404(db, StudyPlanTask, task_id, current_user.id)
     values = payload.model_dump(exclude_unset=True)
@@ -598,6 +661,12 @@ def update_task(
     elif "status" in values and values["status"] != "completed":
         task.completed_at = None
     try:
+        # Auch der Weg ueber den `PATCH` zahlt. Sonst waere
+        # ``PATCH {"status": "completed"}`` eine Nebenhand, an der die Punkte
+        # vorbeikommen - und damit eine Luecke, die man nicht braucht, um
+        # doppelt zu punkten.
+        if task.status == "completed":
+            _belohnen(db, current_user, settings, task=task)
         db.commit()
         db.refresh(task)
     except IntegrityError as exc:

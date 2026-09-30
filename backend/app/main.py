@@ -22,6 +22,7 @@ from app.api import (
 local_models,
     notifications,
     progress,
+    rewards,
     study,
     subjects,
 )
@@ -178,6 +179,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # ihre Erinnerungen abholt. Ohne diese Zeile waere der ganze Abschnitt
     # unerreichbar - und die Einstellungen zeigten einen leeren Dialog.
     application.include_router(notifications.router)
+    # Punkte und Auszeichnungen. Ohne diese Zeile waere die Belohnungskarte nicht
+    # erreichbar, und die Punkte, die die Aufgaben-Endpunkte vergeben, haetten
+    # keinen Ort, an dem sie sichtbar werden.
+    application.include_router(rewards.router)
     from app.api import documents, files, integrations
     application.include_router(integrations.router)
     application.include_router(files.router)

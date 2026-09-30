@@ -737,6 +737,128 @@ export interface GradeImportResult {
 }
 
 /*
+ * Belohnungen (`/v1/rewards`).
+ *
+ * Die Felder kommen eins zu eins aus `app/schemas/rewards.py`, und das ist hier
+ * keine Formalie: die Karte zeigt einen **Zähler mit Obergrenze** und eine Liste
+ * von Bedingungen. Ein `points`, das die Zod-Schemas verschlucken, wäre eine Zahl,
+ * die nicht zur Anzeige passt - und eine Regel, die niemand nachrechnen kann.
+ *
+ * `kind` ist eine geschlossene Liste wie `GradeKind`: die Migration traegt dieselben
+ * beiden Werte als Check-Constraint.
+ */
+export type RewardKind = "task_completed" | "subject_day";
+
+/** Woran eine Auszeichnung haengt. Der Text dazu kommt aus `scope_kind`. */
+export type RewardScopeKind = "global" | "subject" | "topic" | "week";
+
+/** Eine gebuchte Lernhandlung. `points` kann 0 sein - das Tageskonto war voll. */
+export interface RewardEntry {
+  id: number;
+  kind: RewardKind;
+  points: number;
+  /** Die angerechneten Minuten dieses Fachtags. Bei einer Aufgabe immer 0. */
+  minutes: number;
+  subject_id: number | null;
+  subject_name: string | null;
+  topic_id: number | null;
+  topic_name: string | null;
+  detail: string;
+  /** Ein Kalendertag in der Zeitzone des Nutzers, kein Zeitstempel. */
+  earned_on: string;
+  earned_at: string;
+}
+
+/**
+ * Eine Auszeichnung: Bedingung, Fortschritt, Zeitpunkt.
+ *
+ * `progress`/`target` tragen die Bedingung in Zahlen - die Karte zeigt daraus einen
+ * Balken und einen Text, statt selbst zu zählen. Eine einmal verdiente Auszeichnung
+ * friert bei ihrem Wert ein: `awarded` bleibt wahr, auch wenn neue Aufgaben in
+ * dasselbe Fach kommen.
+ */
+export interface RewardBadge {
+  id: number;
+  code: string;
+  title: string;
+  description: string;
+  /** `global`, `subject:7`, `topic:12` oder `week:2026-W40`. */
+  scope: string;
+  scope_kind: RewardScopeKind;
+  subject_id: number | null;
+  subject_name: string | null;
+  topic_id: number | null;
+  topic_name: string | null;
+  progress: number;
+  target: number;
+  awarded: boolean;
+  awarded_at: string | null;
+  /** Ob die Bedingung mehrfach erreichbar ist. Steht im Katalog, nicht in einer Konvention. */
+  repeatable: boolean;
+  /** Was gezählt wird, in der Einzahl: "Tag", "Minute", "Aufgabe". */
+  unit: string;
+  /** Die Mehrzahl in der Form, die der Satz braucht: "Tagen" neben "Tag". */
+  unit_plural: string;
+}
+
+/** Der Katalog als Vertrag - auch fuer Auszeichnungen, die es noch nicht gibt. */
+export interface RewardBadgeDefinition {
+  code: string;
+  title: string;
+  description: string;
+  target: number;
+  unit: string;
+  unit_plural: string;
+  scope_kind: RewardScopeKind;
+  repeatable: boolean;
+}
+
+/** Eine Stufe der Fachtag-Staffel: ab so vielen Minuten gibt es so viele Punkte. */
+export interface RewardStep {
+  minutes: number;
+  points: number;
+}
+
+/** Die Punktregel in Zahlen, damit die Karte sie nicht nachbaut. */
+export interface RewardRules {
+  task_points: number;
+  day_cap: number;
+  subject_day_cap: number;
+  min_subject_day_minutes: number;
+  subject_day_steps: RewardStep[];
+}
+
+/**
+ * Die Zahlen des Kontos.
+ *
+ * `today_points` gegen `today_cap` ist die einzige Stelle, an der die Obergrenze
+ * sichtbar wird. Ohne sie wäre eine Zahl, die nicht weiterwächst, eine Enttäuschung
+ * statt einer Regel.
+ */
+export interface RewardSummary {
+  generated_at: string;
+  timezone: string;
+  today_points: number;
+  today_cap: number;
+  week_points: number;
+  total_points: number;
+  today: string;
+  week_starts_on: string;
+  week_ends_on: string;
+  awarded_badges: number;
+  pending_badges: number;
+}
+
+/** Alles fuer die Belohnungskarte - eine Antwort, weil alles zusammen gelesen wird. */
+export interface RewardOverview {
+  summary: RewardSummary;
+  rules: RewardRules;
+  catalog: RewardBadgeDefinition[];
+  badges: RewardBadge[];
+  entries: RewardEntry[];
+}
+
+/*
  * Die Benachrichtigungen.
  *
  * Echte Typen, keine Stubs: bei diesen Feldern waere ein
