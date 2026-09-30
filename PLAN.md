@@ -4,16 +4,16 @@
 
 - [x] README-Alembic-Stand korrigieren: war bereits erledigt, alle 6 Revisionen sind in `README.md:268-273` gelistet
 - [x] API-Tabelle im README um `/api/v1/files`-Zeilen ergänzen
-- [ ] Doppelten Migrations-Start auflösen: `backend/Dockerfile` CMD vs. `backend-entrypoint.sh`
-- [ ] Root-`.dockerignore` bei neuen Worker-Dateien mitpflegen und dokumentieren
+- [x] Doppelten Migrations-Start auflösen: `backend/Dockerfile` CMD vs. `backend-entrypoint.sh` — Quelle der Wahrheit ist jetzt `backend/entrypoint.sh` (aus dem Root per `git mv` dorthin), Compose nutzt den Image-Default
+- [x] Root-`.dockerignore` bei neuen Worker-Dateien mitpflegen und dokumentieren — Reihenfolge ist last-bearing, Tool-Caches werden jetzt hinter `!worker/**` wieder ausgeschlossen
 
 ## Automatischer WebUntis-Sync
 
-- [ ] Scheduler-Job im Backend oder Worker (Sync läuft bisher nur per Button)
-- [ ] Täglicher Sync je Benutzer mit aktiver WebUntis-Integration (4-Wochen-Fenster weiterverwenden)
-- [ ] Idempotenz: kein Parallel-Lauf, `last_sync_at` beachten
-- [ ] Fehler in `last_error` schreiben, Nutzerisolation wahren
-- [ ] Tests mit gemocktem Adapter: planmäßiger Lauf, fehlende Felder, deaktivierte Integration
+- [x] Scheduler-Job im Backend oder Worker (Sync läuft bisher nur per Button) — `app/services/integration_scheduler.py`, Thread im Backend-Lifespan; der Worker bleibt Healthcheck-only
+- [x] Täglicher Sync je Benutzer mit aktiver WebUntis-Integration (4-Wochen-Fenster weiterverwenden) — `WEBUNTIS_SYNC_ENABLED` / `WEBUNTIS_SYNC_INTERVAL_SECONDS`
+- [x] Idempotenz: kein Parallel-Lauf, `last_sync_at` beachten — sitzt nur im Scheduler (`scheduled_sync_is_due()`), damit der manuelle Knopf immer greift
+- [x] Fehler in `last_error` schreiben, Nutzerisolation wahren — `run_integration_sync()` liefert ein Ergebnis statt einer Exception
+- [x] Tests mit gemocktem Adapter: planmäßiger Lauf, fehlende Felder, deaktivierte Integration — 21 neue Tests in `backend/tests/test_backend.py`
 
 ## Kalender-Integrationen (lesen und schreiben)
 
@@ -69,10 +69,10 @@
 
 ## Deployment
 
-- [ ] CI-Pipeline (Lint, Typcheck, Tests, Builds)
-- [ ] ARM64-Buildcheck (Raspberry Pi)
-- [ ] HTTPS/TLS, `SESSION_COOKIE_SECURE`, Reverse-Proxy
-- [ ] Secret-Rotation + Restore-Übung
+- [x] CI-Pipeline (Lint, Typcheck, Tests, Builds) — `.github/workflows/ci.yml`, 7 Jobs; bekannte Baseline-Ausnahmen über `.github/ci/check-known-failures.mjs` allowlistet statt per `continue-on-error`
+- [x] ARM64-Buildcheck (Raspberry Pi) — `.github/workflows/arm64.yml`, wöchentlich per QEMU; im PR nur der billige `pip download`-Check
+- [x] HTTPS/TLS, `SESSION_COOKIE_SECURE`, Reverse-Proxy — `cookie_secure` existierte schon in `app/core/config.py` und ist an `APP_ENV=production` **nicht** gebunden; Pflicht jetzt in `.env.example`, Compose und README. Caddy-Beispiel im README, **nicht ausgeführt**
+- [x] Secret-Rotation + Restore-Übung — Runbook im README, das die echten Fallen adressiert (`ADMIN_PASSWORD` rotiert nicht, `POSTGRES_PASSWORD` greift nicht auf ein initialisiertes `pgdata`-Volume, `INTEGRATION_ENCRYPTION_KEY` per HKDF)
 
 ## Task-System (Ausbau)
 
@@ -96,11 +96,11 @@ Das Grundsystem steht: `StudyPlanTask` mit `start`/`stop`/`complete` (`app/api/s
 
 ## Lernfortschritt und Lernprozess
 
-- [ ] `LearningProgress` ist heute nur per Demo-Seed beschrieben und wird nirgends geschrieben: eigener Endpoint für `confidence` und `last_reviewed_at`
-- [ ] Lernprotokoll aus `StudySession` auswerten (Dauer je Fach, Wochentag), nicht nur anzeigen
-- [ ] Serien (Streaks) und Wochenziel, abgeleitet aus `StudySession`
-- [ ] Fortschrittskarte im Dashboard: Konfidenz, Lernzeit, nächste Wiederholung
-- [ ] Wiederholungsplanung als einfaches Intervall, kein vollständiges SRS
+- [x] `LearningProgress` ist heute nur per Demo-Seed beschrieben und wird nirgends geschrieben: eigener Endpoint für `confidence` und `last_reviewed_at` — `PUT /api/v1/progress/topics/{topic_id}` (Upsert, deshalb PUT). Keine Migration nötig, das Modell hatte alle Spalten
+- [x] Lernprotokoll aus `StudySession` auswerten (Dauer je Fach, Wochentag), nicht nur anzeigen — `GET /api/v1/progress/insights`, Aggregation in der Nutzerzeitzone
+- [x] Serien (Streaks) und Wochenziel, abgeleitet aus `StudySession` — Lerntag = Kalendertag mit ≥ 1 abgeschlossener Minute; Wochenziel in Minuten, Woche Montag–Sonntag, Default 300
+- [x] Fortschrittskarte im Dashboard: Konfidenz, Lernzeit, nächste Wiederholung — `components/dashboard/progress-card.tsx`, eckig/monochrom wie der Rest
+- [x] Wiederholungsplanung als einfaches Intervall, kein vollständiges SRS — Konfidenz bleibt manuell, sie wird nicht aus Sessions abgeleitet
 
 ## Benachrichtigungen
 
