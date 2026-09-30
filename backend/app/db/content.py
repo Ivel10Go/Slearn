@@ -35,7 +35,17 @@ if TYPE_CHECKING:
 
 
 JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
-VECTOR_TYPE = Numeric(precision=1536).with_variant(Vector(dim=1536), "postgresql")
+# Die Reihenfolge von `with_variant` ist hier nicht Geschmack, sondern Funktion.
+# `cosine_distance` haengt am Comparator des pgvector-Typs, und der Comparator
+# kommt vom **Python**-Typ der Spalte - nicht vom DDL-Typ, den der Dialekt
+# gewaehlt. Mit `Numeric(...).with_variant(Vector(...), "postgresql")` war der
+# Python-Typ `Numeric`, der DDL-Typ auf Postgres aber `VECTOR` - die Spalte sah
+# in der Datenbank korrekt aus, und `DocumentChunk.embedding.cosine_distance(...)`
+# warf trotzdem `AttributeError`. Da `_vector_search` nur `AiProviderError`
+# faengt, wurde daraus ein 500 statt einer Trefferliste.
+# Also: `Vector` als Basistyp, `Numeric` nur fuer SQLite, wo es kein pgvector
+# gibt und die Embeddings dort ohnehin nie durchgesucht werden.
+VECTOR_TYPE = Vector(dim=1536).with_variant(Numeric(precision=1536), "sqlite")
 
 
 class Document(Base):

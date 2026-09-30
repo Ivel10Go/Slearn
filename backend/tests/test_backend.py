@@ -27,6 +27,7 @@ from app.db.entities import (
     SYNC_STATE_EDITED,
     SYNC_STATE_SYNCED,
     CalendarEvent,
+    DocumentChunk,
     Exam,
     GreetingCache,
     LearningProgress,
@@ -86,7 +87,7 @@ from app.services.calendar_sync import (
 )
 from app.services.dashboard import serialize_dashboard
 from app.services.demo_seed import seed_demo_data
-from app.services.documents import chunk_text, read_document_text
+from app.services.documents import EMBEDDING_DIMENSION, chunk_text, read_document_text
 from app.services.google_calendar import GoogleCalendarClient, GoogleOAuthError, OAuthTokens
 from app.services.grades import (
     GradeImportError,
@@ -179,6 +180,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from fastapi.testclient import TestClient
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -10597,3 +10599,38 @@ def test_abgestuerzter_lokaler_server_erzeugt_keinen_500(
 
     assert antwort.status_code == 200
     assert antwort.json()["source"] == "fallback"
+
+
+def test_die_vektorspalte_kann_cosine_distance_ueberhaupt() -> None:
+    """Regression: die semantische Suche war zur Laufzeit tot.
+
+    `cosine_distance` haengt am Comparator des pgvector-Typs, und der Comparator
+    kommt vom **Python**-Typ der Spalte. Mit `Numeric(...).with_variant(Vector(...),
+    "postgresql")` war der Python-Typ `Numeric` - die Spalte sah in Postgres
+    korrekt aus (`VECTOR(1536)`), der Aufruf warf aber `AttributeError`. Da
+    `_vector_search` nur `AiProviderError` faengt, wurde daraus ein 500.
+
+    Dieser Test laeuft auf SQLite und ist damit kein Beweis fuer die Abfrage -
+    er beweist aber, dass der Comparator ueberhaupt existiert. Genau daran ist
+    der Fehler vorher gescheitert, ohne dass irgendein Test rot wurde.
+    """
+    from app.db.content import VECTOR_TYPE
+
+    assert isinstance(VECTOR_TYPE, Vector), "der Python-Typ muss Vector sein, nicht Numeric"
+    assert hasattr(DocumentChunk.embedding, "cosine_distance")
+
+
+def test_die_vektorsuche_baut_eine_postgres_abfrage() -> None:
+    """Die Query aus `_vector_search` muss gegen Postgres uebersetzbar sein."""
+    from sqlalchemy.dialects import postgresql
+
+    spalte = DocumentChunk.embedding
+    stmt = select(spalte.cosine_distance([0.0] * EMBEDDING_DIMENSION).label("_distance")).order_by(
+        spalte.cosine_distance([0.0] * EMBEDDING_DIMENSION).asc()
+    )
+
+    sql = " ".join(str(stmt.compile(dialect=postgresql.dialect())).split())
+
+    # `<=>` ist der Cosine-Distance-Operator; ohne ihn waere die Query auf
+    # Postgres ein Syntaxfehler und die Suche lieferte nichts.
+    assert "<=>" in sql
