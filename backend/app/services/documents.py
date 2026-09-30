@@ -3,9 +3,20 @@
 Zwei Wege fuellen die lokale Dokumentablage: Der Sync einer ``documents``-
 Integration scannt den konfigurierten Ablageordner, und der Upload-Endpoint
 schreibt einzelne Dateien. Beide enden in ``Document``-Zeilen mit Absaetzen
-in ``DocumentChunk``. Ein konfigurierter KI-Provider liefert die Einbettungen
-fuer die pgvector-Spalte; ohne Provider bleibt die Stichwortsuche der
-tragende Weg und die Antworten entstehen aus den Daten (``source: fallback``).
+in ``DocumentChunk``.
+
+Fuer die **Antwort** laeuft die Kette aus ``app.services.ai_routing``: erst ein
+lokaler Server auf diesem Rechner, dann ein Online-Provider, dann der Satz aus
+den Daten. ``source`` sagt, welche Stufe geliefert hat.
+
+Fuer die **Einbettungen** gilt das bewusst **nicht**. Sie gehen ueber
+``_load_provider`` und damit ueber den ersten eingetragenen Eintrag, weil ein
+Einbettungsmodell eine feste Dimension haben muss (1536, die Spaltenbreite aus
+der ersten Migration) - ein lokales Modell haette sie selten, und ein Weg ohne
+passenden Vektor ist schlimmer als die Stichwortsuche. Diese Ungleichheit ist
+die dokumentierte Nahtstelle zu „Lernplan-Erstellung" und „Modelle lernen am
+Nutzer": dort wird ein Modell gewaehlt, und dann darf es auch die Einbettungen
+liefern.
 
 Die Suche ist bewusst zweispurig: Vektoren helfen dort, wo Modell und
 Schultext zusammenpassen, die Stichwortsuche funktioniert aber ohne Modell und
@@ -31,7 +42,8 @@ from app.core.config import Settings, require_integration_encryption_key
 from app.core.crypto import CredentialDecryptionError, decrypt_credentials, has_credentials
 from app.core.time import utc_now
 from app.db.entities import Document, DocumentChunk, SyncSource
-from app.services.ai_provider import AiProviderError, generate_embeddings, generate_text
+from app.services import ai_routing
+from app.services.ai_provider import AiProviderError, generate_embeddings
 
 logger = logging.getLogger("school_assistant")
 
@@ -568,14 +580,19 @@ def answer_question(
 ) -> QuestionAnswer:
     """Beantwortet eine Frage anhand der eigenen Dokumente.
 
-    ``source`` unterscheidet dreiwertig: ``ai`` hinter einem echten Modell, ``fallback``
-    aus den Daten (kein Provider oder Modellfehler) und ``none`` ohne jeden Treffer.
+    ``source`` unterscheidet, **woher** die Antwort kommt: ``local`` hinter einem
+    Server auf diesem Rechner, ``provider`` hinter einem Online-Dienst,
+    ``fallback`` aus den Daten (kein Weg oder Modellfehler) und ``none`` ohne
+    jeden Treffer. Die Reihenfolge der Wege steht in ``app.services.ai_routing`` -
+    hier steht nur der Text.
 
     ``grade_context`` ist die **einzige** Stelle, an der Noten in einen
     Provider gelangen. Sie kommt von ``app.api.documents`` und ist dort nur
     gefuellt, wenn die Lernende die Freigabe gesetzt hat - deshalb steht hier
     kein eigener Schalter, sondern nur ein Parameter: wer die Liste nicht
-    uebergibt, kann keine Noten mitschicken.
+    uebergibt, kann keine Noten mitschicken. Das gilt fuer den lokalen Weg
+    genauso: ein lokales Modell macht die Freigabe nicht ueberfluessig, es macht
+    sie nur haeufiger ueberfluessig, weil Stufe 1 seldom genuegt.
     """
     hits = search_chunks(db, user_id, settings, question, limit=limit)
     quellen = [hit.source() for hit in hits]
@@ -591,33 +608,29 @@ def answer_question(
         dateien = ", ".join(sorted({hit.filename for hit in hits}))
         return QuestionAnswer(
             answer=(
-                "Kein KI-Provider ist verbunden, deshalb wurde die Antwort aus den Daten gebaut. "
+                "Kein KI-Server hat geantwortet, deshalb wurde die Antwort aus den Daten gebaut. "
                 f"Relevante Stellen liegen in: {dateien}."
             ),
-            source="fallback",
+            source=ai_routing.SOURCE_FALLBACK,
             sources=quellen,
             grades_shared=bool(grade_context),
         )
 
-    provider = _load_provider(db, user_id, settings)
-    if provider is None:
-        return _fallback()
-    try:
-        text = generate_text(
-            base_url=provider.base_url,
-            model=provider.model,
-            system_prompt=_SYSTEM_PROMPT,
-            user_prompt=build_rag_prompt(question, hits, grade_context),
-            api_key=provider.api_key,
-            max_tokens=_MAX_ANSWER_TOKENS,
-        )
-    except AiProviderError as exc:
-        logger.warning("Dokumenten-Antwort konnte nicht erzeugt werden: %s", exc)
+    outcome = ai_routing.generate_with_routes(
+        ai_routing.resolve_ai_routes(db, user_id, settings),
+        _SYSTEM_PROMPT,
+        build_rag_prompt(question, hits, grade_context),
+        max_tokens=_MAX_ANSWER_TOKENS,
+        local_timeout=settings.ai_local_timeout_seconds,
+        local_fast_timeout=settings.ai_local_fast_timeout_seconds,
+        provider_timeout=settings.ai_generate_timeout_seconds,
+    )
+    if outcome is None:
         return _fallback()
     return QuestionAnswer(
-        answer=text,
-        source="ai",
+        answer=outcome.text,
+        source=outcome.source,
         sources=quellen,
-        model=provider.model,
+        model=outcome.model,
         grades_shared=bool(grade_context),
     )

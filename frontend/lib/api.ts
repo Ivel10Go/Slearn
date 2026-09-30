@@ -1,6 +1,7 @@
 "use client";
 
 import { getDemoDashboard, getDemoScheduleRange, isDemoFallbackEnabled } from "./demo";
+import { parseAiRuntime, type AiRuntimePayload } from "./ai-runtime";
 import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type CalendarEvent, type DashboardData, type DocumentAnswer, type DocumentRecord, type DocumentSearchResult, type Exam, type FileUploadResult, type Grade, type GradeImportPreview, type GradeImportResult, type GradeKind, type GradeSharing, type GradeSummary, type Greeting, type Homework, type ScheduleRange, type StudySessionRecord, type StudyTask, type StudyTaskState, type Subject, type SubjectOption } from "./types";
 import { collectSubjectNames, parseCalendarEventArray, parseCalendarEventRead, parseCalendarFeed, parseCalendarWriting, parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseExamArray, parseExamRead, parseExamTaskPlanResult, parseFileUploadResponse, parseGradeArray, parseGradeImportPreview, parseGradeImportResult, parseGradeRead, parseGradeSharing, parseGradeSummary, parseHomeworkArray, parseHomeworkRead, parseIntegrationArray, parseIntegrationAuthorize, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseLearningInsights, parseMarkReadResult, parseNotificationArray, parseNotificationSettings, parsePushSubscription, parsePushSubscriptionArray, parseReminderRun, parseStudyDependencyArray, parseStudyDependencyRead, parseStudyPlanArray, parseStudyPlanRead, parseStudySeriesArray, parseStudySeriesRead, parseStudySessionRead, parseStudyTaskArray, parseStudyTaskRead, parseSubjectArray, parseSubjectRead, parseTopicProgressArray, parseTopicProgressRead, parseUserResponse, parseUserSession, parseVapidKey, parseWeeklyGoalRead } from "./schemas";
 import type { CalendarFeed, CalendarWriting, ExamTaskPlanResult, IntegrationAuthorize, IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult, LearningInsights, StudyPlan, StudyTaskDependency, StudyTaskOrder, StudyTaskSeries, StudyTaskSeriesInput, TopicProgress, WeeklyGoal } from "./types";
@@ -1113,3 +1114,17 @@ export async function uploadFile(file: File): Promise<FileUploadResult> {
   const payload = await apiRequest("/v1/files", { method: "POST", body: form });
   return parseFileUploadResponse(payload);
 }
+
+/* ------------------------------------------------------- Lokale KI-Laufzeiten */
+
+/**
+ * Die bekannten lokalen Laufzeiten mit ihren Adressen und der Reihenfolge.
+ *
+ * Bewusst **ohne** Demo-Fallback, wie bei allen anderen Lerndaten: eine erfundene
+ * Adresse im Formular waere eine Luege, die man erst beim Speichern bemerkt.
+ * Der Aufrufer bekommt `null` und sagt das in der Oberflaeche.
+ */
+export async function getAiRuntime(): Promise<AiRuntimePayload | null> {
+  return parseAiRuntime(await apiRequest("/v1/ai-runtime"));
+}
+

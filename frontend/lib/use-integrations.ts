@@ -7,6 +7,7 @@ import {
   createCalendarFeed,
   createIntegration,
   deleteIntegration,
+  getAiRuntime,
   getCalendarFeed,
   getCalendarWriting,
   getIntegrationCatalog,
@@ -19,6 +20,7 @@ import {
   type IntegrationChanges,
   type IntegrationWrite,
 } from "./api";
+import type { AiRuntimePayload } from "./ai-runtime";
 import type {
   CalendarFeed,
   CalendarWriting,
@@ -35,6 +37,14 @@ interface SettingsState {
   user: UserResponse | null;
   integrations: IntegrationRead[];
   catalog: IntegrationCatalog[];
+  /**
+   * Die bekannten lokalen KI-Laufzeiten, oder `null`.
+   *
+   * Eigener Fehlerpfad: faellt diese Abfrage aus, sind die Vorschlaege im
+   * Formular weg - die restlichen Einstellungen stehen aber. Deshalb kein
+   * `Promise.all`, das den ganzen Bildschirm mitreisst.
+   */
+  runtime: AiRuntimePayload | null;
   /** Die Zustimmung zum Schreiben in verbundene Kalender. */
   writing: CalendarWriting | null;
   /** Die abonnierbare ICS-Adresse. */
@@ -47,11 +57,13 @@ const initialState: SettingsState = {
   user: null,
   integrations: [],
   catalog: [],
+  runtime: null,
   writing: null,
   feed: null,
   error: null,
   status: "loading",
 };
+
 
 function errorMessage(error: unknown) {
   if (error instanceof ApiError) {
@@ -98,7 +110,17 @@ export function useIntegrations() {
       if (currentRequest !== requestId.current) {
         return;
       }
-      setState({ user, integrations, catalog, writing, feed, error: null, status: "ready" });
+      /*
+        Die Laufzeiten kommen **nach** dem Rest und mit eigenem Fehlerpfad: sie
+        sind ein Vorschlag im Formular, kein Zustand, ohne den die Einstellungen
+        unbrauchbar waeren. Versagt der Abruf, bleibt `runtime` `null` und die
+        Karte sagt das - statt den ganzen Bildschirm zu leeren.
+      */
+      const runtime = await getAiRuntime().catch(() => null);
+      if (currentRequest !== requestId.current) {
+        return;
+      }
+      setState({ user, integrations, catalog, runtime, writing, feed, error: null, status: "ready" });
     } catch (error) {
       if (currentRequest !== requestId.current) {
         return;

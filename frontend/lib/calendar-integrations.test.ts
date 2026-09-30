@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildIntegrationWrite,
   fieldLabel,
+  integrationConfigFields,
   isReadOnlyCredential,
   isSecretField,
   isSyncableKind,
@@ -213,6 +214,53 @@ describe("Geheimnisse und Felder, die der Nutzer nicht setzt", () => {
   it("übersetzt die Feldnamen und lässt Unbekanntes stehen", () => {
     expect(fieldLabel("client_id")).toBe("Client-ID");
     expect(fieldLabel("redirect_uri")).toBe("Weiterleitungs-Adresse");
+    expect(fieldLabel("runtime")).toBe("Laufzeit");
     expect(fieldLabel("etwas_neues")).toBe("etwas_neues");
+  });
+});
+
+describe("Das optionale Feld runtime beim KI-Server", () => {
+  const ki = spec({
+    kind: "ai_provider",
+    label: "KI-Server",
+    required_config: ["base_url", "model"],
+    required_one_of: [],
+    optional_config: ["runtime"],
+  });
+
+  it("zeigt Pflichtfelder zuerst und das optionale danach", () => {
+    // Die Reihenfolge ist die Anzeigereihenfolge; das optionale Feld haengt
+    // sich hinten an, damit es nicht zwischen zwei Pflichtfeldern steht.
+    expect(integrationConfigFields(ki)).toEqual(["base_url", "model", "runtime"]);
+  });
+
+  it("kommt auch ohne das Feld aus, weil ein Eintrag von heute es nicht hat", () => {
+    const alt = spec({ kind: "ai_provider", required_config: ["base_url"], required_one_of: [] });
+    expect(integrationConfigFields(alt)).toEqual(["base_url"]);
+    expect(buildIntegrationWrite(alt, "KI", { base_url: "https://api.example.com/v1" }, {}).config).toEqual({
+      base_url: "https://api.example.com/v1",
+    });
+  });
+
+  it("schickt die gewaehlte Laufzeit mit", () => {
+    const eingabe = buildIntegrationWrite(
+      ki,
+      "Ollama",
+      { base_url: "http://host.docker.internal:11434", model: "llama3.2", runtime: "ollama" },
+      {},
+    );
+    expect(eingabe.config).toEqual({
+      base_url: "http://host.docker.internal:11434",
+      model: "llama3.2",
+      runtime: "ollama",
+    });
+  });
+
+  it("verlangt runtime nicht, sondern schickt es nur mit, wenn es gesetzt ist", () => {
+    expect(validateIntegrationInput(ki, { base_url: "http://127.0.0.1:11434", model: "Auto" }, {})).toBeNull();
+    expect(buildIntegrationWrite(ki, "Ollama", { base_url: "http://127.0.0.1:11434", model: "Auto" }, {}).config).toEqual({
+      base_url: "http://127.0.0.1:11434",
+      model: "Auto",
+    });
   });
 });

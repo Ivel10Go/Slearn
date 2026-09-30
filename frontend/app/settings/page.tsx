@@ -16,6 +16,7 @@ export default function SettingsPage() {
     user,
     integrations,
     catalog,
+    runtime,
     writing,
     feed,
     error,
@@ -64,6 +65,7 @@ export default function SettingsPage() {
         user={user}
         integrations={integrations}
         catalog={catalog}
+        runtime={runtime}
         error={error}
         actionError={actionError}
         status={status}

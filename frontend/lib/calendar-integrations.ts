@@ -76,6 +76,7 @@ const FIELD_LABELS: Record<string, string> = {
   redirect_uri: "Weiterleitungs-Adresse",
   refresh_token: "Zugriff von Google",
   token_scope: "Erteilte Rechte",
+  runtime: "Laufzeit",
 };
 
 export function fieldLabel(field: string): string {
@@ -150,8 +151,9 @@ export function validateIntegrationInput(
 /**
  * Baut den Schreibvorgang für das Formular.
  *
- * Zwei Dinge passieren hier bewusst: die Alternativfelder werden **mit**
- * geschickt (sonst ginge `path` verloren, weil es kein Pflichtfeld ist), und die
+ * Drei Dinge passieren hier bewusst: die Alternativfelder werden **mit**
+ * geschickt (sonst ginge `path` verloren, weil es kein Pflichtfeld ist), die
+ * optionalen Felder ebenfalls (`runtime` beim KI-Server), und die
  * schreibgeschützten Felder werden **weggelassen** (sonst schickte das Formular
  * leere Platzhalter mit, die den vom Server gespeicherten Refresh-Token
  * überschreiben würden).
@@ -162,7 +164,11 @@ export function buildIntegrationWrite(
   config: Record<string, string>,
   credentials: Record<string, string>,
 ): IntegrationWrite {
-  const configFelder = [...spec.required_config, ...spec.required_one_of.flat().filter(Boolean)];
+  const configFelder = [
+    ...spec.required_config,
+    ...(spec.optional_config ?? []),
+    ...spec.required_one_of.flat().filter(Boolean),
+  ];
   const credentialFelder = [...spec.required_credentials, ...spec.optional_credentials].filter(
     (field) => !isReadOnlyCredential(field),
   );
@@ -173,6 +179,18 @@ export function buildIntegrationWrite(
     credentials: collectFilled(credentials, credentialFelder),
   };
 }
+
+/**
+ * Die Felder, die das Formular in dieser Art anzeigt.
+ *
+ * Pflichtfelder zuerst, danach die optionalen. Die Reihenfolge ist die Anzeige-
+ * reihenfolge, und deshalb eine Funktion statt zweier Stellen im Formular -
+ * sonst hängt die Pflichtmarkierung von der Liste ab, die gerade iteriert wird.
+ */
+export function integrationConfigFields(spec: IntegrationCatalog): string[] {
+  return [...spec.required_config, ...(spec.optional_config ?? [])];
+}
+
 
 function collectFilled(values: Record<string, string>, fields: string[]): Record<string, string> {
   return fields.reduce<Record<string, string>>((result, field) => {

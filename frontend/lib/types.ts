@@ -1,4 +1,5 @@
 import { parseDashboardApiResponse, parseGreetingResponse, parseScheduleRangeResponse, parseStudyActionResponse, parseStudySession, parseStudyTask } from "./schemas";
+import { normalizeSource, type AiSource, type AnswerSource } from "./ai-runtime";
 
 export type ApiIdentifier = string | number;
 export type StudyTaskStatus = "todo" | "in_progress" | "completed";
@@ -130,13 +131,14 @@ export interface ScheduleRange {
 /**
  * Der Willkommenssatz des Dashboards.
  *
- * `source` unterscheidet, ob ein Modell geschrieben hat oder der Satz aus den
- * Daten gebaut wurde. Die Oberfläche zeigt das als kleinen Hinweis, damit ein
- * Satz nicht als KI-Aussage missverstanden wird.
+ * `source` sagt, **welcher Weg** geschrieben hat: `local` für einen Server auf
+ * diesem Rechner, `provider` für einen Online-Dienst und `fallback` für den Satz
+ * aus den Daten. Die Oberfläche zeigt das als kleinen Hinweis, damit ein Satz
+ * nicht als KI-Aussage missverstanden wird.
  */
 export interface Greeting {
   text: string;
-  source: "ai" | "fallback";
+  source: AiSource;
   model: string | null;
   generatedOn: string;
 }
@@ -168,6 +170,13 @@ export interface IntegrationCatalog {
   label: string;
   description: string;
   required_config: string[];
+  /**
+   * Felder, die man kann, aber nicht muss - beim KI-Server `runtime`.
+   *
+   * Ein Eintrag von heute hat das nicht; das ist kein Fehler. Deshalb auch
+   * hier ein Default, nicht ein Pflichtfeld.
+   */
+  optional_config?: string[];
   /** Gruppen, von denen mindestens ein Feld kommen muss, etwa `[["url", "path"]]`. */
   required_one_of: string[][];
   required_credentials: string[];
@@ -271,7 +280,11 @@ export interface DocumentSearchResult {
   hits: DocumentHit[];
 }
 
-export type DocumentAnswerSource = "ai" | "fallback" | "none";
+/**
+ * `none` heisst "kein Treffer, also gar keine Frage" - der einzige Wert, den
+ * der Willkommenssatz nicht kennt.
+ */
+export type DocumentAnswerSource = AnswerSource;
 
 export interface DocumentAnswer {
   answer: string;
@@ -282,9 +295,12 @@ export interface DocumentAnswer {
    * Ob der Notenstand im Prompt stand.
    *
    * Ein eigenes Feld und **kein** Wert von `source`: `source` sagt, woher die
-   * Antwort kommt (`ai`/`fallback`/`none`), und diese drei Werte bleiben so.
-   * Die Frage einer Lernenden ist aber eine andere - namely ob ihre Noten
-   * rausgegangen sind. Ohne dieses Feld muesste die Oberflaeche raten.
+   * Antwort kommt (`local`/`provider`/`fallback`/`none`), und diese vier Werte
+   * bleiben so. Die Frage einer Lernenden ist aber eine andere - namely ob ihre
+   * Noten rausgegangen sind. Ohne dieses Feld muesste die Oberflaeche raten.
+   *
+   * Der lokale Weg macht diese Freigabe nicht ueberfluessig: sie gilt fuer
+   * jeden Weg, auch fuer einen Server auf diesem Rechner.
    */
   grades_shared: boolean;
 }
@@ -986,15 +1002,20 @@ export function normalizeScheduleRange(payload: unknown): ScheduleRange {
 
 export function normalizeGreeting(payload: unknown): Greeting {
   const parsed = record(parseGreetingResponse(payload));
+  // `normalizeSource` kennt den gespeicherten Altwert "ai" und behandelt alles
+  // Unbekannte als "fallback": die Oberflaeche behauptet nie eine Herkunft, die
+  // sie nicht belegen kann - und behauptet erst recht keine *lokale*, weil das
+  // eine Datenschutzentscheidung behaupten wuerde. `none` gibt es beim Satz
+  // nicht; es waere eine Kategorie zu viel.
+  const quelle = normalizeSource(parsed.source);
   return {
     text: text(parsed.text, "Herzlich willkommen."),
-    // Das Backend kennt nur "ai" und "fallback"; alles andere wird als Fallback
-    // behandelt, damit die Oberflaeche nie eine falsche Herkunft behauptet.
-    source: parsed.source === "ai" ? "ai" : "fallback",
+    source: quelle === "none" ? "fallback" : quelle,
     model: typeof parsed.model === "string" && parsed.model ? parsed.model : null,
     generatedOn: text(parsed.generated_on, ""),
   };
 }
+
 
 export function normalizeDashboard(payload: unknown): DashboardData {
   const parsed: any = parseDashboardApiResponse(payload);

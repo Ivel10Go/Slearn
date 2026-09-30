@@ -47,10 +47,10 @@ class DocumentAskResponse(BaseModel):
 
     ``grades_shared`` sagt, ob der Notenstand im Prompt stand. Es ist bewusst
     ein eigenes Feld und **kein** Wert von ``source``: ``source`` beschreibt,
-    woher die Antwort kommt (``ai``/``fallback``/``none``), und diese drei Werte
-    bleiben unveraendert. Die Frage "wurden meine Noten mitgeschickt" ist eine
-    andere als die Frage "hat ein Modell geschrieben" - und sie ist die, die
-    eine Lernende stellen muss, wenn es um ihre Noten geht.
+    woher die Antwort kommt (``local``/``provider``/``fallback``/``none``), und
+    diese vier Werte bleiben unveraendert. Die Frage "wurden meine Noten
+    mitgeschickt" ist eine andere als die Frage "hat ein Modell geschrieben" -
+    und sie ist die, die eine Lernende stellen muss, wenn es um ihre Noten geht.
     """
 
     answer: str

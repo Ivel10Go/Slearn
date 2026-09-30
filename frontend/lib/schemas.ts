@@ -1,4 +1,5 @@
 ﻿import { z } from "zod";
+import { normalizeSource } from "./ai-runtime";
 
 export const integrationReadSchema = z.object({
   id: z.number().int(),
@@ -22,6 +23,15 @@ export const integrationCatalogSchema = z.object({
   label: z.string(),
   description: z.string(),
   required_config: z.array(z.string()),
+  /**
+   * Felder, die man **kann**, aber nicht muss.
+   *
+   * Bei einem KI-Server ist das `runtime`: die Art des Servers. Ein Eintrag von
+   * heute hat das Feld nicht, und das ist kein Fehler - die Art wird dann aus der
+   * Adresse abgeleitet. `.default([])` haelt die Karte lauffaehig, wenn ein
+   * aelteres Backend antwortet.
+   */
+  optional_config: z.array(z.string()).default([]),
   /**
    * Gruppen, von denen mindestens ein Feld kommen muss.
    *
@@ -194,12 +204,15 @@ export function parseDocumentAnswer(payload: unknown) {
   const parsed = documentAskResponseSchema.parse(payload);
   return {
     answer: parsed.answer,
-    // Das Backend kennt "ai", "fallback" und "none"; alles andere wird als
-    // Fallback behandelt, damit die Oberflaeche nie eine falsche Herkunft behauptet.
-    source: (parsed.source === "ai" || parsed.source === "none" ? parsed.source : "fallback") as "ai" | "fallback" | "none",
+    // Vier Werte, jeder mit eigener Bedeutung: `local` (Server auf diesem
+    // Rechner), `provider` (Online), `fallback` (aus den Daten) und `none`
+    // (kein Treffer). `ai` ist der gespeicherte Altwert und bedeutet
+    // `provider`. Alles Unbekannte wird `fallback` - eine erfundene *lokale*
+    // Herkunft waere die schlimmere Luege, weil sie eine
+    // Datenschutzentscheidung behaupten wuerde.
+    source: normalizeSource(parsed.source),
     model: parsed.model ?? null,
     sources: parsed.sources,
-    // Kommt als eigenes Feld aus dem Backend: `source` bleibt dreiwertig.
     grades_shared: parsed.grades_shared,
   };
 }
