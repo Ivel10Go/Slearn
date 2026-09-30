@@ -14,6 +14,7 @@ from app.db.entities import User
 from app.db.session import dispose_engine, session_scope
 from app.services.auth import ensure_bootstrap_user
 from app.services.demo_seed import seed_demo_data_and_commit
+from app.services.integration_scheduler import IntegrationSyncScheduler
 
 logger = logging.getLogger("school_assistant")
 
@@ -40,10 +41,31 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
                     )
     except (SQLAlchemyError, RuntimeError, ValueError):
         log_event(logger, "startup_database_task_failed")
+    scheduler = _start_scheduler(application, settings)
     try:
         yield
     finally:
+        if scheduler is not None:
+            scheduler.stop()
         dispose_engine()
+
+
+def _start_scheduler(application: FastAPI, settings: Settings) -> IntegrationSyncScheduler | None:
+    """Startet den planmäßigen Integrationsabruf, falls er eingeschaltet ist.
+
+    Das Attribut ``integration_scheduler`` gibt es immer, auch wenn kein Thread
+    läuft: Tests und der Status-Endpunkt müssen nicht erst prüfen, ob die
+    Einstellung existiert.
+    """
+    if not settings.webuntis_sync_enabled:
+        application.state.integration_scheduler = None
+        log_event(logger, "startup_scheduler_disabled")
+        return None
+    scheduler = IntegrationSyncScheduler(settings)
+    application.state.integration_scheduler = scheduler
+    scheduler.start()
+    log_event(logger, "startup_scheduler_enabled", interval_seconds=scheduler.interval_seconds)
+    return scheduler
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

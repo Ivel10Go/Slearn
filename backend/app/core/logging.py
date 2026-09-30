@@ -61,3 +61,8 @@ def configure_logging(level: str) -> None:
 
 def log_event(logger: logging.Logger, event: str, **fields: Any) -> None:
     logger.info(event, extra={"event": event, "fields": _safe_fields(fields)})
+
+
+def log_warning(logger: logging.Logger, event: str, *, exc_info: bool = False, **fields: Any) -> None:
+    """Wie ``log_event``, aber als Warnung; optional mit dem Typ der Ausnahme."""
+    logger.warning(event, extra={"event": event, "fields": _safe_fields(fields)}, exc_info=exc_info)
