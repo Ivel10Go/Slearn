@@ -291,7 +291,71 @@ docker compose exec backend alembic -c alembic.ini history
 
 Änderungen an `POSTGRES_USER`, `POSTGRES_PASSWORD` oder `POSTGRES_DB` wirken nicht automatisch auf ein bereits initialisiertes `pgdata`-Volume.
 
-Es ist noch kein Backup-Runner enthalten. Die Backup- und Kalenderintegrationen sind daher reserviert; `BACKUP_SCHEDULE` und `BACKUP_RETENTION_DAYS` werden noch nicht ausgeführt.
+Es ist noch kein Backup-Runner enthalten. Die Backup- und Kalenderintegrationen sind daher reserviert; `BACKUP_SCHEDULE` und `BACKUP_RETENTION_DAYS` werden noch nicht ausgeführt. Der folgende Abschnitt ist ein Runbook für den manuellen Weg, kein Automatismus.
+
+## Backup und Restore
+
+### Was gesichert werden muss
+
+`pg_dump` sichert ausschließlich die Datenbank. Hochgeladene Dokumente liegen als Dateien unter `DOCUMENT_STORAGE_PATH`; `documents.storage_path` verweigt auf diesen Pfad, und `app/api/files.py` schreibt die Datei unter einem UUID-Namen. Ein Backup, das nur die Datenbank kopiert, hinterlässt eine Datenbank, deren Dokumentenliste auf nicht existierende Dateien zeigt.
+
+| Inhalt | Ort | Folge bei fehlendem Backup |
+| --- | --- | --- |
+| Schema und Daten | Named Volume `pgdata` | Benutzer, Fächer, Stundenplan, Hausaufgaben, Klausuren, Kalender, Lernaufgaben, Integrationen |
+| Dokumente | `DOCUMENTS_HOST_PATH`, im Container `/var/lib/school-assistant/documents` | hochgeladene Dateien samt Abschnitten und Vektoren |
+| Importe | `IMPORTS_HOST_PATH` | nur Zwischendateien von Abgleichen |
+| Worker-Status | Named Volume `worker-status` | nichts; der Worker schreibt die Datei beim Start neu |
+
+`pgdata` und `worker-status` liegen im Docker-Volume-Verzeichnis des Hosts. Ein normales `docker volume ls` zeigt die Namen, aber nicht den Pfad; für ein Backup auf ein anderes Laufwerk müssen beide Volumes und das Host-Verzeichnis der Dokumente kopiert werden.
+
+### Dump anlegen
+
+Linux und macOS:
+
+```bash
+docker compose exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc > school.dump
+```
+
+PowerShell:
+
+```powershell
+cmd /c 'docker compose exec -T postgres pg_dump -U school_assistant -d school_assistant -Fc > school.dump'
+```
+
+Zwei Details, an denen ein Backup sonst stillschweigend kaputtgeht: `-T` verhindert, dass `docker compose exec` ein TTY anhängt und die Binärdaten verfälscht, und der PowerShell-Aufruf läuft bewusst über `cmd /c`, weil `>` in PowerShell 5.1 den Textstrom umkodiert und das Dump zerstört. `-Fc` erzeugt das komprimierte Custom-Format, das `pg_restore` und nicht `psql` liest. Anschließend `ls -l school.dump`: Ist die Datei kilobytegroß, wurde sie beschädigt.
+
+### Restore in den laufenden Stack
+
+```bash
+docker compose stop backend worker
+docker compose exec -T postgres pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists < school.dump
+docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT extname FROM pg_extension;"
+docker compose start backend worker
+```
+
+Der Ablauf ist absichtlich in dieser Reihenfolge: `pg_restore --clean` droppt Objekte, und ein laufendes Backend hält darauf offene Verbindungen. Nach dem Start prüft `docker compose logs backend`, ob Alembic etwas nachmigriert hat - der Dump enthält den Stand aus `alembic_version`. Eine Migration bedeutet, dass Dump und Code nicht zusammengehören. In der Extension-Liste muss `vector` stehen; fehlt sie, hilft nur `CREATE EXTENSION IF NOT EXISTS vector;` im Ziel. `postgres/init/001-vector.sql` wird ausschließlich bei einer frischen Initialisierung des Volumes ausgeführt und ist für den Restore nicht zuständig.
+
+### Restore-Übung
+
+Das Ziel ist nicht, den Dump zurückzuspielen, sondern festzustellen, ob er benutzbar ist, bevor es darauf ankommt. Die Übung läuft deshalb in einem Wegwerf-Container mit eigenem Volume und fasst `pgdata` nicht an. `docker compose down -v` ist dafür der falsche Weg, weil es genau dieses Volume löscht.
+
+```bash
+docker run -d --name restore-drill \
+  -e POSTGRES_USER=drill -e POSTGRES_PASSWORD=drill -e POSTGRES_DB=drill \
+  -v restore-drill-data:/var/lib/postgresql/data \
+  pgvector/pgvector:0.8.1-pg15-bookworm
+
+docker exec restore-drill pg_isready -U drill -d drill
+cat school.dump | docker exec -i restore-drill pg_restore -U drill -d drill --clean --if-exists --exit-on-error
+docker exec restore-drill psql -U drill -d drill -c "SELECT count(*) FROM users;"
+docker exec restore-drill psql -U drill -d drill -c "SELECT extname FROM pg_extension;"
+docker rm -f restore-drill
+docker volume rm restore-drill-data
+```
+
+`--exit-on-error` ist in der Übung richtig und im Notfallrestore fragwürdig: In der Übung soll ein Fehler laut werden und nicht teilweise wiederhergestelltes Chaos hinterlassen. Prüfziele sind dieselben wie im Notfall: Benutzerzeilen vorhanden, `vector` aktiv, Alembic-Stand plausibel. Ergänzend einen der ältesten Dump-Sätze nehmen, weil ein frischer Dump nur beweist, dass das Werkzeug funktioniert, nicht die Historie.
+
+**Nicht ausgeführt.** In der Entwicklungsumgebung dieser Äbung läuft kein Docker-Daemon; weder Dump noch Restore wurden je durchgespielt. Der Ablauf ist dokumentiert, nicht bestätigt.
 
 ## Konfiguration
 
@@ -321,7 +385,7 @@ Es ist noch kein Backup-Runner enthalten. Die Backup- und Kalenderintegrationen 
 | `DEBUG` | `false` | Backend-Debugmodus |
 | `SESSION_COOKIE_NAME` | `school_session` | Name des Session-Cookies |
 | `SESSION_MAX_AGE_SECONDS` | `604800` | Maximale Session-Lebensdauer |
-| `SESSION_COOKIE_SECURE` | `false` | Secure-Flag; bei HTTPS auf `true` |
+| `SESSION_COOKIE_SECURE` | `false` | Secure-Flag; bei HTTPS auf `true`. Folgt nicht aus `APP_ENV`, siehe "Betrieb hinter HTTPS" |
 | `SESSION_COOKIE_HTTPONLY` | `true` | Cookie-Zugriff durch JavaScript verhindern |
 | `SESSION_COOKIE_SAMESITE` | `lax` | `lax`, `strict` oder `none` |
 | `SESSION_COOKIE_DOMAIN` | leer | Optionales Cookie-Domain |
@@ -371,6 +435,128 @@ Der KI-Provider wird pro Integration in der Oberfläche konfiguriert, nicht übe
 | `ICAL_CALENDAR_URL` | Spätere iCalendar-Quelle |
 | `CALENDAR_REFRESH_INTERVAL_SECONDS` | Späteres Aktualisierungsintervall |
 
+## Betrieb hinter HTTPS
+
+Ausgangslage: nichts eingerichtet. Der Stack terminiert kein TLS, und alle Compose-Portbindungen liegen auf `127.0.0.1`. Zertifikate, ACME und Reverse-Proxy gehören nicht in dieses Repository. Dieser Abschnitt beschreibt den Aufbau und die Stellen, an denen diese Anwendung anders reagiert als man zunächst erwartet.
+
+### Beispiel: Caddy als Reverse-Proxy
+
+Das folgende Beispiel ist **nicht eingerichtet und nicht Teil des Stacks**. Es ist eine kopierbare Vorlage für einen Betrieb hinter HTTPS.
+
+```caddyfile
+# Caddyfile -- BEISPIEL, im Repository bewusst nicht vorhanden.
+#
+# Voraussetzungen:
+#   - ein DNS-Eintrag zeigt auf den Host, Ports 80 und 443 sind frei
+#   - der Compose-Stack läuft, das Frontend antwortet auf 127.0.0.1:3000
+#   - Caddy läuft als eigener Dienst auf demselben Host, nicht im Stack
+
+school.example.de {
+    # Caddy bezieht das Zertifikat selbst (ACME) und leitet HTTP auf HTTPS um.
+    # reverse_proxy überträgt WebSocket-Upgrades und setzt X-Forwarded-*.
+    reverse_proxy 127.0.0.1:3000
+}
+```
+
+Ein nginx-Setup ist ebenso möglich; der Unterschied liegt nur in Zertifikatsverwaltung und Weiterleitung. Nicht weiterleiten dürfen `5432` (PostgreSQL) und `8000` (Backend) -- beide bleiben an `127.0.0.1` gebunden.
+
+### `SESSION_COOKIE_SECURE`
+
+Hinter TLS muss `SESSION_COOKIE_SECURE=true` gesetzt sein. Das Setting existiert bereits als `cookie_secure` in `app/core/config.py` und akzeptiert `SESSION_COOKIE_SECURE` ebenso wie den älteren Namen `COOKIE_SECURE`. Es ist **absichtlich nicht** an `APP_ENV=production` gebunden: derselbe Compose-Stack wird lokal und in Tests im Klartext benutzt, und ein automatisch gesetztes `Secure`-Flag führt dort zu einer Anmeldung, die scheinbar funktioniert und dann bei jeder Folgeanfrage abgewiesen wird, weil der Browser das Cookie gar nicht zurücksendet. Fehlt die Bindung, bleibt es eine Konfigurationsaufgabe; deshalb steht sie hier und in `.env.example` ausdrichtig dabei.
+
+Der Fehler, an dem man das merkt, ist unspektakulär: `POST /api/v1/auth/login` antwortet mit 200 und `Set-Cookie`, jedes `/api/backend/v1/...` danach mit 401. In den Netzwerk-Elementen des Browsers ist das Cookie markiert, aber nicht vorhanden.
+
+### Was der Reverse-Proxy für diese Anwendung nicht ändern muss
+
+- `app/main.py` installiert weder `ProxyHeadersMiddleware` noch `TrustedHostMiddleware`. Das ist hier unkritisch: Das Session-Cookie wird in `app/api/auth.py` mit einem expliziten `secure=settings.cookie_secure` gesetzt, und keine Route bildet eine absolute URL aus `request.url.scheme`. Sobald das Backend Umleitungen oder absolute URLs erzeugt, ist `ProxyHeadersMiddleware` die Stelle, an der das nachgezogen werden muss.
+- `SESSION_COOKIE_SAMESITE=lax` genügt. Der Browser spricht ausschließlich mit dem Frontend-Origin, alle API-Anfragen laufen same-origin über `/api/backend/*`. `none` ist nur für eine echte Cross-Site-Einbettung nötig und setzt `Secure` voraus.
+- `CORS_ORIGINS` wird im Normalbetrieb nicht gebraucht, weil der Browser das Backend nie direkt erreicht. Nur wer `/api/v1/...` direkt aus dem Browser aufruft, trägt dort die HTTPS-Origin ein.
+- Der Service Worker (`public/sw.js`, network-first mit `/offline/` als Fallback) braucht keine Anpassung.
+
+### Prüfliste nach der Umstellung
+
+```bash
+curl -si -X POST https://school.example.de/api/backend/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"..."}' | grep -i '^set-cookie'
+```
+
+Erwartet wird `Secure` im `Set-Cookie`. Danach im Browser: anmelden, Dashboard laden, ein Dokument suchen, eine Lernaufgabe starten, im Offline-Modus die Navigation prüfen.
+
+**Nicht verifiziert.** In dieser Umgebung gibt es keinen Docker-Daemon und keinen Proxy; es wurde kein TLS-Terminierungslauf und keine Zertifikatsausstellung durchgespielt. Die Aussagen oben sind aus dem Code abgeleitet, nicht beobachtet.
+
+## Secret-Rotation
+
+Warum ein Runbook und keine Automatik: `SECRET_KEY` und `ADMIN_PASSWORD` wirken an zwei verschiedenen Stellen -- einmal im Backend-Prozess, einmal in der Datenbank. `POSTGRES_PASSWORD` wirkt an einer dritten, nämlich im bereits initialisierten Volume, in das Compose-Umgebungsvariablen nicht mehr hineingreifen. Eine Rotation, die nur `.env` anfasst, sieht aus wie ein Erfolg und bewirkt fast nichts.
+
+| Geheimnis | Wirkung einer Rotation | Aufwand |
+| --- | --- | --- |
+| `SECRET_KEY` | macht alle laufenden Sessions ungültig, sonst nichts | gering, jeder meldet sich einmal neu an |
+| `ADMIN_PASSWORD` | **nichts**, solange der Benutzer schon existiert | hoch, es gibt keinen API-Weg dafür |
+| `POSTGRES_PASSWORD` | **nichts**, solange `pgdata` existiert | mittel, `ALTER ROLE` plus `.env` plus Neustart |
+| `INTEGRATION_ENCRYPTION_KEY` | macht alle gespeicherten Zugangsdaten unlesbar | hoch, alle Integrationen neu eintragen |
+
+### `SECRET_KEY`
+
+Session-Tokens sind zustandslos: `create_session_token` in `app/core/security.py` bildet einen HMAC-SHA256 über die Nutzer-ID und die Ablaufzeit, es gibt keine Sessiontabelle. Ein Wechsel des Schlüssels invalidiert deshalb sofort jede bestehende Sitzung, ohne Rest in der Datenbank.
+
+```bash
+# Neuen Wert in .env eintragen, dann:
+docker compose up -d backend
+```
+
+Der Worker und das Frontend brauchen den Schlüssel nicht.
+
+### `ADMIN_PASSWORD`
+
+Das ist die Falle, die am leichtesten übersehen wird. `ensure_bootstrap_user` in `app/services/auth.py` legt den Benutzer nur an, wenn es ihn noch nicht gibt; existiert er, werden im `else`-Zweig ausschließlich `is_admin` und `is_active` repariert. `password_hash` wird nie angefasst. Es gibt außerdem keinen Endpunkt zum Ändern eines Passworts -- die Auth-Routen kennen nur `login`, `logout` und `me`. Ein neues `ADMIN_PASSWORD` in `.env` ändert also nichts am Passwort eines vorhandenen Administrators.
+
+Es gibt zwei Wege, beide manuell:
+
+```bash
+# 1. Hash mit exakt dem Code-Pfad erzeugen, den auch der Login benutzt.
+docker compose exec backend python -c "from app.core.security import hash_password; print(hash_password('NEUES-PASSWORT'))"
+
+# 2. Hash in der Datenbank setzen.
+docker compose exec postgres psql -U school_assistant -d school_assistant \
+  -c "UPDATE users SET password_hash='<HASH AUS SCHRITT 1>' WHERE username='admin';"
+```
+
+Schritt 2 statt in der Oberfläche ist nötig, weil es keinen Passwortdialog gibt. Der Hash darf nur mit diesem Aufruf erzeugt werden: die Argumente des Hasher in `app/core/security.py` (`time_cost=3`, `memory_cost=65536`, `parallelism=4`, `hash_len=32`, `salt_len=16`, `Type.ID`) sind an keinen anderen Stellen hinterlegt, und ein Hash aus einem Werkzeug mit anderen Parametern wird beim Login abgewiesen. `password_needs_rehash` existiert, wird aber nirgends aufgerufen.
+
+Der Umweg über einen neuen `ADMIN_USERNAME` funktioniert nur halb: Der Bootstrap legt dann einen zweiten Administrator an, der alte bleibt aktiv. Beide existieren anschließend, und der alte muss in der Datenbank deaktiviert werden.
+
+### `POSTGRES_PASSWORD`
+
+`POSTGRES_USER`, `POSTGRES_PASSWORD` und `POSTGRES_DB` werden von den Entrypoint-Skripten des `postgres`-Images nur bei der **Initialisierung** des Volumes ausgewertet. Ein bestehendes `pgdata` behält den alten Benutzer und das alte Passwort. `docker compose up -d` mit geändertem `.env` liefert dann `password authentication failed` und sonst nichts.
+
+```bash
+docker compose exec postgres psql -U school_assistant -d school_assistant \
+  -c "ALTER USER school_assistant WITH PASSWORD 'NEUES-PASSWORT';"
+```
+
+Danach `POSTGRES_PASSWORD` **und** `DATABASE_URL` in `.env` aktualisieren; das Passwort muss in der URL kodiert sein. Erst dann `docker compose up -d`. Der laufende Backend-Prozess verbindet sich nur beim Start neu, deshalb reicht ein Neustart der Container.
+
+### `INTEGRATION_ENCRYPTION_KEY`
+
+Der Schlüssel wird per HKDF-SHA256 ohne Salt auf einen 32-Byte-AES-GCM-Schlüssel abgeleitet (`app/core/crypto.py`). Gespeichert wird ein Payload mit dem Präfix `sa1.`, gefolgt von Nonce und Chiffretext. Zwei Konsequenzen:
+
+- Der Präfix enthält keine Schlüsselkennung. Es gibt keine Doppelkey-Logik und kein Werkzeug, das einen Bestand mit dem alten und dem neuen Schlüssel parallel lesbar hält. Nach dem Wechsel sind alle gespeicherten Zugangsdaten endgültig unlesbar, und `decrypt_credentials` wirft `CredentialDecryptionError`.
+- Eine Rotation ist damit keine Schlüsselrotation, sondern eine Eingabeübung: Jede Integration muss in den Einstellungen neu angelegt oder mit Zugangsdaten aktualisiert werden. WebUntis-Zugang und KI-Schlüssel gehören in einen Passwortmanager, nicht in `.env`.
+
+Diese Rotation ist deshalb nur bei Verdacht auf Kompromittierung sinnvoll. Sonst ist der Schaden größer als der Nutzen, weil ohne die alten Zugangsdaten kein Test und kein Stundenplanabgleich mehr möglich ist.
+
+### Reihenfolge und Praxis
+
+1. Einen Satz sicherer Ersatzwerte außerhalb des Hosts erzeugen und dort aufbewahren; die `.env` auf dem Host ist kein Tresor.
+2. `SECRET_KEY` rotieren, weil es der günstigste Schritt ist und nur Sessions beendet.
+3. `ADMIN_PASSWORD` über den Hashweg setzen, danach die Anmeldung prüfen.
+4. `POSTGRES_PASSWORD` mit `ALTER USER` und passendem Eintrag in `DATABASE_URL`.
+5. `INTEGRATION_ENCRYPTION_KEY` nur bei Verdacht, und nie zusammen mit einem Schritt, der Daten verliert.
+6. `docker compose exec postgres psql -U ... -c "SELECT 1;"` als Gegenprobe, danach `docker compose ps`, weil ein stehengebliebener Healthcheck schlimmer ist als ein alter Schlüssel.
+
+Ein Wert pro Schritt: Fällt nach `docker compose up -d` etwas aus, ist der Verdächtige der letzte Änderungskandidat. Nach jeder Rotation gehören Backup und Restore-Übung aus dem vorigen Abschnitt auf den Plan, weil `INTEGRATION_ENCRYPTION_KEY` und ein fehlgeschlagener Dump dieselbe Datenlage erzeugen.
+
 ## Tests, Lint, Typecheck und Builds
 
 ### Worker
@@ -382,11 +568,13 @@ python -m unittest discover -s worker/tests -v
 python -m py_compile worker/main.py worker/healthcheck.py
 ```
 
-ARM64-Buildcheck des isolierten Worker-Images:
+ARM64-Buildcheck des isolierten Worker-Images, manuell auf einem Host mit aktivem buildx und QEMU:
 
 ```bash
 docker buildx build --platform linux/arm64 --file worker/Dockerfile --tag school-assistant-worker:arm64-check .
 ```
+
+Denselben Build für alle drei Images automatisiert `.github/workflows/arm64.yml`, siehe "ARM64-Buildcheck".
 
 ### Backend
 
@@ -406,8 +594,10 @@ cd frontend
 npm test
 npm run lint
 npm run typecheck
-npm run build
+npx next build --webpack
 ```
+
+Für den Build ist `npx next build --webpack` zu verwenden, nicht `npm run build`. Das Script `build` ist `next build` und damit Turbopack, das reproduzierbar mit `TurbopackInternalError: ModuleGraph::from_graphs was canceled` abbricht, auch bei vollständig freiem Laufwerk. `frontend/Dockerfile` benutzt dieselbe Flag, deshalb baut die Pipeline mit derselben Option wie das Image.
 
 Frontend und Backend benötigen für einen nativen Start ihre eigenen Abhängigkeiten. Der normale Compose-Build installiert und kapselt sie in den jeweiligen Images.
 
@@ -418,6 +608,73 @@ docker compose config --quiet
 ```
 
 Die vollständige Ausgabe von `docker compose config` enthält interpolierte Zugangsdaten und darf nicht geteilt oder ungeschützt protokolliert werden.
+
+### Continuous Integration
+
+Zwei Workflows unter `.github/workflows/`. Es gibt bewusst kein Root-`package.json` und keinen Task-Runner; die Jobs rufen genau die Befehle auf, die oben stehen, aus dem Verzeichnis, zu dem sie gehören.
+
+`ci.yml` läuft bei jedem Pull Request, bei jedem Push auf `main` und manuell. Sieben Jobs ergeben elf Prüfungen, weil die Matrizen aus `frontend` und `backend` je dreifach laufen. Jede Prüfung steht einzeln, damit ein Fehler eindeutig zuzuordnen ist:
+
+| Job | Befehl | Arbeitsverzeichnis |
+| --- | --- | --- |
+| `frontend (test)` | `npm test` | `frontend/` |
+| `frontend (lint)` | `npm run lint` | `frontend/` |
+| `frontend (typecheck)` | `npm run typecheck` | `frontend/` |
+| `frontend build` | `npx next build --webpack` | `frontend/` |
+| `backend (pytest)` | `python -m pytest` | `backend/` |
+| `backend (ruff)` | `python -m ruff check app alembic tests` | `backend/` |
+| `backend (mypy)` | `python -m mypy app` | `backend/` |
+| `worker` | `python -m unittest discover -s worker/tests -v` | Repository-Root |
+| `arm64-wheels` | `pip download` für `linux/arm64` | Repository-Root |
+| `compose-config` | `docker compose config --quiet` | Repository-Root |
+| `worker-image` | `docker build -f worker/Dockerfile .` | Repository-Root |
+
+Installiert wird mit `npm ci` und `pip install -r requirements.txt -e ".[dev]"`, beides mit Cache. Für Python zählen `backend/requirements.txt` und `backend/pyproject.toml` in den Cache-Schlüssel, weil die Laufzeitabhängigkeiten im Dockerfile und die Werkzeuge in der `dev`-Extra stehen. Der Editable-Install legt auf dem Entwicklerrechner `backend/school_assistant_backend.egg-info/` an, das `.gitignore` noch nicht abdeckt; auf dem Runner stört das nicht.
+
+Drei Details, die den Unterschied zwischen einem grünen und einem grünen Pipeline-Ergebnis ausmachen:
+
+- `npx next build --webpack` statt `npm run build`. Das `build`-Script ist `next build` und damit Turbopack, das reproduzierbar abbricht. Das Frontend-Image benutzt dieselbe Flag, der Job baut also genau das, was das Image baut.
+- Die Worker-Tests laufen aus dem Repository-Root, nicht aus `worker/`. Der Job setzt deshalb bewusst kein `working-directory` und ruft zusätzlich `python -m py_compile worker/main.py` auf, weil `worker/main.py` von keinem Test importiert wird.
+- `compose-config` benutzt `--quiet`. Ohne die Flag landen die interpolierten Zugangsdaten im Log, und `.env.example` liefert absichtlich leere Werte für die fail-closed Variablen; der Job setzt dafür Wegwerfwerte als Schritt-Umgebung.
+
+#### Die bekannten Abweichungen
+
+`npm test` und `npm run lint` sind bei HEAD rot: ein fehlschlagender Test in `lib/types.test.ts` und 22 `@typescript-eslint/no-explicit-any` in `lib/schemas.ts` und `lib/types.ts`. Ursache ist in `lib/types.ts:8` dokumentiert -- die Zod-Schemas sind `z.object({}).passthrough()`-Stubs, die nichts validieren.
+
+Die Pipeline macht daraus **kein** `continue-on-error`. Stattdessen laufen beide Werkzeuge mit einem JSON-Reporter zusätzlich zur normalen Ausgabe, und `.github/ci/check-known-failures.mjs` entscheidet über den Exit-Code des Schritts:
+
+```bash
+npm test -- --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/vitest.json" || true
+node ../.github/ci/check-known-failures.mjs frontend-test "$RUNNER_TEMP/vitest.json"
+```
+
+`|| true` bezieht sich nur auf den Exit-Code des Werkzeugs, nicht auf den Schritt. Das Skript schlägt fehl bei jedem Fehler außerhalb der Liste in `.github/ci/known-failures.mjs`, und die Liste ist enger als "Frontend-Lint auslassen":
+
+- Für den Test ist genau ein Testname erlaubt, gebildet aus Datei, `describe` und `it`.
+- Für den Lint sind genau zwei Paare aus Datei und Regel erlaubt, zusätzlich mit einer Obergrenze von 7 beziehungsweise 15 Fundstellen. Ein 23. `any` in `lib/types.ts` lässt den Job rot werden.
+- Fehlt ein Eintrag in der Liste, wird jeder Fund in dieser Datei und Regel zum Fehler.
+- Ein fehlender, leerer oder unlesbarer Report ist ein harter Fehler. Genau diesen Fall würde ein pauschales `continue-on-error` verschlucken: ein Tool, das vor dem Schreiben des Reports stirbt, sieht sonst wie "nichts gefunden" aus.
+- Ein Eintrag, der nicht mehr fehlschlägt, lässt den Build durch und erzeugt eine Warnung. Die Ausnahme soll nicht still veralten, denn eine Liste, die zu groß ist, ist wieder ein Freibrief.
+
+Die Baseline ändert sich nur zusammen mit dem Code, der sie begründet. Wird `lib/types.ts` zu echten Schemas ausgebaut, ist das ein Handgriff: den Eintrag aus `known-failures.mjs` entfernen. Danach laufen `npm test` und `npm run lint` wieder ohne Skript und ohne `|| true`.
+
+#### ARM64-Buildcheck
+
+`.github/workflows/arm64.yml` baut die drei Images für `linux/arm64`. Der Job läuft **nicht** bei jedem Pull Request, sondern manuell (`workflow_dispatch`) und wöchentlich per `schedule`, mit einer Matrix über `backend`, `worker` und `frontend` und einem `timeout-minutes: 90`. Jeder Eintrag prüft am Ende `docker image inspect --format '{{.Architecture}}'`, denn ein Build, der nichts prüft, beweist nur, dass buildx mit Exit 0 zurückkam.
+
+Der Grund für die Trennung ist die Rechenzeit. Der Runner ist amd64, jeder RUN-Schritt eines arm64-Builds läuft also unter QEMU-Emulation; `npm ci` plus `next build` unter Emulation ist der teuerste Fall der Pipeline und gehört nicht in den Weg jedes Pull Requests.
+
+Was im Pull Request stattdessen läuft, ist `arm64-wheels` aus `ci.yml`: `pip download --only-binary=:all:` mit den Plattform-Tags `manylinux_2_28_aarch64` und `manylinux_2_17_aarch64` für `backend/requirements.txt` und `worker/requirements.txt`. Das beweist in Sekunden die Eigenschaft, an der es in der Praxis scheitert -- eine gepinnte Version ohne arm64-Wheel -- und ohne Emulation.
+
+Zwei `--platform`-Angaben sind nötig, nicht redundant: `psycopg-binary==3.3.4` liefert nur `manylinux_2_27`/`manylinux_2_28`, `pydantic-core` nur `manylinux_2_17`, und pip akzeptiert eine Wheel pro Target-Glibc nur in eine Richtung. Mit einer einzigen Angabe scheitert jeweils eine der beiden Familien. `pgvector` ist davon nicht betroffen, das Paket ist reines Python (`py3-none-any`); architekturabhängig sind im Stack `psycopg-binary` und das Image `pgvector/pgvector:0.8.1-pg15-bookworm`.
+
+Ein erfolgreicher arm64-Build ist trotzdem kein Raspberry-Pi-Test. Er sagt nichts über Startzeiten, Speicherverbrauch von `next build` auf einem ARM-Prozessor oder das Verhalten von pgvector auf der Zielhardware aus. Dafür wäre ein selbst gehosteter Runner auf dem Gerät nötig; einen gibt es nicht, und er ist auch nicht eingerichtet.
+
+#### Lokal gegen die Pipeline
+
+Die Befehle sind absichtlich einzeln, weil es keinen Task-Runner gibt. Unter Windows blockiert die Execution Policy `npm.ps1`, dort also `npm.cmd` und `npx.cmd`; auf Linux in der Pipeline genügt `npm`.
+
+**Nicht verifiziert.** Die Workflows wurden in dieser Umgebung nicht ausgeführt: es gibt keinen Docker-Daemon, und ein GitHub-Runner stand nicht zur Verfügung. Verifiziert sind die zugrunde liegenden Befehle einzeln (`npm test`, `npm run lint`, `npm run typecheck`, `npx next build --webpack`, `python -m pytest`, `python -m ruff check`, `python -m mypy app`, die Worker-Tests, `pip download` für aarch64, `docker compose config --quiet`), das Verhalten des Baseline-Skripts gegen echte und absichtlich veränderte Reports, die Syntax aller Run-Blöcke und die Auflösung beider Workflow-Dateien. Ungeprüft bleiben die Aktionen Dritter, das Caching, die QEMU-Builds und die Matrix-Zuordnung auf echten Runnern.
 
 ## Entwicklung mit Compose
 
@@ -439,11 +696,11 @@ docker compose down
 - Alle Host-Portbindungen verwenden `127.0.0.1`; PostgreSQL ist nicht öffentlich erreichbar.
 - Das Frontend erhält keine Datenbank-, Session- oder Admin-Secrets.
 - `BACKEND_INTERNAL_URL` ist serverintern und darf nicht mit `NEXT_PUBLIC_` Präfix verwendet werden.
-- `SESSION_COOKIE_SECURE=true` ist für eine Veröffentlichung über HTTPS erforderlich.
+- `SESSION_COOKIE_SECURE=true` ist für eine Veröffentlichung über HTTPS erforderlich. Der Wert wird nicht aus `APP_ENV=production` abgeleitet, siehe "Betrieb hinter HTTPS".
 - `CORS_ORIGINS` sollte nur tatsächlich benötigte Origin(s) enthalten.
 - Der Worker läuft ohne Root-Rechte, ohne Linux-Capabilities, mit read-only Root-Dateisystem und read-only Datenzugriffen.
-- Automatische Backups, Restore-Tests und Secret-Rotation sind noch nicht eingerichtet.
-- Eine spätere Veröffentlichung sollte TLS, Reverse-Proxy, Authentifizierung, Cookies, CORS, Rate-Limits, Backups und Log-Schutz gemeinsam prüfen.
+- Automatische Backups, Restore-Tests und Secret-Rotation sind nicht eingerichtet. Die manuellen Abläufe stehen in "Backup und Restore" und "Secret-Rotation"; ausgeführt wurde keiner davon.
+- Eine spätere Veröffentlichung sollte TLS, Reverse-Proxy, Authentifizierung, Cookies, CORS, Rate-Limits, Backups und Log-Schutz gemeinsam prüfen. Die Prüfliste dafür beginnt im Abschnitt "Betrieb hinter HTTPS".
 
 ## Troubleshooting
 
@@ -491,5 +748,6 @@ Stoppen Sie den kollidierenden Prozess oder den alten Stack. Die Ports bleiben a
 
 ## Spätere Deployment-Schritte
 
-Ein vollständiges Raspberry-Pi- oder Cloudflare-Deployment ist nicht enthalten. Vor einer Veröffentlichung müssen unter anderem ARM64-Builds, Ressourcenmessung, HTTPS/TLS, Secret-Verwaltung, Backups und Restore getestet werden. PostgreSQL darf nicht öffentlich oder durch einen Tunnel direkt freigegeben werden.
-"# School-assistant" 
+Ein vollständiges Raspberry-Pi- oder Cloudflare-Deployment ist nicht enthalten. Die Bausteine dafür sind jetzt dokumentiert, aber keiner davon ist eingerichtet oder gelaufen: der Reverse-Proxy und `SESSION_COOKIE_SECURE` im Abschnitt "Betrieb hinter HTTPS", die Rotationsschritte im Abschnitt "Secret-Rotation", Dump und Restore-Übung im Abschnitt "Backup und Restore", der ARM64-Buildcheck als Workflow.
+
+Offen bleibt, was sich in dieser Umgebung nicht prüfen lässt: Ressourcenmessung auf dem Zielgerät, ein durchgelaufener Restore, ein TLS-Handshake und ein Stack auf echter ARM-Hardware. PostgreSQL darf nicht öffentlich oder durch einen Tunnel direkt freigegeben werden.
