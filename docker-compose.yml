@@ -75,6 +75,15 @@ services:
       DOCUMENT_STORAGE_PATH: "/var/lib/school-assistant/documents"
       IMPORT_STORAGE_PATH: "/var/lib/school-assistant/imports"
       BACKUP_STORAGE_PATH: "/var/lib/school-assistant/backups"
+      # Der Reminder-Thread laeuft aus wie der WebUntis-Scheduler: in Settings
+      # bewusst aus, damit ein nativer Start keine ungefragten Nebenwirkungen
+      # hat, im Compose-Stack an.
+      REMINDER_SCHEDULER_ENABLED: "${REMINDER_SCHEDULER_ENABLED:-true}"
+      # Lokale Modelle. Muss read/write sein, sonst liegen die Gewichte nach
+      # einem Neustart nur im Container-Overlay und sind weg.
+      MODEL_STORAGE_PATH: "/var/lib/school-assistant/models"
+      MODEL_DOWNLOAD_TIMEOUT_SECONDS: "${MODEL_DOWNLOAD_TIMEOUT_SECONDS:-60}"
+      MODEL_MIN_FREE_BYTES: "${MODEL_MIN_FREE_BYTES:-536870912}"
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
@@ -93,6 +102,12 @@ services:
       - type: bind
         source: "${IMPORTS_HOST_PATH:-./data/imports}"
         target: /var/lib/school-assistant/imports
+        read_only: false
+        bind:
+          create_host_path: true
+      - type: bind
+        source: "${MODELS_HOST_PATH:-./data/models}"
+        target: /var/lib/school-assistant/models
         read_only: false
         bind:
           create_host_path: true

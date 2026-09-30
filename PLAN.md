@@ -17,13 +17,13 @@
 
 ## Kalender-Integrationen (lesen und schreiben)
 
-- [ ] iCalendar-Import: neues Integration-Kind `ical` im Katalog, Adapter, Sync-Endpoint
-- [ ] Alembic-Migration `0006`: Quellen-Attribut an `CalendarEvent`
-- [ ] iCalendar-Export: Änderungen aus der App als abonnierbare ICS-Quelle
-- [ ] Google Kalender: OAuth 2.0, Termine lesen + anlegen/bearbeiten/löschen, bidirektional
-- [ ] Apple Kalender: CalDAV mit App-spezifischem Passwort, lesen + schreiben
-- [ ] Tokens/Passwörter verschlüsselt speichern (bestehendes `crypto.py`)
-- [ ] Einstellungen-UI: Konfiguration, Verbindungstest, Sync-Button, OAuth-Rückkehr
+- [x] iCalendar-Import: neues Integration-Kind `ical` im Katalog, Adapter, Sync-Endpoint — `app/services/ical.py` ohne neue Dependency
+- [x] Alembic-Migration `0006`: Quellen-Attribut an `CalendarEvent` — das Attribut (`sync_source_id`, `source`, `external_id`) gab es seit `0001`; neu ist `20260930_0008_calendar_source` mit `sync_state` + `remote_etag` für den Abgleich in beide Richtungen
+- [x] iCalendar-Export: Änderungen aus der App als abonnierbare ICS-Quelle — `GET /api/v1/calendar/feed/{token}` mit widerrufbarem Token, ohne Session
+- [x] Google Kalendar: OAuth 2.0, Termine lesen + anlegen/bearbeiten/löschen, bidirektional — **nur gegen gemockte HTTP-Antworten getestet**, kein Google-Konto vorhanden
+- [x] Apple Kalender: CalDAV mit App-spezifischem Passwort, lesen + schreiben — **nur gegen gemockte Antworten getestet**
+- [x] Tokens/Passwörter verschlüsselt speichern (bestehendes `crypto.py`) — `client_secret`/`refresh_token` als Credentials verschlüsselt, **nicht** in der Klartext-`configuration`-Spalte; Access-Token wird nie gespeichert
+- [x] Einstellungen-UI: Konfiguration, Verbindungstest, Sync-Button, OAuth-Rückkehr — Schreiben erfordert `settings.preferences["share_calendar_for_writing"]`, Standard aus, jeder unlesbare Zustand bedeutet aus
 
 ## Desktop-App (Windows + macOS)
 
@@ -35,8 +35,8 @@
 
 ## Lokale KI-Modelle für Lernplan-Erstellung
 
-- [ ] Modell-Katalog im Backend (Hugging Face/GGUF, mit Größe und RAM-Bedarf)
-- [ ] Download-Manager in der App (fortsetzbar, SHA256-verifiziert)
+- [x] Modell-Katalog im Backend (Hugging Face/GGUF, mit Größe und RAM-Bedarf) — `app/services/model_catalog.py`, statisch und kuratiert, fünf Einträge; Größen und SHA256 live gegen die Hugging-Face-API verifiziert. RAM-Bedarf wird **berechnet**, nicht gespeichert, und als Schätzung markiert
+- [x] Download-Manager in der App (fortsetzbar, SHA256-verifiziert) — serverseitig in `app/services/model_downloads.py`: Resume per HTTP-Range, SHA256 über den wieder gelesenen Präfix, Prüfung **vor** dem atomaren Umbenennen, Fortsetzungspunkt aus `stat()` statt gespeichert
 - [ ] Lokale Inference (z. B. llama.cpp), ohne Docker
 - [ ] Fine-Tuning-Pipeline für Lernplan-Modelle (lokal feinabgestimmt)
 - [ ] Lernplan-Erstellung: Stundenplan + offene Aufgaben + Klausuren → Lernplan
@@ -104,11 +104,11 @@ Das Grundsystem steht: `StudyPlanTask` mit `start`/`stop`/`complete` (`app/api/s
 
 ## Benachrichtigungen
 
-- [ ] `User.notifications_enabled` ist eine tote Spalte: verdrahten oder aus der Migration entfernen
-- [ ] Push-Handler in `public/sw.js` ergänzen (bisher nur Caching, kein Push) und Cache-Namen bumpen
-- [ ] Erinnerungen an fällige Lernaufgaben und Klausuren; Scheduler fehlt komplett, siehe WebUntis-Sync
-- [ ] Web-Push plus lokale Benachrichtigungen als Fallback für den Browser
-- [ ] Einstellungen je Nutzer: Kanäle, Uhrzeit, Ruhezeiten
+- [x] `User.notifications_enabled` ist eine tote Spalte: verdrahten oder aus der Migration entfernen — **verdrahtet** als Hauptschalter; Kanäle/Uhrzeit/Ruhezeiten liegen in `settings.preferences`, ein einzelnes Boolean skaliert darauf nicht. Unlesbarer Zustand = aus
+- [x] Push-Handler in `public/sw.js` ergänzen (bisher nur Caching, kein Push) und Cache-Namen bumpen — `lernraum-static-v6`; `push`/`notificationclick`/`message` sind additiv und fassen den Cache nicht an, VAPID-Schlüssel kommt per `postMessage`
+- [x] Erinnerungen an fällige Lernaufgaben und Klausuren; Scheduler fehlt komplett, siehe WebUntis-Sync — `app/services/notification_scheduler.py`. **Bewusst ein zweiter Thread**, nicht im WebUntis-Scheduler: andere Taktart (5 min statt 24 h) und eigene Fehlergrenze (startet unabhängig von `WEBUNTIS_SYNC_ENABLED`)
+- [x] Web-Push plus lokale Benachrichtigungen als Fallback für den Browser — der lokale Weg ist der **Hauptpfad**: offene Seite holt Zeilen über `GET /v1/notifications`, ein vom Dienst angenommener Push setzt `delivered_at` und nimmt die Zeile aus der lokalen Warteschlange
+- [x] Einstellungen je Nutzer: Kanäle, Uhrzeit, Ruhezeiten — Ruhezeit in der Nutzerzeitzone, mit Zweig für die über Mitternacht laufende (`22:00–07:00`); in der Ruhezeit wird **nicht** zugestellt, der verschobene Moment wandert auf das Ruheende
 
 ## Reward-System
 
