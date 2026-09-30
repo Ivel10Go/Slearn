@@ -32,6 +32,7 @@ from app.main import create_app
 from app.schemas.auth import UserRead
 from app.services import grades as grades_service
 from app.services import integrations as integrations_service
+from app.services import model_catalog
 from app.services.ai_provider import (
     AiProviderAuthError,
     AiProviderClient,
@@ -65,6 +66,24 @@ from app.services.integrations import (
     sync_window,
 )
 from app.services.lessons import MAX_RANGE_DAYS, LessonRangeError, validate_range
+from app.services.model_catalog import (
+    MODEL_TASKS,
+    ModelCatalogError,
+    ModelFile,
+    ModelSpec,
+    bits_per_weight,
+    catalog_models,
+    model_spec,
+    ram_estimate,
+    validate_download_url,
+)
+from app.services.model_downloads import (
+    MANIFEST_NAME,
+    PART_SUFFIX,
+    ModelDownloadBusy,
+    ModelDownloadError,
+    ModelDownloadManager,
+)
 from app.services.progress import (
     DEFAULT_WEEKLY_GOAL_MINUTES,
     confidence_label,
@@ -4631,3 +4650,671 @@ def test_backup_status_of_a_disabled_runner_stays_read_only(app_client: TestClie
     assert "connection refused" in result["backup"]["last_error"]
     for method in ("post", "put", "patch", "delete"):
         assert getattr(app_client, method)("/api/v1/backups/status").status_code == 405
+
+
+# --------------------------------------------------------------------------
+# Modellkatalog und Download-Manager
+# --------------------------------------------------------------------------
+
+
+def _test_model(model_id: str = "probe-modell", payload: bytes = b"", **kwargs: object) -> ModelSpec:
+    """Ein Katalogeintrag für den Test, mit echtem Hash über ``payload``.
+
+    Die URL zeigt auf die erlaubte Quelle, aber der Test hängt einen
+    ``httpx``-Transport davor - es geht **kein** Byte ins Netz.
+    """
+    content = payload or b"gewichten"
+    return ModelSpec(
+        id=model_id,
+        label=f"Probe {model_id}",
+        task=kwargs.pop("task", "text_generation"),
+        family="Test",
+        description="Ein Modell für den Test.",
+        license="MIT",
+        source_repository="test/probe",
+        source_page="https://huggingface.co/test/probe",
+        parameter_count=kwargs.pop("parameter_count", 1000),
+        quantization=kwargs.pop("quantization", "Q4_K_M"),
+        context_length=kwargs.pop("context_length", 4096),
+        files=(
+            ModelFile(
+                name="probe.gguf",
+                url="https://huggingface.co/test/probe/resolve/main/probe.gguf",
+                sha256=hashlib.sha256(content).hexdigest(),
+                size_bytes=len(content),
+            ),
+        ),
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
+class _FakeModelTransport(httpx.BaseTransport):
+    """Ein Modellserver im Test: Range, Abbruch, Pause und Weiterleitung.
+
+    Der Stream wird **zügig** ausgeliefert, damit ein Test den Download an
+    genau der Stelle anhalten kann, die ihn interessiert (``pause_after``), und
+    umgekehrt.
+    """
+
+    def __init__(
+        self,
+        payload: bytes,
+        *,
+        supports_range: bool = True,
+        fail_once: bool = False,
+        pause_after: int | None = None,
+        redirect_to: str | None = None,
+        block_size: int = 1024 * 1024,
+    ) -> None:
+        self.payload = payload
+        self.supports_range = supports_range
+        self.fail_once = fail_once
+        self.pause_after = pause_after
+        self.redirect_to = redirect_to
+        self.block_size = block_size
+        self.requests: list[httpx.Request] = []
+        self.paused = threading.Event()
+        self.resume = threading.Event()
+        self._failed = False
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if self.redirect_to is not None:
+            return httpx.Response(302, headers={"location": self.redirect_to}, request=request)
+
+        raw_range = request.headers.get("range", "")
+        start = 0
+        if raw_range and self.supports_range:
+            start = int(raw_range.split("=", 1)[1].split("-", 1)[0])
+        if start and not self.supports_range:
+            # Genau die Falle aus der Aufgabe: Der Server ignoriert die Range
+            # und schickt die ganze Datei. Antwort 200, nicht 206.
+            return self._respond(200, self.payload, request)
+        if start > len(self.payload):
+            return httpx.Response(416, request=request)
+        body = self.payload[start:]
+        if self.supports_range and start:
+            return self._respond(206, body, request, content_range=f"bytes {start}-{len(self.payload) - 1}/{len(self.payload)}")
+        return self._respond(200, body, request)
+
+    def _respond(
+        self,
+        status_code: int,
+        body: bytes,
+        request: httpx.Request,
+        *,
+        content_range: str | None = None,
+    ) -> httpx.Response:
+        should_fail = self.fail_once and not self._failed
+        if should_fail:
+            self._failed = True
+        blocks = [body[index : index + self.block_size] for index in range(0, len(body), self.block_size)] or [b""]
+
+        def stream() -> object:
+            for index, block in enumerate(blocks):
+                if should_fail and index > 0:
+                    raise httpx.ReadError("Verbindung mitten im Stream abgerissen")
+                if self.pause_after is not None and index == self.pause_after:
+                    self.paused.set()
+                    self.resume.wait(timeout=10)
+                yield block
+
+        headers = {"content-length": str(len(body))}
+        if content_range:
+            headers["content-range"] = content_range
+        return httpx.Response(status_code, headers=headers, content=stream(), request=request)
+
+
+def _manager(root: Path, transport: httpx.BaseTransport, **kwargs: object) -> ModelDownloadManager:
+    return ModelDownloadManager(
+        root,
+        timeout_seconds=5.0,
+        client_factory=lambda: httpx.Client(transport=transport, timeout=5.0, follow_redirects=False),
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
+def _part_file(root: Path, spec: ModelSpec) -> Path:
+    return root / spec.id / f"{spec.files[0].name}{PART_SUFFIX}"
+
+
+def _target_file(root: Path, spec: ModelSpec) -> Path:
+    return root / spec.id / spec.files[0].name
+
+
+def _install_model(
+    app_client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    payload: bytes,
+    *,
+    transport: httpx.BaseTransport | None = None,
+    manager_kwargs: dict[str, object] | None = None,
+) -> tuple[ModelSpec, ModelDownloadManager]:
+    """Ein Testmodell in den Katalog hängen und einen Manager darauf setzen."""
+    spec = _test_model(payload=payload)
+    monkeypatch.setitem(model_catalog.MODEL_CATALOG, spec.id, spec)
+    server = transport or _FakeModelTransport(payload)
+    manager = _manager(tmp_path / "modelle", server, **(manager_kwargs or {}))
+    app_client.app.state.model_downloads = manager
+    return spec, manager
+
+
+# --- Katalog ---------------------------------------------------------------
+
+
+def test_der_modellkatalog_traegt_nur_vollstaendige_metadaten() -> None:
+    """Jeder Eintrag braucht Aufgabe, mindestens eine Datei und eine echte Pruefsumme."""
+    assert catalog_models()
+    for spec in catalog_models():
+        assert spec.task in MODEL_TASKS
+        assert spec.files
+        assert spec.size_bytes > 0
+        for item in spec.files:
+            assert len(item.sha256) == 64
+            assert set(item.sha256) <= set("0123456789abcdef")
+            assert item.size_bytes > 0
+            validate_download_url(item.url)
+
+
+def test_der_katalog_ist_nicht_auf_gguf_textmodelle_beschraenkt() -> None:
+    """Sprachmodelle und Textmodelle teilen sich ein Format - sonst waere es Whisper-Rest."""
+    aufgaben = {spec.task for spec in catalog_models()}
+    assert "text_generation" in aufgaben
+    assert "speech_to_text" in aufgaben
+
+
+def test_der_ram_bedarf_wird_aus_den_metadaten_abgeleitet() -> None:
+    spec = _test_model(parameter_count=2_000_000_000, quantization="Q4_K_M", context_length=4096)
+    estimate = ram_estimate(spec)
+    # 2e9 * 4.8 / 8 = 1,2 Mrd. Byte Gewichte, mal 1,1 Headroom, plus 4096 Token KV.
+    assert estimate.weight_bytes == round(2_000_000_000 * 4.8 / 8)
+    assert estimate.ram_bytes > estimate.weight_bytes
+    assert estimate.is_estimate is True
+    assert "Parameter" in estimate.derived_from
+    assert "Kontexttoken" in estimate.derived_from
+
+
+def test_ohne_parameterzahl_rechnet_die_schaetzung_mit_der_dateigroesse() -> None:
+    """Whisper hat keine Parameterzahl im Katalog - dann wird nicht geraten."""
+    payload = b"x" * 4096
+    spec = _test_model(payload=payload, parameter_count=None, quantization="f16", context_length=None)
+    estimate = ram_estimate(spec)
+    assert estimate.weight_bytes == len(payload)
+    assert "Dateigröße" in estimate.derived_from
+    assert "Kontexttoken" not in estimate.derived_from
+
+
+def test_die_quantisierung_stammt_aus_dem_namen_und_nicht_aus_einer_tabelle() -> None:
+    assert bits_per_weight("Q4_K_M") == 4.8
+    assert bits_per_weight("q5_k_s") == 5.8
+    assert bits_per_weight("Q8_0") == 8.0
+    assert bits_per_weight("IQ4_XS") == 4.8
+    assert bits_per_weight("F16") == 16.0
+    # Unbekanntes wird nicht geraten, sondern als unbekannt gemeldet.
+    assert bits_per_weight("AQ_256") is None
+    assert bits_per_weight(None) is None
+
+
+def test_ein_modell_mit_128k_kontext_wird_nicht_nach_128k_geplant() -> None:
+    """Der Kontextpuffer wird gekappt, sonst waere das Modell unbenutzbar."""
+    gedeckelt = _test_model(context_length=8192)
+    lang = _test_model(context_length=131072)
+    assert ram_estimate(lang).ram_bytes == ram_estimate(gedeckelt).ram_bytes
+
+
+def test_eine_fremde_modellquelle_steht_nicht_auf_der_allowlist() -> None:
+    for verboten in (
+        "http://huggingface.co/test/probe/resolve/main/probe.gguf",
+        "https://169.254.169.254/latest/meta-data/",
+        "https://backend:8000/api/v1/models",
+        "https://localhost:8080/probe.gguf",
+        "https://huggingface.co:8443/probe.gguf",
+        "https://user:pw@huggingface.co/probe.gguf",
+        "file:///etc/passwd",
+    ):
+        with pytest.raises(ModelCatalogError):
+            validate_download_url(verboten)
+
+
+def test_die_echten_cdn_hosts_von_hugging_face_sind_erlaubt() -> None:
+    """HF leitet auf eigene CDN-Hosts um - ohne sie waere jeder Download tot."""
+    for erlaubt in (
+        "https://huggingface.co/test/probe/resolve/main/probe.gguf",
+        "https://cdn-lfs.huggingface.co/repos/ab/cd/blob",
+        "https://transfer.xethub.hf.co/transfer/abc",
+    ):
+        assert validate_download_url(erlaubt) == erlaubt
+
+
+def test_eine_unbekannte_modell_id_wird_im_katalog_abgelehnt() -> None:
+    with pytest.raises(ModelCatalogError):
+        model_spec("gibt-es-nicht")
+
+
+# --- Download-Manager auf Serviceebene --------------------------------------
+
+
+def test_ein_download_prueft_die_summe_und_benennt_dann_um(tmp_path: Path) -> None:
+    payload = b"gewichten-in-huggingface" * 1000
+    spec = _test_model(payload=payload)
+    manager = _manager(tmp_path / "modelle", _FakeModelTransport(payload))
+
+    manager.start(spec)
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+
+    state = manager.status(spec)
+    assert state.status == "installed"
+    assert state.verified is True
+    assert state.progress_percent == 100.0
+    assert _target_file(tmp_path / "modelle", spec).read_bytes() == payload
+    assert not _part_file(tmp_path / "modelle", spec).exists()
+    assert (tmp_path / "modelle" / spec.id / MANIFEST_NAME).exists()
+
+
+def test_ein_zweiter_download_desselben_modells_wird_abgelehnt(tmp_path: Path) -> None:
+    """Zwei Tabs auf denselben Knopf: der zweite bekommt 409 und keinen zweiten Thread."""
+    payload = b"a" * (3 * 1024 * 1024)
+    spec = _test_model(payload=payload)
+    transport = _FakeModelTransport(payload, pause_after=1)
+    manager = _manager(tmp_path / "modelle", transport)
+
+    manager.start(spec)
+    assert transport.paused.wait(timeout=10)
+    with pytest.raises(ModelDownloadBusy):
+        manager.start(spec)
+    transport.resume.set()
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+    assert manager.status(spec).status == "installed"
+
+
+def test_der_download_setzt_nach_einem_abruf_unterbrochen_fort(tmp_path: Path) -> None:
+    """Einabriss im Stream darf kein Ende sein: der naechste Versuch holt den Rest."""
+    payload = b"b" * (3 * 1024 * 1024)
+    spec = _test_model(payload=payload)
+    transport = _FakeModelTransport(payload, fail_once=True)
+    manager = _manager(tmp_path / "modelle", transport)
+
+    manager.start(spec)
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+    assert manager.status(spec).status == "failed"
+
+    part = _part_file(tmp_path / "modelle", spec)
+    teilstand = part.stat().st_size
+    assert 0 < teilstand < len(payload)
+
+    manager.start(spec)
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+
+    assert manager.status(spec).status == "installed"
+    assert _target_file(tmp_path / "modelle", spec).read_bytes() == payload
+    # Der zweite Versuch hat eine Range geschickt - das ist der Fortsetzungspunkt.
+    assert transport.requests[-1].headers["range"] == f"bytes={teilstand}-"
+
+
+def test_die_pruefsumme_gilt_ueber_alle_teilstuecke(tmp_path: Path) -> None:
+    """Der vorhandene Praefix muss in den Hash einrechnen, sonst prueft nichts."""
+    payload = b"c" * (3 * 1024 * 1024)
+    spec = _test_model(payload=payload)
+    transport = _FakeModelTransport(payload, fail_once=True)
+    manager = _manager(tmp_path / "modelle", transport)
+
+    manager.start(spec)
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+    manager.start(spec)
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+
+    assert manager.status(spec).status == "installed"
+    assert _target_file(tmp_path / "modelle", spec).read_bytes() == payload
+
+
+def test_ein_server_ohne_range_setzt_auf_null_zurueck(tmp_path: Path) -> None:
+    """Antwort 200 statt 206 heisst: neu von vorn, nicht anhaengen."""
+    payload = b"d" * (3 * 1024 * 1024)
+    spec = _test_model(payload=payload)
+    transport = _FakeModelTransport(payload, fail_once=True)
+    manager = _manager(tmp_path / "modelle", transport)
+
+    manager.start(spec)
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+    assert _part_file(tmp_path / "modelle", spec).exists()
+
+    # Jetzt ein Server, der die Range ignoriert und immer die ganze Datei schickt.
+    transport.supports_range = False
+    manager.start(spec)
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+
+    assert manager.status(spec).status == "installed"
+    assert _target_file(tmp_path / "modelle", spec).read_bytes() == payload
+    # Der letzte Versuch hatte keine Range mehr, weil die Datei verworfen war.
+    assert "range" not in transport.requests[-1].headers
+
+
+def test_ein_falscher_hash_verwirft_die_datei_vollstaendig(tmp_path: Path) -> None:
+    """Ein vergifteter Praefix darf nicht liegen bleiben - sonst scheitert jeder Versuch."""
+    payload = b"e" * 4096
+    spec = _test_model(payload=payload)
+    gebogene = _FakeModelTransport(b"x" * 4096)
+    manager = _manager(tmp_path / "modelle", gebogene)
+
+    manager.start(spec)
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+
+    state = manager.status(spec)
+    assert state.status == "failed"
+    assert "Prüfsumme" in state.message
+    assert not _target_file(tmp_path / "modelle", spec).exists()
+    assert not _part_file(tmp_path / "modelle", spec).exists()
+    assert manager.status(spec).progress_percent == 0.0
+
+
+def test_ein_abbruch_behaelt_den_teilstand_und_meldet_nie_installiert(tmp_path: Path) -> None:
+    payload = b"f" * (3 * 1024 * 1024)
+    spec = _test_model(payload=payload)
+    transport = _FakeModelTransport(payload, pause_after=1)
+    manager = _manager(tmp_path / "modelle", transport)
+
+    manager.start(spec)
+    assert transport.paused.wait(timeout=10)
+    assert manager.cancel(spec.id) is True
+    transport.resume.set()
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+
+    state = manager.status(spec)
+    assert state.status == "interrupted"
+    assert manager.status(spec).verified is False
+    assert not _target_file(tmp_path / "modelle", spec).exists()
+    assert 0 < _part_file(tmp_path / "modelle", spec).stat().st_size < len(payload)
+    # Ein Abbruch ohne laufenden Download ist kein Fehler, sondern eine leere Antwort.
+    assert manager.cancel(spec.id) is False
+
+
+def test_der_teilstand_nennt_sich_nie_vollstaendig(tmp_path: Path) -> None:
+    """Auch von Hand angelegt: ohne Manifest ist ein Modell nicht installiert."""
+    payload = b"g" * 1024
+    spec = _test_model(payload=payload)
+    root = tmp_path / "modelle"
+    (root / spec.id).mkdir(parents=True)
+    _target_file(root, spec).write_bytes(payload)
+
+    manager = _manager(root, _FakeModelTransport(payload))
+    state = manager.status(spec)
+    # Ohne Manifest ist die Datei ein liegengebliebener Rest und nie ein Erfolg.
+    assert state.status != "installed"
+    assert state.verified is False
+    assert manager.is_installed(spec) is False
+    assert state.bytes_downloaded == len(payload)
+
+
+def test_eine_weiterleitung_ins_eigene_netz_wird_abgelehnt(tmp_path: Path) -> None:
+    """Der Server darf nicht ins Docker-Netz oder zur Metadaten-Adresse umleiten."""
+    payload = b"h" * 2048
+    spec = _test_model(payload=payload)
+    transport = _FakeModelTransport(payload, redirect_to="https://169.254.169.254/latest/meta-data/")
+    manager = _manager(tmp_path / "modelle", transport)
+
+    manager.start(spec)
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+
+    state = manager.status(spec)
+    assert state.status == "failed"
+    assert "erlaubten Quellen" in state.message
+    assert not _target_file(tmp_path / "modelle", spec).exists()
+
+
+def test_zu_wenig_speicher_bricht_vor_dem_ersten_byte_ab(tmp_path: Path) -> None:
+    payload = b"i" * 4096
+    spec = _test_model(payload=payload)
+    manager = _manager(tmp_path / "modelle", _FakeModelTransport(payload), min_free_bytes=10**18)
+
+    with pytest.raises(ModelDownloadError) as fehler:
+        manager.start(spec)
+    assert "Speicherplatz" in str(fehler.value)
+    assert manager.status(spec).status == "not_downloaded"
+
+
+def test_ein_bereits_geladenes_modell_startet_nichts_neues(tmp_path: Path) -> None:
+    payload = b"j" * 4096
+    spec = _test_model(payload=payload)
+    transport = _FakeModelTransport(payload)
+    manager = _manager(tmp_path / "modelle", transport)
+
+    manager.start(spec)
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+    anzahl = len(transport.requests)
+
+    state = manager.start(spec)
+    assert state.status == "installed"
+    assert len(transport.requests) == anzahl
+    # Der No-Op darf das Modell nicht dauerhaft sperren: sonst waere nach dem
+    # ersten zweiten Klick jeder weitere Versuch ein 409.
+    assert manager.remove(spec) is True
+
+
+def test_loeschen_raeumt_teilstand_und_manifest_und_ist_idempotent(tmp_path: Path) -> None:
+    payload = b"k" * 2048
+    spec = _test_model(payload=payload)
+    manager = _manager(tmp_path / "modelle", _FakeModelTransport(payload))
+    manager.start(spec)
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+
+    assert manager.remove(spec) is True
+    assert not (tmp_path / "modelle" / spec.id).exists()
+    assert manager.status(spec).status == "not_downloaded"
+    # Der Katalogeintrag bleibt bestehen, nur die Dateien sind weg.
+    assert manager.remove(spec) is False
+    assert manager.status(spec).status == "not_downloaded"
+
+
+def test_waehrend_eines_downloads_wird_nicht_geloescht(tmp_path: Path) -> None:
+    payload = b"l" * (3 * 1024 * 1024)
+    spec = _test_model(payload=payload)
+    transport = _FakeModelTransport(payload, pause_after=1)
+    manager = _manager(tmp_path / "modelle", transport)
+
+    manager.start(spec)
+    assert transport.paused.wait(timeout=10)
+    with pytest.raises(ModelDownloadBusy):
+        manager.remove(spec)
+    transport.resume.set()
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+
+
+def test_eine_kennung_mit_pfdadelementen_bildet_kein_verzeichnis(tmp_path: Path) -> None:
+    """Die zweite Verteidigungslinie: die model_id entscheidet den Verzeichnisnamen."""
+    root = tmp_path / "modelle"
+    root.mkdir()
+    manager = _manager(root, _FakeModelTransport(b"x" * 16))
+    with pytest.raises(ModelDownloadError):
+        manager.model_directory(_test_model(model_id="../../etc", payload=b"x" * 16))
+    assert list(root.iterdir()) == []
+
+
+# --- API -------------------------------------------------------------------
+
+
+def test_der_modellkatalog_braucht_eine_sitzung(app_client: TestClient) -> None:
+    assert app_client.get("/api/v1/models").status_code == 401
+    assert app_client.post("/api/v1/models/whisper-tiny-ggml/download").status_code == 401
+
+
+def test_der_katalog_nennt_groesse_und_ram_schaetzung(app_client: TestClient) -> None:
+    login(app_client)
+    response = app_client.get("/api/v1/models")
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["shared_installation"] is True
+    assert payload["storage"]["writable"] is True
+    # Der Ablagepfad aus dem Container gehoert nicht in eine Antwort an den Browser.
+    assert "model_storage_path" not in response.text
+    assert "/var/lib/school-assistant/models" not in response.text
+
+    eintraege = {entry["id"]: entry for entry in payload["models"]}
+    assert "whisper-tiny-ggml" in eintraege
+    eintrag = eintraege["whisper-tiny-ggml"]
+    assert eintrag["size_bytes"] > 0
+    assert eintrag["size_is_estimate"] is False
+    assert eintrag["ram_is_estimate"] is True
+    assert eintrag["ram_estimate_bytes"] >= eintrag["size_bytes"]
+    assert "Dateigröße" in eintrag["ram_basis"]
+    assert eintrag["files"][0]["name"] == "ggml-tiny.bin"
+    # Die Download-Adresse wird nicht ausgeliefert.
+    assert "url" not in eintrag["files"][0]
+    assert eintrag["status"]["status"] == "not_downloaded"
+
+
+def test_ein_textmodell_nennt_seine_ram_schaetzung_aus_den_parametern(app_client: TestClient) -> None:
+    login(app_client)
+    payload = app_client.get("/api/v1/models").json()
+    eintraege = {entry["id"]: entry for entry in payload["models"]}
+    eintrag = eintraege["qwen2.5-1.5b-instruct-q4km"]
+    assert eintrag["parameter_count"] == 1543714304
+    assert eintrag["quantization"] == "Q4_K_M"
+    assert "Parameter" in eintrag["ram_basis"]
+    assert eintrag["ram_estimate_gib"] > 0
+
+
+def test_eine_unbekannte_modell_id_ist_404(app_client: TestClient) -> None:
+    login(app_client)
+    assert app_client.get("/api/v1/models/gibt-es-nicht").status_code == 404
+    assert app_client.post("/api/v1/models/gibt-es-nicht/download").status_code == 404
+    assert app_client.post("/api/v1/models/gibt-es-nicht/cancel").status_code == 404
+    assert app_client.delete("/api/v1/models/gibt-es-nicht").status_code == 404
+
+
+def test_der_knopf_laedt_das_modell_und_die_antwort_zeigt_es(
+    app_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"laden-und-pruefen" * 5000
+    spec, manager = _install_model(app_client, tmp_path, monkeypatch, payload)
+    login(app_client)
+
+    start = app_client.post(f"/api/v1/models/{spec.id}/download")
+    assert start.status_code == 200
+    assert start.json()["status"]["status"] in {"downloading", "installed"}
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+
+    detail = app_client.get(f"/api/v1/models/{spec.id}").json()
+    assert detail["status"]["status"] == "installed"
+    assert detail["status"]["verified"] is True
+    assert detail["status"]["progress_percent"] == 100.0
+    assert _target_file(manager.root, spec).read_bytes() == payload
+
+    # Ein zweiter Klick ist ein No-Op und kein zweiter Thread.
+    nochmal = app_client.post(f"/api/v1/models/{spec.id}/download")
+    assert nochmal.status_code == 200
+    assert nochmal.json()["status"]["status"] == "installed"
+
+
+def test_waehrend_eines_downloads_wird_der_zweite_klick_abgelehnt(
+    app_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"m" * (3 * 1024 * 1024)
+    server = _FakeModelTransport(payload, pause_after=1)
+    spec, manager = _install_model(app_client, tmp_path, monkeypatch, payload, transport=server)
+    login(app_client)
+
+    assert app_client.post(f"/api/v1/models/{spec.id}/download").status_code == 200
+    assert server.paused.wait(timeout=10)
+
+    zweiter = app_client.post(f"/api/v1/models/{spec.id}/download")
+    assert zweiter.status_code == 409
+    assert "läuft bereits" in zweiter.json()["detail"]
+
+    server.resume.set()
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+
+
+def test_der_abbruchknopf_bricht_ab_und_der_rest_startet_von_vorne(
+    app_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"n" * (3 * 1024 * 1024)
+    server = _FakeModelTransport(payload, pause_after=1)
+    spec, manager = _install_model(app_client, tmp_path, monkeypatch, payload, transport=server)
+    login(app_client)
+
+    app_client.post(f"/api/v1/models/{spec.id}/download")
+    assert server.paused.wait(timeout=10)
+    assert app_client.post(f"/api/v1/models/{spec.id}/cancel").status_code == 200
+    server.resume.set()
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+
+    stand = app_client.get(f"/api/v1/models/{spec.id}").json()["status"]
+    assert stand["status"] == "interrupted"
+    assert stand["verified"] is False
+    assert 0 < _part_file(manager.root, spec).stat().st_size < len(payload)
+
+    app_client.post(f"/api/v1/models/{spec.id}/download")
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+    assert app_client.get(f"/api/v1/models/{spec.id}").json()["status"]["status"] == "installed"
+
+
+def test_zu_wenig_speicher_wird_als_konfigurationsfrage_gememeldet(
+    app_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"o" * 4096
+    spec, _manager = _install_model(
+        app_client, tmp_path, monkeypatch, payload, manager_kwargs={"min_free_bytes": 10**18}
+    )
+    login(app_client)
+
+    antwort = app_client.post(f"/api/v1/models/{spec.id}/download")
+    assert antwort.status_code == 409
+    assert "Speicherplatz" in antwort.json()["detail"]
+
+
+def test_ein_fehlschlag_wird_als_fehlschlag_gememeldet_nicht_als_erfolg(
+    app_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Falsche Bytes vom Server: Status failed, Klartext, keine Datei."""
+    spec = _test_model(payload=b"sollte-anders-sein" * 100)
+    monkeypatch.setitem(model_catalog.MODEL_CATALOG, spec.id, spec)
+    # Gleiche Länge, anderer Inhalt: so scheitert die Pruefsumme und nicht die
+    # Grössenpruefung - genau der Fall, den man sonst leicht übersieht.
+    manager = _manager(tmp_path / "modelle", _FakeModelTransport(b"x" * len(b"sollte-anders-sein" * 100)))
+    app_client.app.state.model_downloads = manager
+    login(app_client)
+
+    app_client.post(f"/api/v1/models/{spec.id}/download")
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+
+    stand = app_client.get(f"/api/v1/models/{spec.id}").json()["status"]
+    assert stand["status"] == "failed"
+    assert "Prüfsumme" in stand["message"]
+    assert not _target_file(manager.root, spec).exists()
+
+
+def test_loeschen_ist_idempotent_und_laeuft_nur_ohne_download(
+    app_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"p" * 4096
+    spec, manager = _install_model(app_client, tmp_path, monkeypatch, payload)
+    login(app_client)
+
+    app_client.post(f"/api/v1/models/{spec.id}/download")
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+
+    geloescht = app_client.delete(f"/api/v1/models/{spec.id}")
+    assert geloescht.status_code == 200
+    assert "entfernt" in geloescht.json()["message"]
+    assert app_client.get(f"/api/v1/models/{spec.id}").json()["status"]["status"] == "not_downloaded"
+
+    nochmal = app_client.delete(f"/api/v1/models/{spec.id}")
+    assert nochmal.status_code == 200
+    assert "lag nichts" in nochmal.json()["message"]
+
+
+def test_ein_download_landet_ausschliesslich_unter_der_modellablage(
+    app_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Der Ablagepfad entscheidet den Ort - und sonst wird nirgends geschrieben."""
+    payload = b"q" * 2048
+    spec, manager = _install_model(app_client, tmp_path, monkeypatch, payload)
+    login(app_client)
+
+    app_client.post(f"/api/v1/models/{spec.id}/download")
+    assert manager.wait_until_idle(spec.id, timeout_seconds=10)
+
+    assert (tmp_path / "modelle" / spec.id).is_dir()
+    assert sorted(p.name for p in (tmp_path / "modelle" / spec.id).iterdir()) == [MANIFEST_NAME, "probe.gguf"]

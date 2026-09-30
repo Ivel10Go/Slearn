@@ -9,6 +9,7 @@ from app.core.config import Settings, get_settings, require_secret
 from app.core.security import decode_session_token
 from app.db.entities import User
 from app.db.session import get_db
+from app.services.model_downloads import ModelDownloadManager
 
 
 def get_app_settings(request: Request) -> Settings:
@@ -59,3 +60,27 @@ def get_current_user(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 DatabaseSession = Annotated[Session, Depends(get_db)]
 AppSettings = Annotated[Settings, Depends(get_app_settings)]
+
+
+def get_model_downloads(request: Request) -> ModelDownloadManager:
+    """Der eine Download-Manager der Anwendung.
+
+    Er haengt an ``app.state`` und wird in ``create_app`` **immer** angelegt -
+    auch wenn kein Download laeuft. Ein ``None`` bedeutet daher einen
+    Programmierfehler und keine Konfiguration, deshalb 503 mit Klartext statt
+    eines zweiten Bauwegs, der den Pfad ein zweites Mal erfinden wuerde.
+
+    Der Manager nimmt seinen Ablagepfad **einmal** entgegen. Ein Test, der die
+    Ablage umbiegen will, setzt deshalb ein neues Exemplar auf ``app.state`` -
+    so wie ``test_backend.py`` es mit ``app.state.settings`` macht.
+    """
+    manager: ModelDownloadManager | None = getattr(request.app.state, "model_downloads", None)
+    if manager is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Der Modelldownload ist nicht eingerichtet",
+        )
+    return manager
+
+
+ModelDownloads = Annotated[ModelDownloadManager, Depends(get_model_downloads)]

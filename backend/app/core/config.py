@@ -72,6 +72,33 @@ class Settings(BaseSettings):
         default="/var/lib/school-assistant/documents",
         validation_alias=AliasChoices("DOCUMENT_STORAGE_PATH", "document_storage_path"),
     )
+    # Modelle bekommen einen **eigenen** Ablageort und nicht den Dokumentordner.
+    # Drei Gruende: ein Modell ist gross und wird nicht durchsucht, der
+    # Dokumentordner wird von einem Admin aufgeraeumt und waere dann ein
+    # Loch in der Lernplan-Erstellung, und ein gemischter Ordner macht
+    # `du -sh` unbrauchbar. Der Pfad ist der **interne** Container-Pfad; das
+    # Host-Verzeichnis kommt als `MODELS_HOST_PATH` in docker-compose.yml dazu
+    # und ist von hier aus getrennt - dasselbe Muster wie BACKUP_STORAGE_PATH
+    # neben BACKUPS_HOST_PATH.
+    model_storage_path: str = Field(
+        default="/var/lib/school-assistant/models",
+        validation_alias=AliasChoices("MODEL_STORAGE_PATH", "model_storage_path"),
+    )
+    # Lese-Timeout eines Blocks. Kein Gesamtlimit: ein 2-GB-Modell ueber eine
+    # langsame Leitung darf sich Zeit nehmen, solange Daten kommen.
+    model_download_timeout_seconds: float = Field(
+        default=60.0,
+        gt=0,
+        le=600,
+        validation_alias=AliasChoices("MODEL_DOWNLOAD_TIMEOUT_SECONDS", "model_download_timeout_seconds"),
+    )
+    # Reserve, die beim Download nie angefasst wird. Ohne sie fuellt ein
+    # grosses Modell eine knappe Partition und reisst dabei PostgreSQL mit.
+    model_min_free_bytes: int = Field(
+        default=512 * 1024 * 1024,
+        ge=0,
+        validation_alias=AliasChoices("MODEL_MIN_FREE_BYTES", "model_min_free_bytes"),
+    )
     # Der Backup-Stand liegt in der Statusdatei des Workers. Das Backend greift
     # nicht auf den Worker zu, sondern liest dieselbe Datei - und das nur, wenn
     # beide das Volume `worker-status` teilen. Der Standardwert ist deshalb

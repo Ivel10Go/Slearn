@@ -1,6 +1,7 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +19,7 @@ from app.api import (
     health,
     homework,
     lessons,
+    local_models,
     progress,
     study,
     subjects,
@@ -29,6 +31,7 @@ from app.db.session import dispose_engine, session_scope
 from app.services.auth import ensure_bootstrap_user
 from app.services.demo_seed import seed_demo_data_and_commit
 from app.services.integration_scheduler import IntegrationSyncScheduler
+from app.services.model_downloads import ModelDownloadManager
 
 logger = logging.getLogger("school_assistant")
 
@@ -56,11 +59,17 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     except (SQLAlchemyError, RuntimeError, ValueError):
         log_event(logger, "startup_database_task_failed")
     scheduler = _start_scheduler(application, settings)
+    downloads: ModelDownloadManager | None = getattr(application.state, "model_downloads", None)
     try:
         yield
     finally:
         if scheduler is not None:
             scheduler.stop()
+        if downloads is not None:
+            # Laedende Threads beenden und die Teilstaende liegen lassen: ein
+            # abgebrochener Download ist ein Zustand, aus dem der naechste Start
+            # sauber fortsetzt - kein halbes Modell.
+            downloads.shutdown()
         dispose_engine()
 
 
@@ -93,6 +102,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     application.state.settings = active_settings
+    # Der Download-Manager entsteht schon hier und nicht im Lifespan: Er macht
+    # beim Bauen keinen Dateizugriff, und die Endpunkte brauchen ihn auch dann,
+    # wenn der Lifespan noch nicht gelaufen ist (etwa in einem Test ohne
+    # TestClient). `application.state.model_downloads` gibt es deshalb immer.
+    application.state.model_downloads = ModelDownloadManager(
+        Path(active_settings.model_storage_path),
+        timeout_seconds=active_settings.model_download_timeout_seconds,
+        min_free_bytes=active_settings.model_min_free_bytes,
+    )
     if active_settings.cors_origins:
         application.add_middleware(
             CORSMiddleware,
@@ -126,6 +144,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Der Backup-Status. Ohne diese Zeile waere der read-only Endpunkt nicht
     # erreichbar und die Einstellungen zeigten dauerhaft "nicht verfuegbar".
     application.include_router(backups.router)
+    # Modellkatalog und Download-Manager. Ohne diese Zeile waeren weder Groesse
+    # und RAM-Schaetzung noch der fortsetzbare Download erreichbar - und damit
+    # auch die Welle danach, die lokale Modelle oeffnet.
+    application.include_router(local_models.router)
     from app.api import documents, files, integrations
     application.include_router(integrations.router)
     application.include_router(files.router)
