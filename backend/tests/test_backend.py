@@ -19,7 +19,7 @@ from app.core.oauth_state import OAuthStateError
 from app.core.security import create_session_token, hash_password
 from app.core.time import as_utc
 from app.db.entities import (
-SYNC_STATE_DELETED,
+    SYNC_STATE_DELETED,
     SYNC_STATE_EDITED,
     SYNC_STATE_SYNCED,
     CalendarEvent,
@@ -42,10 +42,9 @@ SYNC_STATE_DELETED,
 )
 from app.main import create_app
 from app.schemas.auth import UserRead
-from app.services import calendar_consent, calendar_feed, calendar_sync, google_calendar
+from app.services import calendar_consent, calendar_feed, calendar_sync, google_calendar, model_catalog, web_push
 from app.services import grades as grades_service
 from app.services import integrations as integrations_service
-from app.services import model_catalog, web_push
 from app.services.ai_provider import (
     AiProviderAuthError,
     AiProviderClient,

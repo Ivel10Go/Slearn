@@ -61,7 +61,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     except (SQLAlchemyError, RuntimeError, ValueError):
         log_event(logger, "startup_database_task_failed")
     scheduler = _start_scheduler(application, settings)
-downloads: ModelDownloadManager | None = getattr(application.state, "model_downloads", None)
+    downloads: ModelDownloadManager | None = getattr(application.state, "model_downloads", None)
     reminders = _start_reminder_scheduler(application, settings)
     try:
         yield
@@ -172,7 +172,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Der Backup-Status. Ohne diese Zeile waere der read-only Endpunkt nicht
     # erreichbar und die Einstellungen zeigten dauerhaft "nicht verfuegbar".
     application.include_router(backups.router)
-application.include_router(local_models.router)
+    application.include_router(local_models.router)
     # Benachrichtigungen: die Erinnerungseinstellungen, der oeffentliche
     # VAPID-Schluessel, die Abonnements und der Weg, ueber den die offene Seite
     # ihre Erinnerungen abholt. Ohne diese Zeile waere der ganze Abschnitt
