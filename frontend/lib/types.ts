@@ -736,6 +736,97 @@ export interface GradeImportResult {
   created_ids: number[];
 }
 
+/*
+ * Die Benachrichtigungen.
+ *
+ * Echte Typen, keine Stubs: bei diesen Feldern waere ein
+ * `Record<string, unknown>` schlimmer als in den uebrigen Faellen, denn ein
+ * `push_status`, den die Oberflaeche nicht kennt, wuerde still als "unbekannt"
+ * behandelt - und eine Erinnerung, die niemand sieht, faellt nicht auf.
+ */
+
+/** Die zwei Arten, fuer die es eine Erinnerung gibt. Geschlossen, wie die Notenarten. */
+export type NotificationKind = "study_task_due" | "exam_due";
+
+/** Was aus dem Push-Versand geworden ist. `skipped` heisst: es gab keinen Weg. */
+export type PushStatus = "skipped" | "sent" | "failed";
+
+/** Die Ruhezeit als **lokale** Uhrzeiten. `spans_midnight` sagt, ob sie ueber Mitternacht laeuft. */
+export interface QuietHours {
+  enabled: boolean;
+  start: string;
+  end: string;
+  spans_midnight: boolean;
+}
+
+export interface LernraumNotification {
+  id: number;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  /** Ein Anker der Einzelseite, etwa `/#study-tasks`. Kein eigener Pfad. */
+  url: string;
+  target_id: number;
+  push_status: PushStatus;
+  created_at: string;
+  read_at: string | null;
+}
+
+/** Die Erinnerungseinstellungen: Hauptschalter, Kanaele, Uhrzeit, Ruhezeiten. */
+export interface NotificationSettings {
+  enabled: boolean;
+  channels: Record<string, boolean>;
+  channel_labels: Record<string, string>;
+  channels_available: string[];
+  reminder_time: string;
+  quiet_hours: QuietHours;
+  exam_lead_days: number;
+  timezone: string;
+  preference_key: string;
+  summary: string;
+}
+
+/** Der oeffentliche VAPID-Schluessel, falls der Server eines eingerichtet hat. */
+export interface VapidKey {
+  configured: boolean;
+  public_key: string | null;
+  subject: string | null;
+}
+
+export interface PushSubscriptionRecord {
+  id: number;
+  /** Nur der Ursprung des Endpunkts: der vollstaendige enthaelt ein Geheimnis. */
+  endpoint_hint: string;
+  user_agent: string | null;
+  failures: number;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  last_error: string | null;
+  created_at: string;
+}
+
+export interface ReminderOutcome {
+  user_id: number;
+  created: number;
+  delivered: number;
+  push_failed: number;
+  push_attempted: boolean;
+  message: string;
+}
+
+/** Das Ergebnis eines Laufs - auch des, den ein Mensch ausgeloest hat. */
+export interface ReminderRunReport {
+  considered: number;
+  created: number;
+  delivered: number;
+  push_failed: number;
+  /** Ob der planmaessige Thread laeuft. Sonst weiss die Oberflaeche es nicht. */
+  scheduler_running: boolean;
+  interval_seconds: number;
+  outcomes: ReminderOutcome[];
+  message: string;
+}
+
 // Helper functions
 function text(value: unknown, fallback: string) {  const normalized = typeof value === "string" ? value.trim() : "";
   return normalized ? normalized : fallback;

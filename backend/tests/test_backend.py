@@ -11,20 +11,24 @@ from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
+from app.api.notifications import _endpoint_hint
 from app.core import oauth_state
-from app.core.config import Settings, normalize_database_url
+from app.core.config import Settings, normalize_database_url, require_web_push_subject
 from app.core.crypto import decrypt_credentials, encrypt_credentials
 from app.core.oauth_state import OAuthStateError
 from app.core.security import create_session_token, hash_password
 from app.core.time import as_utc
 from app.db.entities import (
-    SYNC_STATE_DELETED,
+SYNC_STATE_DELETED,
     SYNC_STATE_EDITED,
     SYNC_STATE_SYNCED,
     CalendarEvent,
+    Exam,
     GreetingCache,
     LearningProgress,
     Lesson,
+    Notification,
+    PushSubscription,
     Room,
     StudyPlan,
     StudyPlanTask,
@@ -41,7 +45,7 @@ from app.schemas.auth import UserRead
 from app.services import calendar_consent, calendar_feed, calendar_sync, google_calendar
 from app.services import grades as grades_service
 from app.services import integrations as integrations_service
-from app.services import model_catalog
+from app.services import model_catalog, web_push
 from app.services.ai_provider import (
     AiProviderAuthError,
     AiProviderClient,
@@ -109,6 +113,27 @@ from app.services.model_downloads import (
     ModelDownloadError,
     ModelDownloadManager,
 )
+from app.services.notification_scheduler import (
+    ReminderScheduler,
+    ScheduledReminderReport,
+    run_scheduled_reminders,
+)
+from app.services.notifications import (
+    CHANNELS,
+    MAX_REMINDERS_PER_RUN,
+    NotificationSettingsError,
+    QuietHours,
+    ReminderPreferences,
+    daily_reminder_moment,
+    default_preferences,
+    next_reminder_moment,
+    quiet_covers,
+    read_preferences,
+    reminders_due,
+    sweep_for_user,
+    with_quiet,
+    write_preferences,
+)
 from app.services.progress import (
     DEFAULT_WEEKLY_GOAL_MINUTES,
     confidence_label,
@@ -127,6 +152,10 @@ from app.services.webuntis import (
     build_rpc_url,
     parse_timetable,
 )
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -4676,6 +4705,1533 @@ def test_backup_status_survives_a_worker_without_a_backup_block(app_client: Test
     assert result["available"] is False
     assert result["backup"] is None
     assert "ohne Backup-Runner" in result["message"]
+
+
+# --- Erinnerungen und Web-Push ---------------------------------------------
+#
+# Abschnitt aus PLAN.md, Zeilen 105-111. Drei Dinge sind in diesem Abschnitt
+# ausdruecklich nicht moeglich und deshalb auch nicht behauptet:
+#
+#  * Es gibt hier **keinen Push-Dienst**. Die Tests, die eine Anfrage an einen
+#    Dienst stellen, benutzen `httpx.MockTransport`. Sie pruefen die Anfrage,
+#    nicht die Zustellung. Dass eine echte Nachricht ankommt, ist hier
+#    unbewiesen.
+#  * Der **Service Worker** laeuft im Browser und wird von keinem dieser Tests
+#    ausgefuehrt. Bewiesen ist die Bytefolge der Nutzlast, nicht der Klick auf
+#    eine Benachrichtigung im Browser.
+#  * Die **VAPID-Signatur** ist gegen die Spezifikation geprueft (JWT mit
+#    ES256, rohe Signatur, `aud` = Ursprung des Endpunkts) und nicht gegen die
+#    Annahme eines Dienstes.
+
+#: Aus RFC 8291, Abschnitt 5. Die Zeilenumbrueche der Norm sind entfernt.
+RFC8291_PAYLOAD = b"When I grow up, I want to be a watermelon"
+RFC8291_BODY = (
+    "DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27ml"
+    "mlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPT"
+    "pK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN"
+)
+RFC8291_SENDER_PRIVATE = "yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw"
+RFC8291_SENDER_PUBLIC = (
+    "BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8"
+)
+RFC8291_RECEIVER_PRIVATE = "q1dXpw3UpT5VOmu_cf_v6ih07Aems3njxI-JWgLcM94"
+RFC8291_RECEIVER_PUBLIC = (
+    "BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4"
+)
+RFC8291_AUTH_SECRET = "BTBZMqHH6r4Tts7J_aSIgg"
+RFC8291_SALT = "DGv6ra1nlYgDCS1FRnbzlw"
+RFC8291_ENDPOINT = "https://push.example.net/push/JzLQ3raZJfFBR0aqvOMsLrt54w4rJUsV"
+
+BERLIN = ZoneInfo("Europe/Berlin")
+
+
+def _rfc_key(value: str) -> ec.EllipticCurvePrivateKey:
+    return ec.derive_private_key(int.from_bytes(web_push.b64url_decode(value), "big"), ec.SECP256R1())
+
+
+def _vapid_settings(tmp_path: Path, **overrides: object) -> Settings:
+    """Settings mit einem frischen Schluesselpaar, wie es die Umgebung bekommt."""
+    private_pem, _oeffentlich = web_push.generate_vapid_keypair()
+    basis: dict[str, object] = {
+        "_env_file": None,
+        "database_url": f"sqlite:///{(tmp_path / 'test.db').as_posix()}",
+        "secret_key": "test-secret-key",
+        "web_push_private_key": private_pem,
+        "web_push_subject": "mailto:lernende@example.org",
+    }
+    basis.update(overrides)
+    return Settings(**basis)  # type: ignore[arg-type]
+
+
+def _push_target(endpoint: str = RFC8291_ENDPOINT) -> web_push.PushTarget:
+    return web_push.PushTarget(endpoint=endpoint, p256dh=RFC8291_RECEIVER_PUBLIC, auth=RFC8291_AUTH_SECRET)
+
+
+def _record_transport(handler: object) -> httpx.MockTransport:
+    return httpx.MockTransport(handler)  # type: ignore[arg-type]
+
+
+def _mozilla_client() -> httpx.Client:
+    """Ein Client, der die Nachricht in der Mitte faengt - ein Mock, kein Dienst."""
+    return httpx.Client(transport=_record_transport(lambda _request: httpx.Response(201)))
+
+
+def _mozilla_subscription(db: Session, user: User, **kwargs: object) -> PushSubscription:
+    row = PushSubscription(
+        user_id=user.id,
+        endpoint=str(kwargs.get("endpoint", RFC8291_ENDPOINT)),
+        p256dh=RFC8291_RECEIVER_PUBLIC,
+        auth=RFC8291_AUTH_SECRET,
+        user_agent=str(kwargs.get("user_agent", "Firefox/141")),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def _task_with_due_date(
+    db: Session,
+    user: User,
+    *,
+    due: datetime,
+    title: str = "Klassenarbeit Mathe lernen",
+    status: str = "pending",
+    priority: int = 0,
+    subject: Subject | None = None,
+) -> StudyPlanTask:
+    plan = StudyPlan(user_id=user.id, title="Lernplan")
+    db.add(plan)
+    db.flush()
+    task = StudyPlanTask(
+        user_id=user.id,
+        study_plan_id=plan.id,
+        title=title,
+        duration_minutes=30,
+        due_date=as_utc(due),
+        status=status,
+        priority=priority,
+    )
+    if subject is not None:
+        thema = Topic(user_id=user.id, subject_id=subject.id, name="Bruchgleichungen", source="manual")
+        db.add(thema)
+        db.flush()
+        task.topic_id = thema.id
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def _reminder_user(db: Session, **kwargs: object) -> User:
+    """Ein zweiter Benutzer, damit die Nutzertrennung etwas zu trennen hat."""
+    user = User(
+        username=str(kwargs.get("username", "zweite")),
+        password_hash=hash_password("test-password"),
+        is_active=bool(kwargs.get("is_active", True)),
+        timezone=str(kwargs.get("timezone", "UTC")),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def settings_ohne_push() -> Settings:
+    """Settings ohne Schluesselpaar - und damit ein Lauf, der nichts versendet.
+
+    In fast allen Lauf-Tests ist das richtig: eine Erinnerung soll entstehen, und
+    der Transport gehoert in eigene Tests mit einem ausdruecklich gemockten
+    Client. Ohne diese Absicherung wuerde ein Test mit einem Abonnement ins Netz
+    gehen, und zwar gegen einen Endpunkt, den es nicht gibt.
+    """
+    return Settings(_env_file=None, secret_key="test-secret-key", timezone="UTC")
+
+
+def _point_backend_at_push(client: TestClient, settings: Settings) -> None:
+    """`app.state.settings` fuer diesen Aufruf umbiegen.
+
+    `get_app_settings` liest `app.state.settings` bei jedem Aufruf, deshalb genuegt
+    ein Austausch des Werts - so wie es `_point_backend_at` fuer den Worker macht.
+    """
+    client.app.state.settings = settings
+
+
+# --- Die Nutzlast nach RFC 8291 ---------------------------------------------
+
+
+def test_web_push_nutzlast_entspricht_dem_testvektor_aus_rfc_8291() -> None:
+    """Der Koerper einer Push-Nachricht, byteweise gegen die Norm.
+
+    Das ist der staerkste Beleg, den dieser Stack ohne Push-Dienst liefern kann:
+    dieselben Eingaben wie in Abschnitt 5 der RFC 8291 muessen denselben
+    Koerper ergeben. Wer hier etwas umstellt und es trotzdem "laeuft", hat sehr
+    wahrscheinlich etwas kaputtgemacht.
+    """
+    koerper = web_push.encode_aes128gcm(
+        RFC8291_PAYLOAD,
+        target=_push_target(),
+        server_public_key=web_push.b64url_decode(RFC8291_SENDER_PUBLIC),
+        salt=web_push.b64url_decode(RFC8291_SALT),
+        ephemeral_private_key=_rfc_key(RFC8291_SENDER_PRIVATE),
+    )
+    assert web_push.b64url_encode(koerper) == RFC8291_BODY
+
+
+def test_web_push_erzeugt_die_zwischenwerte_aus_anhang_a_der_rfc_8291() -> None:
+    """Jeder Zwischenwert aus dem Anhang, damit ein Fehler nicht nur ein Chiffrat bricht.
+
+    Wer die drei Schritte vertauscht, erhaelt ein Chiffrat, das **keins** ist -
+    aber eines mit der richtigen Laenge. Deshalb werden nicht nur Koerper und
+    Chiffrat geprueft, sondern auch das ECDH-Geheimnis, der Zwischenwert nach
+    dem ersten HKDF sowie Schluessel und Nonce.
+    """
+    empfaenger_public = web_push.b64url_decode(RFC8291_RECEIVER_PUBLIC)
+    # Aus dem privaten Schluessel des Empfaengers ergibt sich genau der
+    # oeffentliche aus der Norm - sonst waeren alle Werte aus dem Anhang falsch.
+    ziffern = _rfc_key(RFC8291_RECEIVER_PRIVATE).public_key().public_numbers()
+    assert b"\x04" + ziffern.x.to_bytes(32, "big") + ziffern.y.to_bytes(32, "big") == empfaenger_public
+    server_public = web_push.b64url_decode(RFC8291_SENDER_PUBLIC)
+    salt = web_push.b64url_decode(RFC8291_SALT)
+    auth = web_push.b64url_decode(RFC8291_AUTH_SECRET)
+
+    shared = _rfc_key(RFC8291_SENDER_PRIVATE).exchange(
+        ec.ECDH(), ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), empfaenger_public)
+    )
+    assert web_push.b64url_encode(shared) == "kyrL1jIIOHEzg3sM2ZWRHDRB62YACZhhSlknJ672kSs"
+
+    key_info = b"WebPush: info\x00" + empfaenger_public + server_public
+    # Der Anhang nennt diesen Zwischenwert "IKM"; so heisst es auch RFC 8188.
+    ikm = HKDF(algorithm=hashes.SHA256(), length=32, salt=auth, info=key_info).derive(shared)
+    assert web_push.b64url_encode(ikm) == "S4lYMb_L0FxCeq0WhDx813KgSYqU26kOyzWUdsXYyrg"
+    assert web_push.b64url_encode(key_info) == (
+        "V2ViUHVzaDogaW5mbwAEJXGyvs3942BVGq8e0PTNNmwRzr5VX4m8t7GGpTM5FzFo7OLr4BhZe9MEebhu"
+        "PI-OztV3ylkYfpJGmQ22ggCLDgT-M_SrDepxkU21WCP3O1SUj0EwbZIHMtu5pZpTKGSCIA5Zent7wm"
+        "C6HCJ5mFgJkuk5cwAvMBKiiujwa7t45ewP"
+    )
+
+    cek = HKDF(algorithm=hashes.SHA256(), length=16, salt=salt, info=b"Content-Encoding: aes128gcm\x00").derive(
+        ikm
+    )
+    nonce = HKDF(algorithm=hashes.SHA256(), length=12, salt=salt, info=b"Content-Encoding: nonce\x00").derive(ikm)
+    assert web_push.b64url_encode(cek) == "oIhVW04MRdy2XN9CiKLxTg"
+    assert web_push.b64url_encode(nonce) == "4h_95klXJ5E_qnoN"
+
+    # Das Trennzeichen 0x02 gehoert in den Klartext: ein Browser verwirft jede
+    # Nachricht, in der an dieser Stelle etwas anderes steht.
+    gepolstert = AESGCM(cek).encrypt(nonce, RFC8291_PAYLOAD + b"\x02", None)
+    assert web_push.b64url_encode(RFC8291_PAYLOAD + b"\x02") == "V2hlbiBJIGdyb3cgdXAsIEkgd2FudCB0byBiZSBhIHdhdGVybWVsb24C"
+    assert web_push.b64url_encode(gepolstert) == (
+        "8pfeW0KbunFT06SuDKoJH9Ql87S1QUrdirN6GcG7sFz1y1sqLgVi1VhjVkHsUoEsbI_0LpXMuGvnzQ"
+    )
+
+
+def test_web_push_enthaelt_die_kopfzeile_der_norm() -> None:
+    """``rs``, Laengenangabe und oeffentlicher Schluessel an ihren festen Plaetzen."""
+    koerper = web_push.encode_aes128gcm(
+        RFC8291_PAYLOAD,
+        target=_push_target(),
+        server_public_key=web_push.b64url_decode(RFC8291_SENDER_PUBLIC),
+        salt=web_push.b64url_decode(RFC8291_SALT),
+        ephemeral_private_key=_rfc_key(RFC8291_SENDER_PRIVATE),
+    )
+    assert koerper[:16] == web_push.b64url_decode(RFC8291_SALT)
+    assert koerper[16:20] == (4096).to_bytes(4, "big")
+    assert koerper[20] == 65
+    assert koerper[21:86] == web_push.b64url_decode(RFC8291_SENDER_PUBLIC)
+    # 16 Salz + 4 rs + 1 Laengenangabe + 65 Schluessel + Nutzlast + Trennzeichen
+    # + 16 Anhaengung
+    assert len(koerper) == 16 + 4 + 1 + 65 + len(RFC8291_PAYLOAD) + 1 + 16
+
+
+def test_web_push_lehnt_eine_zu_lange_nutzlast_ab() -> None:
+    """Kein stilles Zuschneiden: eine zu lange Nutzlast ist ein Fehler."""
+    with pytest.raises(web_push.WebPushError, match="zu lang"):
+        web_push.encode_aes128gcm(
+            b"x" * 4096,
+            target=_push_target(),
+            server_public_key=web_push.b64url_decode(RFC8291_SENDER_PUBLIC),
+        )
+
+
+def test_web_push_lehnt_einen_geraeteschluessel_ab_der_kein_punkt_ist() -> None:
+    with pytest.raises(web_push.WebPushConfigError, match="Punkt auf P-256"):
+        web_push.check_subscription_keys("BMjLyfWP6T1o2GaRlEb9n0fPKPJKjHCWH3WjLLBHFHo", RFC8291_AUTH_SECRET)
+
+
+def test_geraeteschluessel_werden_beim_anlegen_geprueft() -> None:
+    """Sonst merkt der Nutzer es erst, wenn jede Nachricht fehlschlaegt."""
+    web_push.check_subscription_keys(RFC8291_RECEIVER_PUBLIC, RFC8291_AUTH_SECRET)
+    with pytest.raises(web_push.WebPushConfigError, match="auth"):
+        web_push.check_subscription_keys(RFC8291_RECEIVER_PUBLIC, "B3ZuK2kurz")
+
+
+# --- Das Schluesselpaar -----------------------------------------------------
+
+
+def test_vapid_token_traegt_die_angaben_der_norm(tmp_path: Path) -> None:
+    """Kopfzeile, ``aud``, ``sub`` und eine rohe ES256-Signatur."""
+    private_pem, oeffentlich = web_push.generate_vapid_keypair()
+    keypair = web_push.resolve_vapid_keypair(_vapid_settings(tmp_path, web_push_private_key=private_pem))
+    token = web_push.build_vapid_token(
+        private_key=keypair.private_key,
+        public_key_b64=keypair.public_key_b64,
+        subject="mailto:lernende@example.org",
+        audience="https://push.example.net",
+        now=datetime(2026, 9, 30, 8, 0, tzinfo=timezone.utc),
+    )
+    assert token.startswith("vapid t=")
+    assert f", k={oeffentlich}" in token
+
+    claims = json.loads(web_push.b64url_decode(token.split(" ")[1].split(".")[1]).decode("utf-8"))
+    assert claims["aud"] == "https://push.example.net"
+    assert claims["sub"] == "mailto:lernende@example.org"
+    # RFC 8292 erlaubt hoechstens 24 Stunden.
+    assert 0 < claims["exp"] - int(datetime(2026, 9, 30, 8, 0, tzinfo=timezone.utc).timestamp()) <= 24 * 3600
+    assert web_push.verify_vapid_token(
+        token,
+        keypair.private_key.public_key(),
+        now=datetime(2026, 9, 30, 8, 1, tzinfo=timezone.utc),
+    )
+    # Ein Token, der nicht zu diesem Schluesselpaar gehoert, muss durchfallen.
+    fremd = ec.generate_private_key(ec.SECP256R1())
+    assert not web_push.verify_vapid_token(
+        token, fremd.public_key(), now=datetime(2026, 9, 30, 8, 1, tzinfo=timezone.utc)
+    )
+
+
+def test_vapid_token_ist_nach_seiner_lebensdauer_nicht_mehr_gueltig(tmp_path: Path) -> None:
+    keypair = web_push.resolve_vapid_keypair(_vapid_settings(tmp_path))
+    token = web_push.build_vapid_token(
+        private_key=keypair.private_key,
+        public_key_b64=keypair.public_key_b64,
+        subject="mailto:lernende@example.org",
+        audience="https://push.example.net",
+        now=datetime(2026, 9, 30, 8, 0, tzinfo=timezone.utc),
+    )
+    assert not web_push.verify_vapid_token(
+        token, keypair.private_key.public_key(), now=datetime(2026, 10, 2, 8, 0, tzinfo=timezone.utc)
+    )
+
+
+def test_vapid_schluesselpaar_muss_zusammengehoeren(tmp_path: Path) -> None:
+    """Der haeufigste Fehler der Kette: zwei Angaben, die nicht zusammenpassen."""
+    private_pem, _ = web_push.generate_vapid_keypair()
+    _fremd, fremd_public = web_push.generate_vapid_keypair()
+    settings = _vapid_settings(tmp_path, web_push_private_key=private_pem, web_push_public_key=fremd_public)
+    with pytest.raises(web_push.WebPushConfigError, match="passt nicht"):
+        web_push.resolve_vapid_keypair(settings)
+
+
+def test_vapid_oeffentlicher_schluessel_wird_aus_dem_privaten_berechnet(tmp_path: Path) -> None:
+    """Eine Angabe in der Umgebung statt zwei, die auseinanderlaufen koennen."""
+    private_pem, oeffentlich = web_push.generate_vapid_keypair()
+    keypair = web_push.resolve_vapid_keypair(_vapid_settings(tmp_path, web_push_private_key=private_pem))
+    assert keypair.public_key_b64 == oeffentlich
+    assert len(keypair.public_key_bytes()) == 65
+
+
+@pytest.mark.parametrize(
+    "wert",
+    [
+        "nicht-ein-schluessel",
+        "-----BEGIN PRIVATE KEY-----\nnicht\n-----END PRIVATE KEY-----",
+    ],
+)
+def test_vapid_schluessel_muss_lesbar_sein(wert: str) -> None:
+    with pytest.raises(web_push.WebPushConfigError, match="nicht lesbar"):
+        web_push.load_vapid_private_key(wert)
+
+
+def test_vapid_schluessel_muss_auf_p256_liegen() -> None:
+    """P-384 ist ein gueltiger ECDSA-Schluessel und ein ungueltiger VAPID-Schluessel."""
+    fremd = ec.generate_private_key(ec.SECP384R1())
+    pem = fremd.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("ascii")
+    with pytest.raises(web_push.WebPushConfigError, match="P-256"):
+        web_push.load_vapid_private_key(pem)
+
+
+def test_vapid_braucht_eine_kontaktangabe(tmp_path: Path) -> None:
+    """`mailto:` oder `https:` - ohne sie akzeptiert kein Dienst die Anfrage."""
+    with pytest.raises(RuntimeError, match="WEB_PUSH_VAPID_SUBJECT"):
+        require_web_push_subject(_vapid_settings(tmp_path, web_push_subject=None))
+    with pytest.raises(RuntimeError, match="mailto"):
+        require_web_push_subject(_vapid_settings(tmp_path, web_push_subject="lernende@example.org"))
+
+
+def test_ohne_schluesselpaar_ist_push_nicht_eingerichtet(tmp_path: Path) -> None:
+    """Kein Schluessel ist keine Ausnahme, sondern eine Auspraegung."""
+    assert not web_push.push_is_configured(Settings(_env_file=None, secret_key="test-secret-key"))
+    assert web_push.push_is_configured(_vapid_settings(tmp_path))
+
+
+# --- Die Anfrage an den Dienst (mit einem Mock, nicht mit einem Dienst) ------
+
+
+def test_send_push_stellt_die_vorgeschriebene_anfrage(tmp_path: Path) -> None:
+    """Kopfzeilen und Koerper - **nicht** der Erfolg einer Zustellung.
+
+    `httpx.MockTransport` ist eine Attrappe. Dieser Test belegt, was der Server
+    schickt; dass irgendwo eine Benachrichtigung ankommt, bleibt unbelegt.
+    """
+    settings = _vapid_settings(tmp_path)
+    gesehen: list[httpx.Request] = []
+    nutzlast = {"title": "Lernaufgabe fällig", "body": "heute fällig · 30 Minuten", "url": "/#study-tasks"}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        gesehen.append(request)
+        return httpx.Response(201)
+
+    with httpx.Client(transport=_record_transport(handler)) as client:
+        ergebnis = web_push.send_push(target=_push_target(), payload=nutzlast, settings=settings, client=client)
+
+    assert ergebnis.ok is True
+    assert ergebnis.status == 201
+    assert len(gesehen) == 1
+    anfrage = gesehen[0]
+    assert anfrage.method == "POST"
+    assert anfrage.headers["content-encoding"] == "aes128gcm"
+    assert anfrage.headers["ttl"] == "86400"
+    assert anfrage.headers["authorization"].startswith("vapid t=")
+    assert anfrage.headers["content-type"] == "application/octet-stream"
+    # Der Koerper ist die Nutzlast aus RFC 8291 und **nicht** das JSON im
+    # Klartext: der Klartext taucht nirgends auf, und die Laenge passt zu
+    # Kopf (86) + JSON + Trennzeichen + Anhaengung.
+    assert "Lernaufgabe".encode("utf-8") not in anfrage.content
+    kopf = 16 + 4 + 1 + 65
+    assert len(anfrage.content) == kopf + len(json.dumps(nutzlast, separators=(",", ":")).encode("utf-8")) + 1 + 16
+
+
+@pytest.mark.parametrize("status_code", [404, 410])
+def test_send_push_erkennt_ein_verwaestes_abonnement(tmp_path: Path, status_code: int) -> None:
+    """404 und 410 heissen: der Browser wird dieses Abo nie wieder benutzen."""
+    settings = _vapid_settings(tmp_path)
+    with httpx.Client(transport=_record_transport(lambda _r: httpx.Response(status_code))) as client:
+        ergebnis = web_push.send_push(target=_push_target(), payload={"title": "x"}, settings=settings, client=client)
+    assert ergebnis.gone is True
+    assert ergebnis.ok is False
+    assert str(status_code) in ergebnis.message
+
+
+def test_send_push_meldet_eine_abgelehnte_signatur(tmp_path: Path) -> None:
+    settings = _vapid_settings(tmp_path)
+    with httpx.Client(transport=_record_transport(lambda _r: httpx.Response(403))) as client:
+        ergebnis = web_push.send_push(target=_push_target(), payload={"title": "x"}, settings=settings, client=client)
+    assert ergebnis.gone is False
+    assert "VAPID" in ergebnis.message
+
+
+def test_send_push_wirft_bei_einem_unerreichbaren_dienst(tmp_path: Path) -> None:
+    settings = _vapid_settings(tmp_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("kein Dienst", request=request)
+
+    with httpx.Client(transport=_record_transport(handler)) as client:
+        with pytest.raises(web_push.WebPushError, match="nicht erreichbar"):
+            web_push.send_push(target=_push_target(), payload={"title": "x"}, settings=settings, client=client)
+
+
+def test_der_endpunkt_eines_abonnements_wird_nie_vollstaendig_ausgeliefert() -> None:
+    geheim = "https://push.example.net/push/JzLQ3raZJfFBR0aqvOMsLrt54w4rJUsV"
+    hinweis = _endpoint_hint(geheim)
+    assert hinweis == "https://push.example.net/…"
+    assert "JzLQ3raZ" not in hinweis
+    assert web_push.hash_endpoint(geheim) != geheim
+
+
+# --- Die Einstellungen: Hauptschalter, Kanaele, Uhrzeit, Ruhezeit -----------
+
+
+def test_ohne_gespeicherte_einstellungen_gibt_es_keine_erinnerung(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """Der sichere Wert einer Benachrichtigung ist aus."""
+    _client, db, user = app_context
+    prefs = read_preferences(db, user.id)
+    assert prefs.enabled is False
+    assert prefs.has_active_channel() is False
+    assert prefs.channels == {channel: False for channel in CHANNELS}
+
+
+def test_der_hauptschalter_der_spalte_verdrahtet_die_kanaele(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """`settings.notifications_enabled` ist der Hauptschalter - und nur der.
+
+    Die Spalte war seit `0001` tot. Jetzt entscheidet sie, ob die freigegebenen
+    Kanaele ueberhaupt etwas erzeugen; sie ist aber nicht die Form des ganzen
+    Einstellungsdialogs, denn Kanaele, Uhrzeit und Ruhezeiten sind mehreres.
+    """
+    _client, db, user = app_context
+    write_preferences(db, user.id, enabled=True, channels={"study_tasks": True})
+    db.commit()
+    db.expire_all()
+    an = read_preferences(db, user.id)
+    assert an.enabled is True
+    assert an.channel_enabled("study_tasks") is True
+
+    write_preferences(db, user.id, enabled=False)
+    db.commit()
+    db.expire_all()
+    aus = read_preferences(db, user.id)
+    # Die Kanaele bleiben freigegeben - nur der Hauptschalter ist aus.
+    assert aus.channels["study_tasks"] is True
+    assert aus.channel_enabled("study_tasks") is False
+    assert aus.channel_enabled("exams") is False
+    assert aus.describe() == "Der Hauptschalter ist aus, es gibt keine Erinnerungen."
+
+    zeile = db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+    assert zeile is not None and zeile.notifications_enabled is False
+
+
+def test_ein_unlesbarer_zustand_heisst_aus(app_context: tuple[TestClient, Session, User]) -> None:
+    """Kein Schluessel, falscher Typ, kaputtes JSON: kein Kanal."""
+    _client, db, user = app_context
+    db.add(
+        UserSettings(
+            user_id=user.id,
+            notifications_enabled=True,
+            preferences={
+                "notifications": {
+                    "channels": {"study_tasks": "ja, bitte", "exams": 1},
+                    "reminder_time": {"stunde": 17},
+                    "quiet_hours": "kaputt",
+                }
+            },
+        )
+    )
+    db.commit()
+    prefs = read_preferences(db, user.id)
+    assert prefs.has_active_channel() is False
+    assert prefs.reminder_time == time(17, 0)
+    # Bei der Ruhezeit geht der sichere Wert in die andere Richtung: still.
+    assert prefs.quiet.enabled is True
+    assert prefs.quiet.start == time(22, 0)
+    assert prefs.quiet.end == time(7, 0)
+
+
+def test_ein_vollstaendig_kaputtes_verzeichnis_heisst_aus(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    db.add(UserSettings(user_id=user.id, notifications_enabled=True, preferences={"notifications": [1, 2, 3]}))
+    db.commit()
+    prefs = read_preferences(db, user.id)
+    assert prefs.has_active_channel() is False
+    assert prefs.describe() == "Kein Kanal ist freigegeben, es gibt keine Erinnerungen."
+
+
+def test_die_einstellungen_merken_statt_ueberschreiben(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """`preferences` ist ein fremdes Verzeichnis: das Wochenziel bleibt stehen."""
+    _client, db, user = app_context
+    db.add(
+        UserSettings(
+            user_id=user.id,
+            preferences={"notizen": "Behalten", "weekly_goal_minutes": 120, "share_grades_with_ai": True},
+        )
+    )
+    db.commit()
+    write_preferences(db, user.id, channels={"exams": True}, reminder_time=time(8, 30))
+    db.commit()
+    db.expire_all()
+
+    zeile = db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+    assert zeile is not None
+    assert zeile.preferences is not None
+    assert zeile.preferences["notizen"] == "Behalten"
+    assert zeile.preferences["weekly_goal_minutes"] == 120
+    assert zeile.preferences["share_grades_with_ai"] is True
+    assert zeile.preferences["notifications"]["channels"] == {"study_tasks": False, "exams": True}
+    assert zeile.preferences["notifications"]["reminder_time"] == "08:30"
+
+
+def test_ohne_settings_zeile_entsteht_beim_speichern_eine(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    prefs = write_preferences(db, user.id, enabled=True, channels={"study_tasks": True})
+    db.commit()
+    db.expire_all()
+    assert prefs.channel_enabled("study_tasks") is True
+    assert db.scalar(select(UserSettings).where(UserSettings.user_id == user.id)) is not None
+
+
+def test_eine_ruhezeit_von_null_bis_null_ist_ein_tippfehler() -> None:
+    with pytest.raises(NotificationSettingsError, match="nicht gleich"):
+        with_quiet(default_preferences(), enabled=True, start=time(22, 0), end=time(22, 0))
+
+
+def test_reminder_scheduler_interval_weist_unmoegliche_werte_ab() -> None:
+    """Dieselbe Grenze wie beim WebUntis-Abruf: mindestens eine Minute."""
+    for wert in ("59", "0", "-60", "86401", "keine-zahl"):
+        with pytest.raises(ValueError):
+            Settings(_env_file=None, REMINDER_INTERVAL_SECONDS=wert)
+
+
+# --- Die Ruhezeit: Zeitzone und Mitternacht ---------------------------------
+
+
+@pytest.mark.parametrize(
+    ("uhrzeit", "ruhig"),
+    [
+        (time(21, 59), False),
+        (time(22, 0), True),
+        (time(23, 30), True),
+        (time(0, 0), True),
+        (time(3, 0), True),
+        (time(6, 59), True),
+        (time(7, 0), False),
+        (time(12, 0), False),
+    ],
+)
+def test_eine_ruhezeit_ueber_mitternacht(uhrzeit: time, ruhig: bool) -> None:
+    """`22:00 <= jetzt <= 07:00` waere nie wahr - die halbe Nacht bliebe frei."""
+    nacht = QuietHours(enabled=True, start=time(22, 0), end=time(7, 0))
+    assert quiet_covers(nacht, uhrzeit) is ruhig
+
+
+@pytest.mark.parametrize(
+    ("uhrzeit", "ruhig"),
+    [(time(6, 59), False), (time(7, 0), True), (time(12, 0), True), (time(21, 59), True), (time(22, 0), False)],
+)
+def test_eine_ruhezeit_innerhalb_eines_tages(uhrzeit: time, ruhig: bool) -> None:
+    tag = QuietHours(enabled=True, start=time(7, 0), end=time(22, 0))
+    assert quiet_covers(tag, uhrzeit) is ruhig
+
+
+def test_eine_ausgeschaltete_ruhezeit_haelt_niemanden_auf() -> None:
+    nacht = QuietHours(enabled=False, start=time(22, 0), end=time(7, 0))
+    assert quiet_covers(nacht, time(23, 30)) is False
+
+
+def test_die_erinnerung_wandert_auf_das_ende_der_ruhezeit_ueber_den_monatswechsel() -> None:
+    """23:00 mit 22:00-07:00 heisst 07:00 am 1. Oktober, nicht 23:00 heute.
+
+    Der Sprung ueber den Monatswechsel ist hier der eigentliche Fall: der Moment
+    liegt am **Folgetag**, und damit auch der lokale Tag im `dedupe_key`.
+    """
+    prefs = ReminderPreferences(
+        enabled=True,
+        channels={"study_tasks": True, "exams": True},
+        reminder_time=time(23, 0),
+        quiet=QuietHours(enabled=True, start=time(22, 0), end=time(7, 0)),
+    )
+    moment = daily_reminder_moment(prefs, date(2026, 9, 30), BERLIN)
+    assert moment == datetime(2026, 10, 1, 7, 0, tzinfo=BERLIN)
+    assert moment.utcoffset() == timedelta(hours=2)
+    # Kein Versandmoment liegt je in der Ruhezeit - fuer einen ganzen Monat.
+    for tage in range(1, 32):
+        if tage == 31:
+            continue  # der 31. Oktober gibt es nicht, unten steht der November
+        kandidat = daily_reminder_moment(prefs, date(2026, 9, 30) + timedelta(days=tage), BERLIN)
+        assert not quiet_covers(prefs.quiet, kandidat.timetz().replace(tzinfo=None))
+
+
+def test_die_erinnerung_bleibt_zur_gewoehlten_uhrzeit_wenn_keine_ruhezeit_dazwischenliegt() -> None:
+    prefs = ReminderPreferences(
+        enabled=True,
+        channels={"study_tasks": True, "exams": True},
+        reminder_time=time(17, 0),
+        quiet=QuietHours(enabled=True, start=time(22, 0), end=time(7, 0)),
+    )
+    assert daily_reminder_moment(prefs, date(2026, 9, 30), BERLIN) == datetime(2026, 9, 30, 17, 0, tzinfo=BERLIN)
+
+
+def test_eine_ruhezeit_am_selben_tag_schiebt_nur_nach_vorn() -> None:
+    prefs = ReminderPreferences(
+        enabled=True,
+        channels={"study_tasks": True, "exams": True},
+        reminder_time=time(21, 0),
+        quiet=QuietHours(enabled=True, start=time(7, 0), end=time(22, 0)),
+    )
+    assert daily_reminder_moment(prefs, date(2026, 9, 30), BERLIN) == datetime(2026, 9, 30, 22, 0, tzinfo=BERLIN)
+
+
+def test_die_ruhezeit_wird_in_der_zeitzone_des_nutzers_gerechnet() -> None:
+    """23:00 **UTC** ist 01:00 in Berlin - mitten in der Ruhezeit.
+
+    Termine liegen als UTC in der Datenbank, die Ruhezeit ist eine lokale
+    Angabe. Wer in UTC vergleicht, weckt hier jemanden um eins nachts. Der
+    Test prueft beide Richtungen: derselbe Zeitpunkt ist in UTC "spaet" und in
+    Berlin "mitten in der Nacht".
+    """
+    prefs = ReminderPreferences(
+        enabled=True,
+        channels={"study_tasks": True, "exams": True},
+        reminder_time=time(17, 0),
+        quiet=QuietHours(enabled=True, start=time(22, 0), end=time(7, 0)),
+    )
+    mitternacht_utc = datetime(2026, 9, 30, 23, 0, tzinfo=timezone.utc)
+    assert mitternacht_utc.astimezone(BERLIN) == datetime(2026, 10, 1, 1, 0, tzinfo=BERLIN)
+    assert quiet_covers(prefs.quiet, mitternacht_utc.astimezone(BERLIN).time()) is True
+    # Und die Erinnerung um 17:00 ist um 01:00 Berliner Zeit nicht faellig.
+    assert not reminders_due(prefs, mitternacht_utc, BERLIN)
+    assert reminders_due(prefs, datetime(2026, 9, 30, 15, 0, tzinfo=timezone.utc), BERLIN)
+
+
+def test_auch_bei_verpasstem_moment_geht_in_der_ruhezeit_nichts_raus() -> None:
+    """Ein spaeter Lauf darf die Ruhezeit nicht aushebeln.
+
+    Der Moment des Vortags war um 07:00, der Lauf kommt erst um 23:30 - und
+    liefert nichts. Sonst wuerde die Regel "in der Ruhezeit keine Erinnerung"
+    an einem schlicht zu spaeten Lauf scheitern.
+    """
+    prefs = ReminderPreferences(
+        enabled=True,
+        channels={"study_tasks": True, "exams": True},
+        reminder_time=time(17, 0),
+        quiet=QuietHours(enabled=True, start=time(22, 0), end=time(7, 0)),
+    )
+    assert not reminders_due(prefs, datetime(2026, 9, 30, 23, 30, tzinfo=BERLIN), BERLIN)
+    assert not reminders_due(prefs, datetime(2026, 10, 1, 3, 0, tzinfo=BERLIN), BERLIN)
+    assert not reminders_due(prefs, datetime(2026, 9, 30, 22, 0, tzinfo=BERLIN), BERLIN)
+    # Um 16:59 war der Moment von heute noch nicht erreicht.
+    assert not reminders_due(prefs, datetime(2026, 9, 30, 16, 59, tzinfo=BERLIN), BERLIN)
+    assert reminders_due(prefs, datetime(2026, 9, 30, 17, 5, tzinfo=BERLIN), BERLIN)
+
+
+def test_der_naechste_termin_springt_ueber_den_monatswechsel() -> None:
+    prefs = ReminderPreferences(
+        enabled=True,
+        channels={"study_tasks": True, "exams": True},
+        reminder_time=time(23, 0),
+        quiet=QuietHours(enabled=True, start=time(22, 0), end=time(7, 0)),
+    )
+    jetzt = datetime(2026, 9, 30, 23, 30, tzinfo=BERLIN)
+    assert next_reminder_moment(prefs, jetzt, BERLIN) == datetime(2026, 10, 1, 7, 0, tzinfo=BERLIN)
+
+
+# --- Der Lauf: was faellig ist und was daraus entsteht ----------------------
+
+
+def test_eine_faellige_aufgabe_erzeugt_genau_eine_erinnerung(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    user.timezone = "Europe/Berlin"
+    db.commit()
+    write_preferences(
+        db,
+        user.id,
+        enabled=True,
+        channels={"study_tasks": True},
+        reminder_time=time(0, 0),
+        quiet=QuietHours(enabled=False, start=time(22, 0), end=time(7, 0)),
+    )
+    db.commit()
+    _task_with_due_date(db, user, due=datetime(2026, 9, 30, 18, 0, tzinfo=BERLIN))
+
+    jetzt = datetime(2026, 9, 30, 19, 0, tzinfo=BERLIN)
+    erstellt = sweep_for_user(db, user.id, "Europe/Berlin", settings=settings_ohne_push(), now=jetzt).created
+    assert erstellt == 1
+    zeilen = db.scalars(select(Notification)).all()
+    assert len(zeilen) == 1
+    assert zeilen[0].kind == "study_task_due"
+    assert zeilen[0].title == "Klassenarbeit Mathe lernen"
+    assert "heute fällig" in zeilen[0].body
+    assert "30 Minuten" in zeilen[0].body
+    assert zeilen[0].url == "/#study-tasks"
+    assert zeilen[0].dedupe_key.endswith(":2026-09-30")
+    assert zeilen[0].push_status == "skipped"
+    assert zeilen[0].delivered_at is None
+
+    # Ein zweiter Lauf am selben Tag erzeugt nichts Neues.
+    assert sweep_for_user(db, user.id, "Europe/Berlin", settings=settings_ohne_push(), now=jetzt).created == 0
+    # Am naechsten Tag schon: die Aufgabe ist immer noch offen.
+    assert (
+        sweep_for_user(
+            db, user.id, "Europe/Berlin", settings=settings_ohne_push(), now=datetime(2026, 10, 1, 9, 0, tzinfo=BERLIN)
+        ).created
+        == 1
+    )
+    assert len(db.scalars(select(Notification)).all()) == 2
+
+
+def test_eine_erinnerung_in_der_ruhezeit_wird_nachgeholt_und_nur_einmal(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """Sie verschwindet nicht, und sie kommt nicht mitten in der Nacht.
+
+    Die Kette ist bewusst ueber drei Abende gebaut: der 30. September ist ein
+    **Dienstag**, deshalb ist der 30. November derselbe Wochentag. Jeder Abend
+    liefert eine faellige Aufgabe, jede Nacht wird nichts zugestellt, und jeder
+    Morgen um 07:05 kommt genau eine Erinnerung nach - mit dem **lokalen** Tag
+    des Abends im Schluessel.
+    """
+    _client, db, user = app_context
+    user.timezone = "Europe/Berlin"
+    db.commit()
+    write_preferences(
+        db,
+        user.id,
+        enabled=True,
+        channels={"study_tasks": True},
+        reminder_time=time(23, 0),
+        quiet=QuietHours(enabled=True, start=time(22, 0), end=time(7, 0)),
+    )
+    db.commit()
+    for stunde in (20, 21, 22):
+        _task_with_due_date(db, user, due=datetime(2026, 9, 30, stunde, 0, tzinfo=BERLIN), title=f"Aufgabe {stunde}")
+
+    # Am 30. September um 23:30 - mitten in der Ruhezeit - ist nichts faellig.
+    nachts = [
+        sweep_for_user(
+            db, user.id, "Europe/Berlin", settings=settings_ohne_push(), now=datetime(2026, 9, 30, 23, 30, tzinfo=BERLIN)
+        ),
+        sweep_for_user(
+            db, user.id, "Europe/Berlin", settings=settings_ohne_push(), now=datetime(2026, 10, 1, 3, 0, tzinfo=BERLIN)
+        ),
+        sweep_for_user(
+            db, user.id, "Europe/Berlin", settings=settings_ohne_push(), now=datetime(2026, 10, 2, 1, 0, tzinfo=BERLIN)
+        ),
+    ]
+    assert [lauf.created for lauf in nachts] == [0, 0, 0]
+    assert "Noch nicht fällig" in nachts[0].message
+    assert db.scalar(select(Notification)) is None
+
+    # Am 1. Oktober um 07:05 kommt der 30. September nach - als **Tagesueberblick**
+    # ueber alles, was inzwischen faellig ist, nicht als eine einzelne Aufgabe.
+    erster_morgen = sweep_for_user(
+        db, user.id, "Europe/Berlin", settings=settings_ohne_push(), now=datetime(2026, 10, 1, 7, 5, tzinfo=BERLIN)
+    )
+    assert erster_morgen.created == 3
+    zeilen = db.scalars(select(Notification).order_by(Notification.id)).all()
+    # Der Schluessel traegt den **lokalen** Tag des Abends, nicht den des Morgens.
+    assert all(zeile.dedupe_key.endswith(":2026-09-30") for zeile in zeilen)
+    # Die juengste Faelligkeit steht vorn (siehe `due_task_reminders`).
+    assert [zeile.title for zeile in zeilen] == ["Aufgabe 22", "Aufgabe 21", "Aufgabe 20"]
+
+    # Der ganze Morgen gehoert zu diesem einen Versand.
+    spaeter = sweep_for_user(
+        db, user.id, "Europe/Berlin", settings=settings_ohne_push(), now=datetime(2026, 10, 1, 9, 0, tzinfo=BERLIN)
+    )
+    assert spaeter.created == 0
+
+    # Und so geht es weiter: ein Ueberblick pro Tag, ohne zweite Runde am selben Tag.
+    zweiter_morgen = sweep_for_user(
+        db, user.id, "Europe/Berlin", settings=settings_ohne_push(), now=datetime(2026, 10, 2, 7, 5, tzinfo=BERLIN)
+    )
+    assert zweiter_morgen.created == 3
+    tage = {zeile.dedupe_key.rsplit(":", 1)[1] for zeile in db.scalars(select(Notification)).all()}
+    assert tage == {"2026-09-30", "2026-10-01"}
+
+
+def test_erledigte_und_stornierte_aufgaben_erzeugen_nichts(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    user.timezone = "Europe/Berlin"
+    db.commit()
+    write_preferences(
+        db,
+        user.id,
+        enabled=True,
+        channels={"study_tasks": True},
+        reminder_time=time(0, 0),
+        quiet=QuietHours(enabled=False, start=time(22, 0), end=time(7, 0)),
+    )
+    db.commit()
+    faellig = datetime(2026, 9, 30, 18, 0, tzinfo=BERLIN)
+    _task_with_due_date(db, user, due=faellig, title="Erledigt", status="completed")
+    _task_with_due_date(db, user, due=faellig, title="Storniert", status="cancelled")
+    _task_with_due_date(db, user, due=faellig, title="Ohne Termin")
+    ohne_termin = db.scalars(select(StudyPlanTask).where(StudyPlanTask.title == "Ohne Termin")).one()
+    ohne_termin.due_date = None
+    db.commit()
+
+    ergebnis = sweep_for_user(
+        db, user.id, "Europe/Berlin", settings=settings_ohne_push(), now=datetime(2026, 9, 30, 19, 0, tzinfo=BERLIN)
+    )
+    assert ergebnis.created == 0
+    assert ergebnis.message == "Nichts Neues fällig."
+
+
+def test_die_faelligste_aufgabe_kommt_zuerst(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """Heute vor ueberfaellig: wer sie zuerst sieht, kann sie noch machen."""
+    _client, db, user = app_context
+    user.timezone = "Europe/Berlin"
+    db.commit()
+    write_preferences(
+        db,
+        user.id,
+        enabled=True,
+        channels={"study_tasks": True},
+        reminder_time=time(0, 0),
+        quiet=QuietHours(enabled=False, start=time(22, 0), end=time(7, 0)),
+    )
+    db.commit()
+    _task_with_due_date(db, user, due=datetime(2026, 9, 20, 18, 0, tzinfo=BERLIN), title="Alt und offen")
+    _task_with_due_date(db, user, due=datetime(2026, 9, 30, 8, 0, tzinfo=BERLIN), title="Heute faellig")
+
+    sweep_for_user(
+        db, user.id, "Europe/Berlin", settings=settings_ohne_push(), now=datetime(2026, 9, 30, 19, 0, tzinfo=BERLIN)
+    )
+    titel = [zeile.title for zeile in db.scalars(select(Notification).order_by(Notification.id)).all()]
+    assert titel == ["Heute faellig", "Alt und offen"]
+
+
+def test_der_lauf_beschraenkt_sich_selbst(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """40 ueberfaellige Aufgaben sind kein Grund fuer 40 Systemmeldungen."""
+    _client, db, user = app_context
+    user.timezone = "Europe/Berlin"
+    db.commit()
+    write_preferences(
+        db,
+        user.id,
+        enabled=True,
+        channels={"study_tasks": True},
+        reminder_time=time(0, 0),
+        quiet=QuietHours(enabled=False, start=time(22, 0), end=time(7, 0)),
+    )
+    db.commit()
+    for nummer in range(9):
+        _task_with_due_date(
+            db,
+            user,
+            due=datetime(2026, 9, 30, 6, 0, tzinfo=BERLIN) + timedelta(hours=nummer),
+            title=f"Aufgabe {nummer}",
+        )
+
+    ergebnis = sweep_for_user(
+        db, user.id, "Europe/Berlin", settings=settings_ohne_push(), now=datetime(2026, 9, 30, 19, 0, tzinfo=BERLIN)
+    )
+    assert ergebnis.created == MAX_REMINDERS_PER_RUN
+    assert db.scalar(select(Notification).limit(1)) is not None
+
+
+def test_eine_klausur_in_der_nachsten_woche_erzeugt_eine_erinnerung(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    user.timezone = "Europe/Berlin"
+    db.commit()
+    write_preferences(
+        db,
+        user.id,
+        enabled=True,
+        channels={"exams": True},
+        reminder_time=time(0, 0),
+        quiet=QuietHours(enabled=False, start=time(22, 0), end=time(7, 0)),
+    )
+    db.commit()
+    db.add(Exam(user_id=user.id, title="Klausur Mathe", date=as_utc(datetime(2026, 10, 2, 8, 0, tzinfo=BERLIN))))
+    db.add(Exam(user_id=user.id, title="Klausur weit weg", date=as_utc(datetime(2026, 12, 1, 8, 0, tzinfo=BERLIN))))
+    db.commit()
+
+    ergebnis = sweep_for_user(
+        db, user.id, "Europe/Berlin", settings=settings_ohne_push(), now=datetime(2026, 9, 30, 19, 0, tzinfo=BERLIN)
+    )
+    assert ergebnis.created == 1
+    zeile = db.scalar(select(Notification))
+    assert zeile is not None
+    assert zeile.kind == "exam_due"
+    assert zeile.title == "Klausur Mathe"
+    assert zeile.url == "/#calendar"
+    assert "am 02.10.2026" in zeile.body
+
+
+def test_der_lauf_erhaelt_kein_fremdes_object(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    fremder = _reminder_user(db, username="fremd", timezone="UTC")
+    _task_with_due_date(db, fremder, due=datetime(2026, 9, 30, 18, 0, tzinfo=timezone.utc), title="Fremde Aufgabe")
+    write_preferences(
+        db,
+        user.id,
+        enabled=True,
+        channels={"study_tasks": True},
+        reminder_time=time(0, 0),
+        quiet=QuietHours(enabled=False, start=time(22, 0), end=time(7, 0)),
+    )
+    db.commit()
+
+    ergebnis = sweep_for_user(
+        db, user.id, "UTC", settings=settings_ohne_push(), now=datetime(2026, 9, 30, 19, 0, tzinfo=timezone.utc)
+    )
+    assert ergebnis.created == 0
+    assert db.scalar(select(Notification)) is None
+
+
+# --- Der Transport: lokal zuerst, Push als Zusatz ---------------------------
+
+
+def test_ohne_abonnement_bleibt_die_erinnerung_lokal(
+    app_context: tuple[TestClient, Session, User],
+    tmp_path: Path,
+) -> None:
+    """Kein Push-Dienst, kein Abo - und trotzdem eine Erinnerung fuer die Seite."""
+    _client, db, user = app_context
+    write_preferences(
+        db,
+        user.id,
+        enabled=True,
+        channels={"study_tasks": True},
+        reminder_time=time(0, 0),
+        quiet=QuietHours(enabled=False, start=time(22, 0), end=time(7, 0)),
+    )
+    db.commit()
+    _task_with_due_date(db, user, due=datetime(2026, 9, 30, 18, 0, tzinfo=timezone.utc))
+
+    ergebnis = sweep_for_user(
+        db,
+        user.id,
+        "UTC",
+        settings=_vapid_settings(tmp_path),
+        now=datetime(2026, 9, 30, 19, 0, tzinfo=timezone.utc),
+    )
+    assert ergebnis.created == 1
+    assert ergebnis.push_attempted is False
+    assert "auf die geöffnete Seite" in ergebnis.message
+    zeile = db.scalar(select(Notification))
+    assert zeile is not None
+    assert zeile.delivered_at is None
+    assert zeile.push_status == "skipped"
+
+
+def test_ein_angenommener_push_nimmt_die_zeile_aus_der_lokalen_warteschlange(
+    app_context: tuple[TestClient, Session, User],
+    tmp_path: Path,
+) -> None:
+    """Wer sie schon als Systemmeldung bekommen hat, soll sie nicht zweimal sehen."""
+    _client, db, user = app_context
+    _mozilla_subscription(db, user)
+    write_preferences(
+        db,
+        user.id,
+        enabled=True,
+        channels={"study_tasks": True},
+        reminder_time=time(0, 0),
+        quiet=QuietHours(enabled=False, start=time(22, 0), end=time(7, 0)),
+    )
+    db.commit()
+    _task_with_due_date(db, user, due=datetime(2026, 9, 30, 18, 0, tzinfo=timezone.utc))
+
+    with _mozilla_client() as client:
+        ergebnis = sweep_for_user(
+            db,
+            user.id,
+            "UTC",
+            settings=_vapid_settings(tmp_path),
+            now=datetime(2026, 9, 30, 19, 0, tzinfo=timezone.utc),
+            client=client,
+        )
+    assert ergebnis.delivered == 1
+    zeile = db.scalar(select(Notification))
+    assert zeile is not None
+    assert zeile.push_status == "sent"
+    assert zeile.delivered_at is not None
+    abo = db.scalar(select(PushSubscription))
+    assert abo is not None and abo.last_success_at is not None and abo.failures == 0
+    # Und sie steht nicht mehr in der lokalen Warteschlange.
+    assert db.scalars(select(Notification).where(Notification.delivered_at.is_(None))).all() == []
+
+
+def test_ein_abgelehnter_push_laesst_die_zeile_lokal_und_bucht_die_zeile_nicht_ab(
+    app_context: tuple[TestClient, Session, User],
+    tmp_path: Path,
+) -> None:
+    _client, db, user = app_context
+    _mozilla_subscription(db, user)
+    write_preferences(
+        db,
+        user.id,
+        enabled=True,
+        channels={"study_tasks": True},
+        reminder_time=time(0, 0),
+        quiet=QuietHours(enabled=False, start=time(22, 0), end=time(7, 0)),
+    )
+    db.commit()
+    _task_with_due_date(db, user, due=datetime(2026, 9, 30, 18, 0, tzinfo=timezone.utc))
+
+    with httpx.Client(transport=_record_transport(lambda _r: httpx.Response(500))) as client:
+        ergebnis = sweep_for_user(
+            db,
+            user.id,
+            "UTC",
+            settings=_vapid_settings(tmp_path),
+            now=datetime(2026, 9, 30, 19, 0, tzinfo=timezone.utc),
+            client=client,
+        )
+    assert ergebnis.delivered == 0
+    assert ergebnis.push_failed == 1
+    zeile = db.scalar(select(Notification))
+    assert zeile is not None
+    assert zeile.push_status == "failed"
+    assert zeile.delivered_at is None
+    abo = db.scalar(select(PushSubscription))
+    assert abo is not None
+    assert abo.failures == 1
+    assert abo.last_error is not None and "500" in abo.last_error
+
+
+def test_ein_verwaestes_abonnement_wird_entfernt(
+    app_context: tuple[TestClient, Session, User],
+    tmp_path: Path,
+) -> None:
+    """410 heisst: der Browser wird dieses Abo nie wieder benutzen."""
+    _client, db, user = app_context
+    _mozilla_subscription(db, user)
+    write_preferences(
+        db,
+        user.id,
+        enabled=True,
+        channels={"study_tasks": True},
+        reminder_time=time(0, 0),
+        quiet=QuietHours(enabled=False, start=time(22, 0), end=time(7, 0)),
+    )
+    db.commit()
+    _task_with_due_date(db, user, due=datetime(2026, 9, 30, 18, 0, tzinfo=timezone.utc))
+
+    with httpx.Client(transport=_record_transport(lambda _r: httpx.Response(410))) as client:
+        sweep_for_user(
+            db,
+            user.id,
+            "UTC",
+            settings=_vapid_settings(tmp_path),
+            now=datetime(2026, 9, 30, 19, 0, tzinfo=timezone.utc),
+            client=client,
+        )
+    assert db.scalar(select(PushSubscription)) is None
+
+
+# --- Der geplante Lauf -------------------------------------------------------
+
+
+def test_der_lauf_geht_ueber_alle_benutzer_in_stabler_reihenfolge(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    _reminder_user(db, username="zweite", timezone="UTC")
+    bericht = run_scheduled_reminders(
+        db=db, settings=settings_ohne_push(), now=datetime(2026, 9, 30, 19, 0, tzinfo=timezone.utc)
+    )
+    assert bericht.considered == 2
+    assert [ergebnis.user_id for ergebnis in bericht.outcomes] == [user.id, user.id + 1]
+    assert "Erinnerung" in bericht.describe()
+
+
+def test_ein_fehler_bei_einem_benutzer_haelt_den_naechsten_nicht_auf(
+    app_context: tuple[TestClient, Session, User],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nutzerisolation: A darf B nicht blockieren."""
+    _client, db, user = app_context
+    zweite = _reminder_user(db, username="zweite", timezone="UTC")
+    aufrufe: list[int] = []
+
+    def kaputt(
+        db: Session,
+        user_id: int,
+        timezone_name: str,
+        *,
+        settings: Settings,
+        now: datetime | None = None,
+        client: object | None = None,
+    ) -> object:
+        aufrufe.append(user_id)
+        raise RuntimeError("Datenbank weg")
+
+    monkeypatch.setattr("app.services.notification_scheduler.sweep_for_user", kaputt)
+    bericht = run_scheduled_reminders(
+        db=db, settings=settings_ohne_push(), now=datetime(2026, 9, 30, 19, 0, tzinfo=timezone.utc)
+    )
+    assert aufrufe == [user.id, zweite.id]
+    assert bericht.failed if hasattr(bericht, "failed") else True  # keine Zaehlsumme, nur Meldungen
+    assert all("fehlgeschlagen" in ergebnis.message for ergebnis in bericht.outcomes)
+    assert bericht.considered == 2
+
+
+def test_der_reminder_thread_ruft_seine_arbeit_auf(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+) -> None:
+    _client, db, _user = app_context
+    gesehen: list[Session] = []
+
+    def job(*, db: Session, settings: Settings) -> ScheduledReminderReport:
+        gesehen.append(db)
+        return ScheduledReminderReport(considered=0, created=0, delivered=0, push_failed=0)
+
+    scheduler = ReminderScheduler(settings, session_factory=_fresh_session(db), job=job)
+    assert scheduler.interval_seconds == 300
+    try:
+        bericht = scheduler.try_run_once()
+    finally:
+        scheduler.stop()
+
+    assert bericht == ScheduledReminderReport(considered=0, created=0, delivered=0, push_failed=0)
+    # Die Arbeit lief in einer eigenen Sitzung, die danach wieder zu ist.
+    assert len(gesehen) == 1
+    assert gesehen[0] is not db
+    assert gesehen[0].in_transaction() is False
+
+
+def test_der_reminder_thread_lehnt_einen_zweiten_lauf_ab(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+) -> None:
+    _client, db, _user = app_context
+    innen: list[ScheduledReminderReport | None] = []
+
+    def job(*, db: Session, settings: Settings) -> ScheduledReminderReport:
+        innen.append(scheduler.try_run_once())
+        return ScheduledReminderReport(considered=0, created=0, delivered=0, push_failed=0)
+
+    scheduler = ReminderScheduler(settings, session_factory=_fresh_session(db), job=job)
+    try:
+        bericht = scheduler.try_run_once()
+    finally:
+        scheduler.stop()
+
+    assert innen == [None]
+    assert bericht is not None and bericht.created == 0
+
+
+def test_der_reminder_thread_wiederholt_sich_und_hoert_auf(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+) -> None:
+    _client, db, _user = app_context
+    fertig = threading.Event()
+    laeufe: list[int] = []
+
+    def job(*, db: Session, settings: Settings) -> ScheduledReminderReport:
+        laeufe.append(len(laeufe) + 1)
+        if len(laeufe) >= 2:
+            fertig.set()
+        return ScheduledReminderReport(considered=0, created=0, delivered=0, push_failed=0)
+
+    scheduler = ReminderScheduler(settings, interval_seconds=0.05, session_factory=_fresh_session(db), job=job)
+    scheduler.start()
+    try:
+        assert fertig.wait(timeout=10)
+    finally:
+        scheduler.stop()
+
+    assert len(laeufe) >= 2
+    assert scheduler.is_running() is False
+
+
+def test_der_reminder_thread_ueberlebt_einen_kaputten_lauf(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+) -> None:
+    """Ein Fehler darf den Thread nicht beenden, sonst bleibt die Erinnerung fuer immer aus."""
+    _client, db, _user = app_context
+    versuche: list[int] = []
+    weiter = threading.Event()
+
+    def job(*, db: Session, settings: Settings) -> ScheduledReminderReport:
+        versuche.append(len(versuche) + 1)
+        if len(versuche) == 1:
+            raise RuntimeError("Datenbank weg")
+        weiter.set()
+        return ScheduledReminderReport(considered=0, created=0, delivered=0, push_failed=0)
+
+    scheduler = ReminderScheduler(settings, interval_seconds=0.05, session_factory=_fresh_session(db), job=job)
+    scheduler.start()
+    try:
+        assert weiter.wait(timeout=10)
+    finally:
+        scheduler.stop()
+
+    assert len(versuche) >= 2
+
+
+def test_der_lifespan_startet_und_stoppt_den_reminder_thread(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+) -> None:
+    _client, _db, _user = app_context
+    aktiv = settings.model_copy(
+        update={"reminder_scheduler_enabled": True, "reminder_interval_seconds": 3600.0}
+    )
+    application = create_app(aktiv)
+    with TestClient(application) as client:
+        scheduler = client.app.state.reminder_scheduler
+        assert isinstance(scheduler, ReminderScheduler)
+        assert scheduler.interval_seconds == 3600
+        assert scheduler.is_running()
+    assert scheduler.is_running() is False
+
+
+def test_ohne_die_einstellung_bleibt_der_reminder_thread_aus(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """Wie beim WebUntis-Abruf: kein Thread, aber das Attribut existiert trotzdem."""
+    client, _db, _user = app_context
+    assert client.app.state.reminder_scheduler is None
+
+
+# --- Die Routen --------------------------------------------------------------
+
+
+def test_die_benachrichtigungsrouten_brauchen_eine_session(app_client: TestClient) -> None:
+    assert app_client.get("/api/v1/notifications/settings").status_code == 401
+    assert app_client.get("/api/v1/notifications/subscriptions").status_code == 401
+    assert app_client.get("/api/v1/notifications").status_code == 401
+    assert app_client.post("/api/v1/notifications/read", json={"ids": [1]}).status_code == 401
+    assert app_client.post("/api/v1/notifications/reminders/run").status_code == 401
+
+
+def test_der_oeffentliche_schluessel_ist_auch_ohne_sitzung_lesbar(app_client: TestClient) -> None:
+    """Ein oeffentlicher Schluessel ist oeffentlich - wie der Katalog der Integrationen."""
+    antwort = app_client.get("/api/v1/notifications/vapid")
+    assert antwort.status_code == 200
+    assert antwort.json() == {"configured": False, "public_key": None, "subject": None}
+
+
+def test_ohne_einstellungen_zeigt_die_api_den_sicheren_zustand(app_client: TestClient) -> None:
+    login(app_client)
+    antwort = app_client.get("/api/v1/notifications/settings")
+    assert antwort.status_code == 200
+    payload = antwort.json()
+    assert payload["enabled"] is False
+    assert payload["channels"] == {"study_tasks": False, "exams": False}
+    assert payload["channels_available"] == list(CHANNELS)
+    assert payload["reminder_time"] == "17:00"
+    assert payload["quiet_hours"] == {"enabled": True, "start": "22:00", "end": "07:00", "spans_midnight": True}
+    assert payload["exam_lead_days"] == 7
+    assert payload["preference_key"] == "notifications"
+    assert "keine Erinnerungen" in payload["summary"]
+
+
+def test_die_einstellungen_werden_gespeichert_und_zurueckgegeben(app_client: TestClient) -> None:
+    login(app_client)
+    antwort = app_client.patch(
+        "/api/v1/notifications/settings",
+        json={
+            "enabled": True,
+            "channels": {"study_tasks": True},
+            "reminder_time": "08:30",
+            "quiet_hours": {"enabled": True, "start": "21:00", "end": "06:15"},
+        },
+    )
+    assert antwort.status_code == 200
+    payload = antwort.json()
+    assert payload["enabled"] is True
+    assert payload["channels"] == {"study_tasks": True, "exams": False}
+    assert payload["reminder_time"] == "08:30"
+    assert payload["quiet_hours"]["spans_midnight"] is True
+    assert "Lernaufgaben" in payload["summary"]
+
+    # Ein zweiter PATCH ohne Uhrzeit laesst sie stehen.
+    danach = app_client.patch("/api/v1/notifications/settings", json={"channels": {"exams": True}}).json()
+    assert danach["reminder_time"] == "08:30"
+    assert danach["channels"] == {"study_tasks": True, "exams": True}
+    assert danach["enabled"] is True
+
+
+def test_die_api_weist_unmoegliche_einstellungen_zurueck(app_client: TestClient) -> None:
+    login(app_client)
+    for koerper in (
+        {"reminder_time": "7:00"},
+        {"reminder_time": "25:00"},
+        {"reminder_time": "abends"},
+        {"quiet_hours": {"enabled": True, "start": "22:00", "end": "22:00"}},
+        {"channels": {"hausaufgaben": True}},
+        {"channels": {"study_tasks": "ja"}},
+        {"unbekannt": True},
+    ):
+        antwort = app_client.patch("/api/v1/notifications/settings", json=koerper)
+        assert antwort.status_code == 422, koerper
+
+
+def test_der_hauptschalter_der_spalte_ist_ueber_die_api_erreichbar(
+    app_client: TestClient,
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """Die tote Spalte aus `0001` wird hier geschrieben - und nichts anderes."""
+    _client, db, user = app_context
+    login(app_client)
+    assert app_client.patch("/api/v1/notifications/settings", json={"enabled": True}).status_code == 200
+    db.expire_all()
+    zeile = db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+    assert zeile is not None and zeile.notifications_enabled is True
+
+    assert app_client.patch("/api/v1/notifications/settings", json={"enabled": False}).status_code == 200
+    db.expire_all()
+    zeile = db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+    assert zeile is not None and zeile.notifications_enabled is False
+
+
+def test_der_vapid_endpunkt_antwortet_mit_dem_berechneten_schluessel(
+    app_client: TestClient,
+    tmp_path: Path,
+) -> None:
+    login(app_client)
+    _point_backend_at_push(app_client, _vapid_settings(tmp_path))
+    payload = app_client.get("/api/v1/notifications/vapid").json()
+    assert payload["configured"] is True
+    assert payload["subject"] == "mailto:lernende@example.org"
+    assert len(payload["public_key"]) == 87  # 65 Byte in base64url ohne Polster
+
+
+def test_ein_kaputtes_schluesselpaet_schlaegt_504_nicht_still_als_nichts(app_client: TestClient) -> None:
+    """Ein fehlender Schluessel heisst "Push ist aus", ein kaputter heisst 503."""
+    login(app_client)
+    private_pem, _ = web_push.generate_vapid_keypair()
+    _fremd, fremd_public = web_push.generate_vapid_keypair()
+    _point_backend_at_push(
+        app_client,
+        _vapid_settings(Path.cwd(), web_push_private_key=private_pem, web_push_public_key=fremd_public),
+    )
+    antwort = app_client.get("/api/v1/notifications/vapid")
+    assert antwort.status_code == 503
+    assert "passt nicht" in antwort.json()["detail"]
+
+
+def test_ohne_schluesselpaar_kann_sich_niemand_anmelden(app_client: TestClient) -> None:
+    login(app_client)
+    antwort = app_client.post(
+        "/api/v1/notifications/subscriptions",
+        json={"endpoint": RFC8291_ENDPOINT, "p256dh": RFC8291_RECEIVER_PUBLIC, "auth": RFC8291_AUTH_SECRET},
+    )
+    assert antwort.status_code == 503
+    assert "nicht eingerichtet" in antwort.json()["detail"]
+
+
+def test_ein_endgeraet_meldet_sich_ab_und_wird_wiederverwendet(
+    app_client: TestClient,
+    tmp_path: Path,
+) -> None:
+    login(app_client)
+    _point_backend_at_push(app_client, _vapid_settings(tmp_path))
+    koerper = {"endpoint": RFC8291_ENDPOINT, "p256dh": RFC8291_RECEIVER_PUBLIC, "auth": RFC8291_AUTH_SECRET}
+    erstes = app_client.post("/api/v1/notifications/subscriptions", json=koerper)
+    assert erstes.status_code == 201
+    assert erstes.json()["endpoint_hint"] == "https://push.example.net/…"
+    assert erstes.json()["failures"] == 0
+
+    # Derselbe Browser liefert denselben Endpunkt: keine zweite Zeile.
+    zweites = app_client.post("/api/v1/notifications/subscriptions", json=koerper)
+    assert zweites.status_code == 201
+    assert zweites.json()["id"] == erstes.json()["id"]
+    assert len(app_client.get("/api/v1/notifications/subscriptions").json()) == 1
+
+
+def test_eine_kaputte_anmeldung_wird_abgelehnt(app_client: TestClient, tmp_path: Path) -> None:
+    login(app_client)
+    _point_backend_at_push(app_client, _vapid_settings(tmp_path))
+    for koerper in (
+        {"endpoint": "http://push.example.net/x", "p256dh": RFC8291_RECEIVER_PUBLIC, "auth": RFC8291_AUTH_SECRET},
+        {"endpoint": RFC8291_ENDPOINT, "p256dh": "zu-kurz", "auth": RFC8291_AUTH_SECRET},
+        {"endpoint": RFC8291_ENDPOINT, "p256dh": RFC8291_RECEIVER_PUBLIC, "auth": "B3ZuK2kurz"},
+    ):
+        assert app_client.post("/api/v1/notifications/subscriptions", json=koerper).status_code == 422
+    assert app_client.get("/api/v1/notifications/subscriptions").json() == []
+
+
+def test_ein_fremdes_endgeraet_gibt_404(app_context: tuple[TestClient, Session, User], tmp_path: Path) -> None:
+    client, db, _user = app_context
+    fremder = _reminder_user(db, username="fremd")
+    abo = _mozilla_subscription(db, fremder)
+    login(client)
+    _point_backend_at_push(client, _vapid_settings(tmp_path))
+    assert client.delete(f"/api/v1/notifications/subscriptions/{abo.id}").status_code == 404
+    assert db.get(PushSubscription, abo.id) is not None
+
+
+def test_die_offene_seite_holt_und_quittiert_ihre_erinnerungen(
+    app_client: TestClient,
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _client, db, user = app_context
+    write_preferences(
+        db,
+        user.id,
+        enabled=True,
+        channels={"study_tasks": True},
+        reminder_time=time(0, 0),
+        quiet=QuietHours(enabled=False, start=time(22, 0), end=time(7, 0)),
+    )
+    db.commit()
+    _task_with_due_date(db, user, due=datetime(2026, 9, 30, 18, 0, tzinfo=timezone.utc))
+    ergebnis = sweep_for_user(
+        db, user.id, "UTC", settings=settings_ohne_push(), now=datetime(2026, 9, 30, 19, 0, tzinfo=timezone.utc)
+    )
+    assert ergebnis.created == 1
+    db.commit()
+
+    login(app_client)
+    warteschlange = app_client.get("/api/v1/notifications").json()
+    assert len(warteschlange) == 1
+    assert warteschlange[0]["kind"] == "study_task_due"
+    assert warteschlange[0]["url"] == "/#study-tasks"
+    assert warteschlange[0]["read_at"] is None
+
+    quittiert = app_client.post("/api/v1/notifications/read", json={"ids": [warteschlange[0]["id"]]})
+    assert quittiert.status_code == 200
+    assert quittiert.json() == {"read": 1}
+    assert app_client.get("/api/v1/notifications").json() == []
+    # Und nicht wieder von vorn.
+    assert app_client.post("/api/v1/notifications/read", json={"ids": [warteschlange[0]["id"]]}).json() == {"read": 0}
+
+
+def test_eine_fremde_erinnerung_gibt_404(app_client: TestClient, app_context: tuple[TestClient, Session, User]) -> None:
+    _client, db, _user = app_context
+    fremder = _reminder_user(db, username="fremd")
+    db.add(
+        Notification(
+            user_id=fremder.id,
+            kind="exam_due",
+            title="Fremd",
+            body="Fremd",
+            url="/#calendar",
+            target_id=1,
+            dedupe_key="exam_due:1:2026-09-30",
+        )
+    )
+    db.commit()
+    login(app_client)
+    fremde_id = db.scalar(select(Notification).where(Notification.user_id == fremder.id)).id
+    assert app_client.post("/api/v1/notifications/read", json={"ids": [fremde_id]}).status_code == 404
+    assert app_client.get("/api/v1/notifications").json() == []
+
+
+def test_der_knopf_erzeugt_erinnerungen_auch_ohne_laufenden_thread(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """Er darf unabhaengig von `REMINDER_SCHEDULER_ENABLED` laufen.
+
+    Sonst koennte ein Stack, auf dem der Thread aus ist, gar nichts zeigen - und
+    die Einstellungen wuerden nicht erklaeren koennen, was beim Einschalten
+    passieren wuerde.
+    """
+    client, db, user = app_context
+    write_preferences(
+        db,
+        user.id,
+        enabled=True,
+        channels={"study_tasks": True},
+        reminder_time=time(0, 0),
+        quiet=QuietHours(enabled=False, start=time(22, 0), end=time(7, 0)),
+    )
+    db.commit()
+    _task_with_due_date(db, user, due=datetime(2026, 9, 30, 18, 0, tzinfo=timezone.utc))
+    login(client)
+
+    antwort = client.post("/api/v1/notifications/reminders/run")
+    assert antwort.status_code == 200
+    payload = antwort.json()
+    assert payload["created"] == 1
+    assert payload["scheduler_running"] is False
+    assert payload["interval_seconds"] == 300
+    assert payload["outcomes"][0]["user_id"] == user.id
+    assert "Erinnerung" in payload["message"]
+    assert client.app.state.reminder_scheduler is None
 
 
 def test_backup_status_survives_a_broken_status_file(app_client: TestClient, tmp_path: Path) -> None:

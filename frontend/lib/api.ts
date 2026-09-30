@@ -2,7 +2,7 @@
 
 import { getDemoDashboard, getDemoScheduleRange, isDemoFallbackEnabled } from "./demo";
 import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type CalendarEvent, type DashboardData, type DocumentAnswer, type DocumentRecord, type DocumentSearchResult, type Exam, type FileUploadResult, type Grade, type GradeImportPreview, type GradeImportResult, type GradeKind, type GradeSharing, type GradeSummary, type Greeting, type Homework, type ScheduleRange, type StudySessionRecord, type StudyTask, type StudyTaskState, type Subject, type SubjectOption } from "./types";
-import { collectSubjectNames, parseCalendarEventArray, parseCalendarEventRead, parseCalendarFeed, parseCalendarWriting, parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseExamArray, parseExamRead, parseExamTaskPlanResult, parseFileUploadResponse, parseGradeArray, parseGradeImportPreview, parseGradeImportResult, parseGradeRead, parseGradeSharing, parseGradeSummary, parseHomeworkArray, parseHomeworkRead, parseIntegrationArray, parseIntegrationAuthorize, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseLearningInsights, parseStudyDependencyArray, parseStudyDependencyRead, parseStudyPlanArray, parseStudyPlanRead, parseStudySeriesArray, parseStudySeriesRead, parseStudySessionRead, parseStudyTaskArray, parseStudyTaskRead, parseSubjectArray, parseSubjectRead, parseTopicProgressArray, parseTopicProgressRead, parseUserResponse, parseUserSession, parseWeeklyGoalRead } from "./schemas";
+import { collectSubjectNames, parseCalendarEventArray, parseCalendarEventRead, parseCalendarFeed, parseCalendarWriting, parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseExamArray, parseExamRead, parseExamTaskPlanResult, parseFileUploadResponse, parseGradeArray, parseGradeImportPreview, parseGradeImportResult, parseGradeRead, parseGradeSharing, parseGradeSummary, parseHomeworkArray, parseHomeworkRead, parseIntegrationArray, parseIntegrationAuthorize, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseLearningInsights, parseMarkReadResult, parseNotificationArray, parseNotificationSettings, parsePushSubscription, parsePushSubscriptionArray, parseReminderRun, parseStudyDependencyArray, parseStudyDependencyRead, parseStudyPlanArray, parseStudyPlanRead, parseStudySeriesArray, parseStudySeriesRead, parseStudySessionRead, parseStudyTaskArray, parseStudyTaskRead, parseSubjectArray, parseSubjectRead, parseTopicProgressArray, parseTopicProgressRead, parseUserResponse, parseUserSession, parseVapidKey, parseWeeklyGoalRead } from "./schemas";
 import type { CalendarFeed, CalendarWriting, ExamTaskPlanResult, IntegrationAuthorize, IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult, LearningInsights, StudyPlan, StudyTaskDependency, StudyTaskOrder, StudyTaskSeries, StudyTaskSeriesInput, TopicProgress, WeeklyGoal } from "./types";
 
 const API_PREFIX = "/api/backend";
@@ -1007,6 +1007,93 @@ export async function importGrades(input: {
     ),
   });
   return parseGradeImportResult(payload);
+}
+
+/* --------------------------------------------------------- Benachrichtigungen */
+
+/**
+ * Die Erinnerungseinstellungen: Hauptschalter, Kanäle, Uhrzeit, Ruhezeiten.
+ *
+ * Ohne Demo-Fallback: eine erfundene Tageserinnerung, die sich nie ausgeht, wäre
+ * eine Zusage, die das Backend nicht halten kann.
+ */
+export async function getNotificationSettings() {
+  return parseNotificationSettings(await apiRequest("/v1/notifications/settings"));
+}
+
+export interface NotificationSettingsChanges {
+  enabled?: boolean;
+  channels?: Record<string, boolean>;
+  reminder_time?: string;
+  quiet_hours?: { enabled: boolean; start: string; end: string };
+}
+
+/**
+ * Die Einstellungen aendern. Die Antwort ist die **gespeicherte** Lage.
+ *
+ * Gesendet wird nur, was auch wirklich geaendert werden soll: `compact` laesst
+ * `undefined` fallen, und ein leeres Feld waere sonst ein 422, weil die
+ * Schreibschemas `null` bei fast allen Feldern ablehnen.
+ */
+export async function updateNotificationSettings(changes: NotificationSettingsChanges) {
+  return parseNotificationSettings(
+    await apiRequest("/v1/notifications/settings", {
+      method: "PATCH",
+      body: JSON.stringify(compact(changes)),
+    }),
+  );
+}
+
+/** Der oeffentliche VAPID-Schluessel, falls der Server eines eingerichtet hat. */
+export async function getVapidKey() {
+  return parseVapidKey(await apiRequest("/v1/notifications/vapid"));
+}
+
+export async function getPushSubscriptions() {
+  return parsePushSubscriptionArray(await apiRequest("/v1/notifications/subscriptions"));
+}
+
+/** Ein Endgeraet anmelden. Derselbe Endpunkt erneuert die Zeile statt eine neue anzulegen. */
+export async function createPushSubscription(subscription: { endpoint: string; p256dh: string; auth: string }) {
+  return parsePushSubscription(
+    await apiRequest("/v1/notifications/subscriptions", {
+      method: "POST",
+      body: JSON.stringify(subscription),
+    }),
+  );
+}
+
+export async function deletePushSubscription(subscriptionId: number) {
+  assertId(subscriptionId, "Das Endgerät");
+  await apiRequest(resourcePath("notifications/subscriptions", subscriptionId), { method: "DELETE" });
+}
+
+/**
+ * Die Erinnerungen, die noch niemand gesehen hat - der **lokale** Weg.
+ *
+ * `after` ist ein Id-Zeiger: die Seite merkt sich die groesste Id, die sie
+ * schon abgeholt hat, und fragt danach. So bekommt sie jede genau einmal, auch
+ * wenn der Dienst in der Nacht nichts Neues hatte.
+ */
+export async function getPendingNotifications(after?: number) {
+  return parseNotificationArray(await apiRequest(collectionPath("/v1/notifications", { after })));
+}
+
+/** Als gelesen quittieren. Ohne Antwort: die Seite zeigt sie ja schon. */
+export async function markNotificationsRead(ids: number[]): Promise<number> {
+  return parseMarkReadResult(
+    await apiRequest("/v1/notifications/read", { method: "POST", body: JSON.stringify({ ids }) }),
+  );
+}
+
+/**
+ * Einen Lauf jetzt ausloesen - der Knopf in den Einstellungen.
+ *
+ * Der einzige Weg, planmaessige Arbeit von aussen zu starten, und er geht
+ * auch dann, wenn der planmaessige Thread aus ist.
+ */
+export async function runReminders() {
+  return parseReminderRun(await apiRequest("/v1/notifications/reminders/run", { method: "POST" }));
 }
 
 /* ------------------------------------------------------------------- Dateien */

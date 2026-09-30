@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useTheme } from "next-themes";
@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { BackupStatusCard } from "@/components/settings/backup-status-card";
 import { ModelCatalogCard } from "@/components/settings/model-catalog-card";
+import { NotificationSettingsCard } from "@/components/settings/notification-settings-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,6 +55,7 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { IntegrationWrite } from "@/lib/api";
+import type { NotificationApi, NotificationState } from "@/lib/use-notifications";
 
 type BadgeVariant = "default" | "secondary" | "outline" | "success" | "warning" | "info" | "accent";
 
@@ -81,16 +83,16 @@ const THEME_OPTIONS = [
 
 const FIELD_HINTS: Record<string, string> = {
   base_url: "Zum Beispiel https://schule.example.org",
-  school: "Kürzel oder Name deiner Schule",
+  school: "KÃ¼rzel oder Name deiner Schule",
   username: "Deine Zugangsdaten aus dem Schulportal",
   password: "Bei iCloud das app-spezifische Passwort, nicht dein Apple-ID-Passwort",
   model: "Zum Beispiel llama3.2",
-  api_key: "Leer lassen, wenn der Dienst keinen Schlüssel braucht",
+  api_key: "Leer lassen, wenn der Dienst keinen SchlÃ¼ssel braucht",
   path: "Relativ zum konfigurierten Dokumentordner",
   url: "Die abonnierte Adresse, zum Beispiel https://schule.example.org/kalender.ics",
-  client_id: "Aus der Google-Konsole unter „Zugangsdaten“",
-  client_secret: "Bleibt verschlüsselt und verlässt den Server nur bei Google",
-  calendar_id: "„primary“ oder die Id aus der Google-Konsole",
+  client_id: "Aus der Google-Konsole unter â€žZugangsdatenâ€œ",
+  client_secret: "Bleibt verschlÃ¼sselt und verlÃ¤sst den Server nur bei Google",
+  calendar_id: "â€žprimaryâ€œ oder die Id aus der Google-Konsole",
   redirect_uri:
     "Bei Google hinterlegen und hier genau so eintragen, zum Beispiel https://lernraum.example.org/api/backend/v1/integrations/1/oauth/callback",
   refresh_token: "Wird nach der Einwilligung automatisch gesetzt",
@@ -176,7 +178,7 @@ function AccountCard({ user, onLogout, isLoggingOut }: AccountCardProps) {
               <>
                 <Button type="button" size="sm" variant="destructive" onClick={onLogout} disabled={isLoggingOut}>
                   {isLoggingOut ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <LogOut aria-hidden="true" />}
-                  {isLoggingOut ? "Wird abgemeldet …" : "Jetzt abmelden"}
+                  {isLoggingOut ? "Wird abgemeldet â€¦" : "Jetzt abmelden"}
                 </Button>
                 <Button type="button" size="sm" variant="ghost" onClick={() => setAbmeldeOffen(false)} disabled={isLoggingOut}>
                   Abbrechen
@@ -208,7 +210,7 @@ function ThemeCard() {
     <Card className="border-border/80 bg-card/90">
       <CardHeader>
         <CardTitle>Darstellung</CardTitle>
-        <CardDescription>Wähle, ob dein Lernraum hell, dunkel oder wie das System erscheint.</CardDescription>
+        <CardDescription>WÃ¤hle, ob dein Lernraum hell, dunkel oder wie das System erscheint.</CardDescription>
       </CardHeader>
       <CardContent>
         {mounted ? (
@@ -248,7 +250,7 @@ interface IntegrationRowProps {
   testResult: IntegrationTestResult | undefined;
   syncResult: IntegrationSyncResult | undefined;
   pendingAction: string | null;
-  /** Läuft gerade die Einwilligung von Google? */
+  /** LÃ¤uft gerade die Einwilligung von Google? */
   canWriteRemotely: boolean;
   /** Der Katalog - die Quelle der Angabe, ob in dieser Art geschrieben werden kann. */
   catalog: IntegrationCatalog[];
@@ -289,7 +291,7 @@ function IntegrationRow({
   /*
     Google braucht zwei Schritte: die Integration anlegen und sich dann bei
     Google einwilligen. `refresh_token` in den technischen Angaben ist das
-    Merkmal dafür - er erscheint erst, nachdem der Rückweg durchlaufen ist. Ohne
+    Merkmal dafÃ¼r - er erscheint erst, nachdem der RÃ¼ckweg durchlaufen ist. Ohne
     die Freigabe zum Schreiben startet der Server den Lauf gar nicht, deshalb
     der zweite Hinweis.
   */
@@ -309,7 +311,7 @@ function IntegrationRow({
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
               <Badge variant="outline">{integration.kind}</Badge>
               <Badge variant={status.variant}>{status.label}</Badge>
-              {incomplete ? <Badge variant="warning">Unvollständig</Badge> : null}
+              {incomplete ? <Badge variant="warning">UnvollstÃ¤ndig</Badge> : null}
             </div>
           </div>
         </div>
@@ -364,14 +366,14 @@ function IntegrationRow({
 
       {/*
         Ein Konflikt ist der eine Fall, in dem ein Abruf **nichts** entschieden
-        hat: die Lernende und die Gegenseite haben denselben Termin geändert.
-        Er wird hier ausdrücklich benannt, weil ein stillschweigend
-        übergangener Konflikt wie eine verlorene Änderung aussieht.
+        hat: die Lernende und die Gegenseite haben denselben Termin geÃ¤ndert.
+        Er wird hier ausdrÃ¼cklich benannt, weil ein stillschweigend
+        Ã¼bergangener Konflikt wie eine verlorene Ã„nderung aussieht.
       */}
       {conflicts > 0 ? (
         <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-300">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          {conflicts === 1 ? "Ein Termin wurde" : `${conflicts} Termine wurden`} an beiden Seiten geändert und sind
+          {conflicts === 1 ? "Ein Termin wurde" : `${conflicts} Termine wurden`} an beiden Seiten geÃ¤ndert und sind
           offen geblieben. Deine Fassung steht hier; entscheide sie in deinem Kalender neu.
         </p>
       ) : null}
@@ -420,13 +422,13 @@ function IntegrationRow({
         {awaitingConsent ? (
           <Button type="button" size="sm" onClick={onAuthorize} disabled={isBusy || incomplete}>
             {isAuthorizing ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Link2 aria-hidden="true" />}
-            {isAuthorizing ? "Weiterleitung läuft" : writingBlocked ? "Zustimmung zeigen, dann verbinden" : "Mit Google verbinden"}
+            {isAuthorizing ? "Weiterleitung lÃ¤uft" : writingBlocked ? "Zustimmung zeigen, dann verbinden" : "Mit Google verbinden"}
           </Button>
         ) : null}
         {isSyncableKind(integration.kind) ? (
           <Button type="button" size="sm" onClick={onSync} disabled={!canSync}>
             {isSyncing ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
-            {isSyncing ? "Läuft" : syncLabel}
+            {isSyncing ? "LÃ¤uft" : syncLabel}
           </Button>
         ) : null}
         {confirming ? (
@@ -471,8 +473,8 @@ function IntegrationForm({ catalog, isSubmitting, onSubmit, onCancel }: Integrat
   /*
     Aus einer Gruppe wie `{url, path}` wird **ein** alternatives Feld-Set, nicht
     zwei Pflichtfelder. Zwei bedeutungslose Pflichtfelder, von denen eines
-    reicht, wären eine Frage, die das Formular nicht beantworten kann - und
-    `required_one_of` ist genau dafür da. Die Prüfung selbst liegt in
+    reicht, wÃ¤ren eine Frage, die das Formular nicht beantworten kann - und
+    `required_one_of` ist genau dafÃ¼r da. Die PrÃ¼fung selbst liegt in
     `validateIntegrationInput`, damit sie ohne Browser testbar ist.
   */
   const alternativeSets = useMemo(() => (spec?.required_one_of ?? []).map((group) => group.filter(Boolean)), [spec]);
@@ -558,7 +560,7 @@ function IntegrationForm({ catalog, isSubmitting, onSubmit, onCancel }: Integrat
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-bold">Neue Verbindung</p>
-          <p className="mt-1 text-xs text-muted-foreground">Zugangsdaten werden verschlüsselt gespeichert und nie im Browser abgelegt.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Zugangsdaten werden verschlÃ¼sselt gespeichert und nie im Browser abgelegt.</p>
         </div>
         <Button type="button" size="icon" variant="ghost" onClick={onCancel} disabled={isSubmitting} aria-label="Abbrechen">
           <X aria-hidden="true" />
@@ -614,7 +616,7 @@ function IntegrationForm({ catalog, isSubmitting, onSubmit, onCancel }: Integrat
 
       <Button type="submit" disabled={isSubmitting}>
         {isSubmitting ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Plus aria-hidden="true" />}
-        {isSubmitting ? "Wird gespeichert …" : "Verbindung speichern"}
+        {isSubmitting ? "Wird gespeichert â€¦" : "Verbindung speichern"}
       </Button>
     </form>
   );
@@ -673,7 +675,7 @@ function IntegrationsCard({
           </Button>
           <Button type="button" size="sm" onClick={() => setFormOpen((open) => !open)} disabled={isSubmitting} aria-expanded={formOpen}>
             {formOpen ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
-            {formOpen ? "Schließen" : "Hinzufügen"}
+            {formOpen ? "SchlieÃŸen" : "HinzufÃ¼gen"}
           </Button>
         </div>
       </CardHeader>
@@ -699,7 +701,7 @@ function IntegrationsCard({
             <p className="mt-3 text-sm font-bold">Noch nichts verbunden</p>
             <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
               Stundenplan, Aufgaben und Termine kannst du auch ohne Integration manuell pflegen. Verbundene Dienste
-              liefern später automatisch deine Lerninhalte.
+              liefern spÃ¤ter automatisch deine Lerninhalte.
             </p>
           </div>
         ) : (
@@ -731,10 +733,10 @@ function IntegrationsCard({
  * Die Zustimmung, Termine in verbundene Kalender zu **schreiben**.
  *
  * Sie steht hier und nicht in der Zeile einer Integration, weil sie nicht an
- * einer hängt, sondern an der Frage, ob der Lernraum das überhaupt darf. Und
- * sie ist **aus**, bis jemand sie einschaltet: Lesen genügt, sobald eine Quelle
+ * einer hÃ¤ngt, sondern an der Frage, ob der Lernraum das Ã¼berhaupt darf. Und
+ * sie ist **aus**, bis jemand sie einschaltet: Lesen genÃ¼gt, sobald eine Quelle
  * verbunden ist - die hat die Lernende ja selbst angegeben. Schreiben ist der
- * Fall, der eine ausdrückliche Entscheidung braucht.
+ * Fall, der eine ausdrÃ¼ckliche Entscheidung braucht.
  */
 function CalendarWritingCard({
   writing,
@@ -770,7 +772,7 @@ function CalendarWritingCard({
             </span>
             <span className="mt-1 block text-xs text-muted-foreground">
               Gespeichert als <code className="font-mono">{writing?.preference_key ?? "share_calendar_for_writing"}</code>.
-              Ein fehlender oder kaputter Eintrag bedeutet immer „aus“.
+              Ein fehlender oder kaputter Eintrag bedeutet immer â€žausâ€œ.
             </span>
           </span>
         </label>
@@ -793,11 +795,11 @@ function CalendarWritingCard({
 }
 
 /**
- * Die abonnierbare ICS-Adresse des Lernraums - der Weg nach draußen.
+ * Die abonnierbare ICS-Adresse des Lernraums - der Weg nach drauÃŸen.
  *
- * Der Schlüssel ist im Klartext ein Vollzugriff auf **diese** Kalenderdatei,
- * deshalb gibt es hier ausdrücklich einen Knopf zum Erzeugen: Wer ihn drückt,
- * weiß, dass eine alte Adresse mitgeht. Ein still erneuertes Geheimnis wäre
+ * Der SchlÃ¼ssel ist im Klartext ein Vollzugriff auf **diese** Kalenderdatei,
+ * deshalb gibt es hier ausdrÃ¼cklich einen Knopf zum Erzeugen: Wer ihn drÃ¼ckt,
+ * weiÃŸ, dass eine alte Adresse mitgeht. Ein still erneuertes Geheimnis wÃ¤re
  * keines, und der Knopf kostet nur einen Klick.
  */
 function CalendarFeedCard({
@@ -857,7 +859,7 @@ function CalendarFeedCard({
           <>
             <p className="break-all border border-border bg-muted/40 px-3 py-2 font-mono text-xs">{adresse()}</p>
             <p className="text-xs text-muted-foreground">
-              {feed.message} Ein neuer Schlüssel macht diese Adresse sofort ungültig.
+              {feed.message} Ein neuer SchlÃ¼ssel macht diese Adresse sofort ungÃ¼ltig.
             </p>
           </>
         ) : (
@@ -867,7 +869,7 @@ function CalendarFeedCard({
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" size="sm" onClick={onCreate} disabled={isRotating}>
             {isRotating ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Plus aria-hidden="true" />}
-            {feed?.active ? "Neuen Schlüssel erzeugen" : "Adresse einrichten"}
+            {feed?.active ? "Neuen SchlÃ¼ssel erzeugen" : "Adresse einrichten"}
           </Button>
           {feed?.active ? (
             <Button type="button" size="sm" variant="outline" onClick={kopieren}>
@@ -895,6 +897,7 @@ export interface SettingsViewProps {
   writing: CalendarWriting | null;
   /** Die abonnierbare ICS-Adresse. `null`, solange nichts geladen ist. */
   feed: CalendarFeed | null;
+  notifications: NotificationApi & NotificationState;
   onRetry: () => void;
   onAdd: (input: IntegrationWrite) => Promise<boolean>;
   onToggle: (integration: IntegrationRead, enabled: boolean) => void;
@@ -918,8 +921,9 @@ export function SettingsView({
   pendingAction,
   testResults,
   syncResults,
-  writing,
+writing,
   feed,
+  notifications,
   onRetry,
   onAdd,
   onToggle,
@@ -963,7 +967,7 @@ export function SettingsView({
       ) : null}
 
       {/*
-        Die Zustimmung steht **über** der Integrationsliste und nicht als Zeile
+        Die Zustimmung steht **Ã¼ber** der Integrationsliste und nicht als Zeile
         darin: sie haengt an keiner einzelnen Verbindung. Wer sie sucht, soll sie
         finden, ohne erst eine Kalenderzeile auswaehlen zu muessen.
       */}
@@ -994,6 +998,25 @@ export function SettingsView({
             isLoading={feed === null}
             isRotating={pendingAction === "feed"}
             onCreate={onCreateFeed}
+          />
+          <NotificationSettingsCard
+            settings={notifications.settings}
+            vapid={notifications.vapid}
+            subscriptions={notifications.subscriptions}
+            permission={notifications.permission}
+            pushMoeglich={notifications.pushMoeglich}
+            status={notifications.status}
+            error={notifications.error}
+            actionError={notifications.actionError}
+            pending={notifications.pending}
+            bericht={notifications.pruefbericht}
+            zuletzt={notifications.zuletzt}
+            onSpeichern={notifications.speichern}
+            onErlaubnis={notifications.erlaubnisAnfragen}
+            onPushAnmelden={notifications.pushAnmelden}
+            onPushAbmelden={notifications.pushAbmelden}
+            onPruefen={notifications.pruefen}
+            onQuittieren={notifications.quittieren}
           />
           <BackupStatusCard />
           <ThemeCard />

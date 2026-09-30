@@ -6,10 +6,12 @@ import { AppShell } from "@/components/app-shell";
 import { SettingsView } from "@/components/settings/settings-view";
 import { logout } from "@/lib/api";
 import { useIntegrations } from "@/lib/use-integrations";
+import { useNotifications } from "@/lib/use-notifications";
 
 export default function SettingsPage() {
   const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const notifications = useNotifications();
   const {
     user,
     integrations,
@@ -68,8 +70,9 @@ export default function SettingsPage() {
         pendingAction={pendingAction}
         testResults={testResults}
         syncResults={syncResults}
-        writing={writing}
+writing={writing}
         feed={feed}
+        notifications={notifications}
         onRetry={retry}
         onAdd={addIntegration}
         onToggle={(integration, enabled) => void changeIntegration(integration.id, { enabled })}
