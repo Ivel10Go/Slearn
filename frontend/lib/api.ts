@@ -1,11 +1,39 @@
 "use client";
 
 import { getDemoDashboard, getDemoScheduleRange, isDemoFallbackEnabled } from "./demo";
-import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type CalendarEvent, type DashboardData, type DocumentAnswer, type DocumentRecord, type DocumentSearchResult, type Exam, type FileUploadResult, type Greeting, type Homework, type ScheduleRange, type StudySessionRecord, type StudyTask, type StudyTaskState, type Subject, type SubjectOption } from "./types";
-import { collectSubjectNames, parseCalendarEventArray, parseCalendarEventRead, parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseExamArray, parseExamRead, parseExamTaskPlanResult, parseFileUploadResponse, parseHomeworkArray, parseHomeworkRead, parseIntegrationArray, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseStudyDependencyArray, parseStudyDependencyRead, parseStudyPlanArray, parseStudyPlanRead, parseStudySeriesArray, parseStudySeriesRead, parseStudySessionRead, parseStudyTaskArray, parseStudyTaskRead, parseSubjectArray, parseSubjectRead, parseUserResponse, parseUserSession } from "./schemas";
-import type { ExamTaskPlanResult, IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult, StudyPlan, StudyTaskDependency, StudyTaskOrder, StudyTaskSeries, StudyTaskSeriesInput } from "./types";
+import { parseAiRuntime, type AiRuntimePayload } from "./ai-runtime";
+import { endungFuerFormat, parseSpeechCapabilities, parseVoiceList, type SpeechCapabilitiesPayload, type VoiceListPayload } from "./speech";
+import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type CalendarEvent, type DashboardData, type DocumentAnswer, type DocumentRecord, type DocumentSearchResult, type Exam, type FileUploadResult, type Grade, type GradeImportPreview, type GradeImportResult, type GradeKind, type GradeSharing, type GradeSummary, type Greeting, type Homework, type ScheduleRange, type StudySessionRecord, type StudyTask, type StudyTaskState, type Subject, type SubjectOption } from "./types";
+import { collectSubjectNames, parseCalendarEventArray, parseCalendarEventRead, parseCalendarFeed, parseCalendarWriting, parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseExamArray, parseExamRead, parseExamTaskPlanResult, parseFileUploadResponse, parseGradeArray, parseGradeImportPreview, parseGradeImportResult, parseGradeRead, parseGradeSharing, parseGradeSummary, parseHomeworkArray, parseHomeworkRead, parseIntegrationArray, parseIntegrationAuthorize, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseLearningInsights, parseMarkReadResult, parseNotificationArray, parseNotificationSettings, parsePushSubscription, parsePushSubscriptionArray, parseReminderRun, parseRewardOverview, parseStudyDependencyArray, parseStudyDependencyRead, parseStudyPlanArray, parseStudyPlanRead, parseStudySeriesArray, parseStudySeriesRead, parseStudySessionRead, parseStudyTaskArray, parseStudyTaskRead, parseSubjectArray, parseSubjectRead, parseTopicProgressArray, parseTopicProgressRead, parseUserResponse, parseUserSession, parseVapidKey, parseWeeklyGoalRead } from "./schemas";
+import type { CalendarFeed, CalendarWriting, ExamTaskPlanResult, IntegrationAuthorize, IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult, LearningInsights, RewardOverview, StudyPlan, StudyTaskDependency, StudyTaskOrder, StudyTaskSeries, StudyTaskSeriesInput, TopicProgress, WeeklyGoal } from "./types";
 
 const API_PREFIX = "/api/backend";
+
+/**
+ * Was die Oberflaeche annimmt, wenn der Server gar nicht antwortet.
+ *
+ * Der Textmodus ist hier keine Ausnahme, sondern der eingebaute Zustand: mit
+ * diesen Werten zeigt die Sprachkarte „Tippen geht immer" und bietet die
+ * Sprachknöpfe nicht an - ohne Fehlermeldung und ohne Dialog.
+ */
+const LEERE_FAEHIGKEITEN: SpeechCapabilitiesPayload = {
+  text_mode_available: true,
+  text_mode_note: "Der Lernraum ist gerade nicht erreichbar. Alles hier laeuft ohne Modell.",
+  speech_to_text: { available: false, reason: "Der Lernraum ist gerade nicht erreichbar.", model_id: null, label: "", language: null, language_label: "" },
+  text_to_speech: { available: false, reason: "Der Lernraum ist gerade nicht erreichbar.", model_id: null, label: "", language: null, language_label: "" },
+  input: { max_bytes: 0, max_seconds: 0, accepted_types: [], sample_rate: 16000, needs_transcoding: true, transcoding_note: "" },
+  runtime: {
+    transcriber_reachable: false,
+    transcriber_note: "",
+    synthesizer_available: false,
+    synthesizer_note: "",
+    ffmpeg_present: false,
+    ffmpeg_note: "",
+  },
+  default_voice_id: null,
+  recommended_voice_id: null,
+  installed_voice_ids: [],
+};
 
 export class ApiError extends Error {
   readonly status: number;
@@ -225,6 +253,50 @@ export async function syncIntegration(integrationId: number): Promise<Integratio
     body: JSON.stringify({}),
   });
   return parseIntegrationSyncResult(payload);
+}
+
+/**
+ * Startet die Einwilligung von Google.
+ *
+ * **Leitet nicht selbst weiter.** Die Oberfläche muss vorher noch die Freigabe
+ * zum Schreiben anzeigen können, und das ist nur hier möglich. Danach geht der
+ * Browser von Hand an `authorization_url` - dort zeigt Google an, welche
+ * Rechte verlangt werden.
+ */
+export async function authorizeIntegration(integrationId: number): Promise<IntegrationAuthorize> {
+  const payload = await apiRequest(resourcePath("integrations", integrationId, "authorize"), {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return parseIntegrationAuthorize(payload);
+}
+
+/** Ob der Lernraum Termine in verbundene Kalender schreiben darf. Standard ist aus. */
+export async function getCalendarWriting(): Promise<CalendarWriting> {
+  return parseCalendarWriting(await apiRequest("/v1/calendar/writing"));
+}
+
+/**
+ * Die Freigabe erteilen oder zurücknehmen.
+ *
+ * `enabled` ist ein Pflichtfeld ohne Default: ein fehlendes `undefined` würde
+ * hier stillschweigend zurückschalten, und ein Default `false` wäre ein
+ * Schalter, der sich selbst zurücksetzt.
+ */
+export async function setCalendarWriting(enabled: boolean): Promise<CalendarWriting> {
+  return parseCalendarWriting(
+    await apiRequest("/v1/calendar/writing", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  );
+}
+
+/** Die abonnierbare ICS-Adresse, falls eingerichtet. */
+export async function getCalendarFeed(): Promise<CalendarFeed> {
+  return parseCalendarFeed(await apiRequest("/v1/calendar/feed"));
+}
+
+/** Erzeugt einen neuen Abo-Schlüssel. Der alte ist danach ungültig. */
+export async function createCalendarFeed(): Promise<CalendarFeed> {
+  return parseCalendarFeed(await apiRequest("/v1/calendar/feed", { method: "POST" }));
 }
 
 export async function getDocuments(): Promise<DocumentRecord[]> {
@@ -764,10 +836,318 @@ export async function generateExamTasks(
   return parseExamTaskPlanResult(payload);
 }
 
+/* -------------------------------------------------------- Lernfortschritt */
+
+export interface TopicProgressWrite {
+  /** 0 bis 1. Die fuenf Stufen holt sich die Oberflaeche aus `TopicProgress`. */
+  confidence: number;
+  /**
+   * Weglassen heisst "jetzt" (das Backend traegt `utc_now()` ein), `null`
+   * loescht den Anker. `compact` behält ein `null` - nur `undefined` faellt
+   * weg, und genau das ist hier der Unterschied zwischen "leeren" und
+   * "unveraendert lassen".
+   */
+  last_reviewed_at?: string | null;
+  notes?: string | null;
+}
+
+/**
+ * Das Lernprotokoll als Auswertung: Serie, Wochenziel, Lernzeit je Fach und
+ * Verteilung auf die Wochentage.
+ *
+ * Ohne Demo-Fallback, wie bei den anderen Lerndaten: eine erfundene Serie waere
+ * an ihren Zahlen nicht als solche erkennbar, und eine erfundene Lernzeit
+ * schon gar nicht.
+ */
+export async function getLearningInsights(): Promise<LearningInsights> {
+  return parseLearningInsights(await apiRequest("/v1/progress/insights"));
+}
+
+/**
+ * Der Lernstand aller Themen, optional auf ein Fach eingeschraenkt.
+ *
+ * `subjectId` wird von der Fortschrittskarte nicht gebraucht - sie zeigt alle
+ * Themen. Er ist hier, weil der Endpunkt ihn anbietet und eine zweite
+ * Filterstelle in der Oberflaeche es waere.
+ */
+export async function getTopicProgress(subjectId?: number): Promise<TopicProgress[]> {
+  return parseTopicProgressArray(await apiRequest(collectionPath("/v1/progress/topics", { subject_id: subjectId })));
+}
+
+/**
+ * Konfidenz und Wiederholungsdatum eines Themas schreiben.
+ *
+ * `PUT` und nicht `PATCH`, weil der Aufruf die Zeile anlegt, falls sie fehlt.
+ * Das Backend nennt Bezeichnung und Intervall zurueck - die Oberflaeche
+ * uebernimmt die Antwort, statt sie selbst zu berechnen.
+ */
+export async function saveTopicProgress(topicId: number, input: TopicProgressWrite): Promise<TopicProgress> {
+  assertId(topicId, "Das Thema");
+  const payload = await apiRequest(resourcePath("progress/topics", topicId), {
+    method: "PUT",
+    body: JSON.stringify(compact(input)),
+  });
+  return parseTopicProgressRead(payload);
+}
+
+/** Das Wochenziel in gelernten Minuten. Antwort ist die Woche mit dem neuen Ziel. */
+export async function setWeeklyGoal(goalMinutes: number): Promise<WeeklyGoal> {
+  const payload = await apiRequest("/v1/progress/goal", {
+    method: "PATCH",
+    body: JSON.stringify({ goal_minutes: goalMinutes }),
+  });
+  return parseWeeklyGoalRead(payload);
+}
+
+/* ------------------------------------------------------------- Belohnungen */
+
+/**
+ * Punktekonto, Auszeichnungen und die letzten Buchungen - in **einer** Anfrage.
+ *
+ * Die drei Teile gehoeren zu derselben Frage und werden immer zusammen gelesen.
+ * Drei Endpunkte wuerden drei Anfragen und drei Moeglichkeiten schaffen, in denen
+ * die Karte einen halben Stand zeigt: eine Punktzahl ohne die Buchung, aus der sie
+ * stammt. Ausserdem kommt die Regel mit, damit die Karte sie nicht nachbaut.
+ *
+ * Ohne Demo-Fallback, wie bei den Lerndaten: eine erfundene Punktzahl waere an
+ * sich nicht als solche erkennbar - sie wuerde einfach dastehen.
+ *
+ * `limit` begrenzt die **Liste** der Buchungen, nicht die Summe. Das Backend
+ * begrenzt den Wert von sich aus nach oben.
+ */
+export async function getRewards(limit?: number): Promise<RewardOverview> {
+  return parseRewardOverview(await apiRequest(collectionPath("/v1/rewards", { limit })));
+}
+
+/* ------------------------------------------------------------------- Noten */
+
+export interface GradeWrite {
+  subject_id: number;
+  grade_value: number;
+  kind?: GradeKind;
+  weight?: number;
+  graded_on: string;
+  comment?: string | null;
+}
+
+export interface GradeChanges {
+  subject_id?: number | null;
+  grade_value?: number;
+  kind?: GradeKind;
+  weight?: number;
+  graded_on?: string;
+  comment?: string | null;
+}
+
+/**
+ * Die Noten des Nutzers, neueste zuerst.
+ *
+ * Ohne Demo-Fallback: eine erfundene Notenliste waere an ihren Zahlen nicht als
+ * solche erkennbar, und ein Schnitt aus erfundenen Noten ist eine erfundene
+ * Aussage ueber die eigene Leistung.
+ */
+export async function getGrades(filter: { subjectId?: number; limit?: number } = {}): Promise<Grade[]> {
+  return parseGradeArray(
+    await apiRequest(collectionPath("/v1/grades", { subject_id: filter.subjectId, limit: filter.limit })),
+  );
+}
+
+export async function createGrade(input: GradeWrite): Promise<Grade> {
+  assertId(input.subject_id, "Das Fach");
+  const payload = await apiRequest("/v1/grades", { method: "POST", body: JSON.stringify(compact(input)) });
+  return parseGradeRead(payload);
+}
+
+export async function updateGrade(gradeId: number, changes: GradeChanges): Promise<Grade> {
+  assertId(gradeId, "Die Note");
+  const payload = await apiRequest(resourcePath("grades", gradeId), {
+    method: "PATCH",
+    body: JSON.stringify(compact(changes)),
+  });
+  return parseGradeRead(payload);
+}
+
+export async function deleteGrade(gradeId: number): Promise<void> {
+  assertId(gradeId, "Die Note");
+  await apiRequest(resourcePath("grades", gradeId), { method: "DELETE" });
+}
+
+/**
+ * Schnitt, Verlauf und Hochrechnung in einem Aufruf.
+ *
+ * `projectedWeight` ist die Gewichtung, die noch aussteht - eine Angabe der
+ * Lernenden, keine gespeicherte Groesse. Ohne sie bleibt die Hochrechnung leer,
+ * und die Karte zeigt den Rueckblick.
+ */
+export async function getGradeSummary(filter: { subjectId?: number; projectedWeight?: number } = {}): Promise<GradeSummary> {
+  return parseGradeSummary(
+    await apiRequest(
+      collectionPath("/v1/grades/summary", { subject_id: filter.subjectId, projected_weight: filter.projectedWeight }),
+    ),
+  );
+}
+
+/** Ob Noten den KI-Dienst erreichen duerfen. `false` ist der Normalfall. */
+export async function getGradeSharing(): Promise<GradeSharing> {
+  return parseGradeSharing(await apiRequest("/v1/grades/sharing"));
+}
+
+/** Die Zustimmung setzen oder zuruecknehmen. */
+export async function setGradeSharing(enabled: boolean): Promise<GradeSharing> {
+  return parseGradeSharing(
+    await apiRequest("/v1/grades/sharing", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  );
+}
+
+/**
+ * Die Fundstellen eines Dokuments, **ohne** etwas anzulegen.
+ *
+ * `subjectId` ist das Vorgabefach fuer Zeilen, in denen kein Fachname steht.
+ */
+export async function previewGradeImport(input: {
+  documentId: number;
+  subjectId?: number;
+  defaultKind?: GradeKind;
+  defaultWeight?: number;
+  defaultDate?: string;
+}): Promise<GradeImportPreview> {
+  assertId(input.documentId, "Das Dokument");
+  return parseGradeImportPreview(
+    await apiRequest(
+      collectionPath("/v1/grades/import", {
+        document_id: input.documentId,
+        subject_id: input.subjectId,
+        default_kind: input.defaultKind,
+        default_weight: input.defaultWeight,
+        default_date: input.defaultDate,
+      }),
+    ),
+  );
+}
+
+/**
+ * Die bestaetigten Zeilen als Noten anlegen.
+ *
+ * Nur die Schluessel: der Server liest Note, Art, Datum und Fach selbst aus dem
+ * Dokument, damit die Oberflaeche keine Note erfinden kann, die in keiner
+ * Zeile steht.
+ */
+export async function importGrades(input: {
+  documentId: number;
+  keys: string[];
+  subjectId?: number;
+  defaultKind?: GradeKind;
+  defaultWeight?: number;
+  defaultDate?: string;
+}): Promise<GradeImportResult> {
+  assertId(input.documentId, "Das Dokument");
+  const payload = await apiRequest("/v1/grades/import", {
+    method: "POST",
+    body: JSON.stringify(
+      compact({
+        document_id: input.documentId,
+        keys: input.keys,
+        subject_id: input.subjectId,
+        default_kind: input.defaultKind,
+        default_weight: input.defaultWeight,
+        default_date: input.defaultDate,
+      }),
+    ),
+  });
+  return parseGradeImportResult(payload);
+}
+
+/* --------------------------------------------------------- Benachrichtigungen */
+
+/**
+ * Die Erinnerungseinstellungen: Hauptschalter, Kanäle, Uhrzeit, Ruhezeiten.
+ *
+ * Ohne Demo-Fallback: eine erfundene Tageserinnerung, die sich nie ausgeht, wäre
+ * eine Zusage, die das Backend nicht halten kann.
+ */
+export async function getNotificationSettings() {
+  return parseNotificationSettings(await apiRequest("/v1/notifications/settings"));
+}
+
+export interface NotificationSettingsChanges {
+  enabled?: boolean;
+  channels?: Record<string, boolean>;
+  reminder_time?: string;
+  quiet_hours?: { enabled: boolean; start: string; end: string };
+}
+
+/**
+ * Die Einstellungen aendern. Die Antwort ist die **gespeicherte** Lage.
+ *
+ * Gesendet wird nur, was auch wirklich geaendert werden soll: `compact` laesst
+ * `undefined` fallen, und ein leeres Feld waere sonst ein 422, weil die
+ * Schreibschemas `null` bei fast allen Feldern ablehnen.
+ */
+export async function updateNotificationSettings(changes: NotificationSettingsChanges) {
+  return parseNotificationSettings(
+    await apiRequest("/v1/notifications/settings", {
+      method: "PATCH",
+      body: JSON.stringify(compact(changes)),
+    }),
+  );
+}
+
+/** Der oeffentliche VAPID-Schluessel, falls der Server eines eingerichtet hat. */
+export async function getVapidKey() {
+  return parseVapidKey(await apiRequest("/v1/notifications/vapid"));
+}
+
+export async function getPushSubscriptions() {
+  return parsePushSubscriptionArray(await apiRequest("/v1/notifications/subscriptions"));
+}
+
+/** Ein Endgeraet anmelden. Derselbe Endpunkt erneuert die Zeile statt eine neue anzulegen. */
+export async function createPushSubscription(subscription: { endpoint: string; p256dh: string; auth: string }) {
+  return parsePushSubscription(
+    await apiRequest("/v1/notifications/subscriptions", {
+      method: "POST",
+      body: JSON.stringify(subscription),
+    }),
+  );
+}
+
+export async function deletePushSubscription(subscriptionId: number) {
+  assertId(subscriptionId, "Das Endgerät");
+  await apiRequest(resourcePath("notifications/subscriptions", subscriptionId), { method: "DELETE" });
+}
+
+/**
+ * Die Erinnerungen, die noch niemand gesehen hat - der **lokale** Weg.
+ *
+ * `after` ist ein Id-Zeiger: die Seite merkt sich die groesste Id, die sie
+ * schon abgeholt hat, und fragt danach. So bekommt sie jede genau einmal, auch
+ * wenn der Dienst in der Nacht nichts Neues hatte.
+ */
+export async function getPendingNotifications(after?: number) {
+  return parseNotificationArray(await apiRequest(collectionPath("/v1/notifications", { after })));
+}
+
+/** Als gelesen quittieren. Ohne Antwort: die Seite zeigt sie ja schon. */
+export async function markNotificationsRead(ids: number[]): Promise<number> {
+  return parseMarkReadResult(
+    await apiRequest("/v1/notifications/read", { method: "POST", body: JSON.stringify({ ids }) }),
+  );
+}
+
+/**
+ * Einen Lauf jetzt ausloesen - der Knopf in den Einstellungen.
+ *
+ * Der einzige Weg, planmaessige Arbeit von aussen zu starten, und er geht
+ * auch dann, wenn der planmaessige Thread aus ist.
+ */
+export async function runReminders() {
+  return parseReminderRun(await apiRequest("/v1/notifications/reminders/run", { method: "POST" }));
+}
+
 /* ------------------------------------------------------------------- Dateien */
 
 /**
- * Lädt eine Datei als `multipart/form-data` hoch.
+ * Laedt eine Datei als `multipart/form-data` hoch.
  *
  * Das ist die einzige nicht-JSON-Route des Backends. Deshalb wird hier nicht
  * `apiRequest` mit einem JSON-Body benutzt, sondern `FormData` - und der
@@ -780,4 +1160,108 @@ export async function uploadFile(file: File): Promise<FileUploadResult> {
   form.append("file", file);
   const payload = await apiRequest("/v1/files", { method: "POST", body: form });
   return parseFileUploadResponse(payload);
+}
+
+/* ---------------------------------------------------------- Sprach-Assistent */
+
+/**
+ * Was der Sprach-Assistent gerade kann.
+ *
+ * Ohne Demo-Fallback, und zwar aus zwei Gruenden: Eine erfundene
+ * Faehigkeitsangabe wuerde der Sprachausgabe eine Stimme andeuten, die es nicht
+ * gibt - und der Textmodus soll genau dann erscheinen, wenn nichts geladen ist.
+ * Der Endpunkt antwortet ohnehin immer mit 200; ein Fehler hier bedeutet
+ * "Server nicht erreichbar", und dann ist Textmodus die richtige Antwort.
+ */
+export async function getSpeechCapabilities(): Promise<SpeechCapabilitiesPayload> {
+  const payload = await apiRequest("/v1/speech/capabilities");
+  return parseSpeechCapabilities(payload) ?? LEERE_FAEHIGKEITEN;
+}
+
+/** Die Piper-Stimmen mit ihrem Stand. */
+export async function getSpeechVoices(): Promise<VoiceListPayload> {
+  return parseVoiceList(await apiRequest("/v1/speech/voices")) ?? { voices: [], default_voice_id: null };
+}
+
+export async function downloadVoice(voiceId: string): Promise<void> {
+  await apiRequest(`/v1/speech/voices/${encodeURIComponent(voiceId)}/download`, { method: "POST" });
+}
+
+export async function cancelVoiceDownload(voiceId: string): Promise<void> {
+  await apiRequest(`/v1/speech/voices/${encodeURIComponent(voiceId)}/cancel`, { method: "POST" });
+}
+
+export async function deleteVoice(voiceId: string): Promise<void> {
+  await apiRequest(`/v1/speech/voices/${encodeURIComponent(voiceId)}`, { method: "DELETE" });
+}
+
+/**
+ * Schickt eine Aufnahme zum Transkribieren.
+ *
+ * `blob` ist der Inhalt aus `MediaRecorder`, `mime` der Typ, den der Browser
+ * fuer genau diese Aufnahme benutzt hat - **nicht** ein selbst gewaehlter Wert.
+ * Der Unterschied ist der ganze Formatunterschied zwischen Chrome (WebM/Opus)
+ * und Safari (MP4/AAC), und der Server riecht den Container nicht.
+ */
+export async function transcribeAudio(blob: Blob, mime: string): Promise<{ text: string; model_id: string; transcoded: boolean; message: string }> {
+  const form = new FormData();
+  form.append("file", blob, `aufnahme${endungFuerFormat(mime)}`);
+  const payload = await apiRequest("/v1/speech/transcribe", { method: "POST", body: form });
+  const row = typeof payload === "object" && payload !== null ? (payload as Record<string, unknown>) : {};
+  return {
+    text: typeof row.text === "string" ? row.text : "",
+    model_id: typeof row.model_id === "string" ? row.model_id : "unbekannt",
+    transcoded: row.transcoded === true,
+    message: typeof row.message === "string" ? row.message : "",
+  };
+}
+
+/**
+ * Holt eine WAV-Datei fuer die Sprachausgabe.
+ *
+ * Bewusst **nicht** ueber `apiRequest`: das dort erwartet JSON, und hier kommt
+ * ein Ton. Als base64 im JSON waere die Datei um ein Drittel groesser - und
+ * muesste im Browser wieder dekodiert werden, ohne dass etwas gewuenne. Der
+ * Pfad laeuft trotzdem ueber denselben Proxy (`/api/backend/v1/...`), bleibt
+ * also same-origin und passt unter `connect-src 'self'`.
+ *
+ * Ein Fehler wird zu `ApiError` mit der deutschen `detail`-Meldung des
+ * Backends - sonst haette die Oberflaeche keine Ahnung, warum es keinen Ton
+ * gab.
+ */
+export async function fetchSpeechAudio(text: string, voiceId?: string): Promise<Blob> {
+  if (typeof window === "undefined") {
+    throw new ApiError("API-Anfragen sind nur im Browser verfügbar.", 0);
+  }
+  let response: Response;
+  try {
+    response = await fetch(endpoint("/v1/speech/speak"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "audio/wav" },
+      body: JSON.stringify(voiceId ? { text, voice_id: voiceId } : { text }),
+      cache: "no-store",
+      credentials: "include",
+      redirect: "manual",
+    });
+  } catch {
+    throw new ApiError("Die Verbindung zum Lernraum konnte nicht hergestellt werden.", 0);
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => undefined);
+    throw new ApiError(responseMessage(payload, `Die Anfrage ist fehlgeschlagen (${response.status}).`), response.status);
+  }
+  return response.blob();
+}
+
+/* ------------------------------------------------------- Lokale KI-Laufzeiten */
+
+/**
+ * Die bekannten lokalen Laufzeiten mit ihren Adressen und der Reihenfolge.
+ *
+ * Bewusst **ohne** Demo-Fallback, wie bei allen anderen Lerndaten: eine erfundene
+ * Adresse im Formular waere eine Luege, die man erst beim Speichern bemerkt.
+ * Der Aufrufer bekommt `null` und sagt das in der Oberflaeche.
+ */
+export async function getAiRuntime(): Promise<AiRuntimePayload | null> {
+  return parseAiRuntime(await apiRequest("/v1/ai-runtime"));
 }

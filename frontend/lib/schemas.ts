@@ -1,4 +1,5 @@
-import { z } from "zod";
+﻿import { z } from "zod";
+import { normalizeSource } from "./ai-runtime";
 
 export const integrationReadSchema = z.object({
   id: z.number().int(),
@@ -22,8 +23,27 @@ export const integrationCatalogSchema = z.object({
   label: z.string(),
   description: z.string(),
   required_config: z.array(z.string()),
+  /**
+   * Felder, die man **kann**, aber nicht muss.
+   *
+   * Bei einem KI-Server ist das `runtime`: die Art des Servers. Ein Eintrag von
+   * heute hat das Feld nicht, und das ist kein Fehler - die Art wird dann aus der
+   * Adresse abgeleitet. `.default([])` haelt die Karte lauffaehig, wenn ein
+   * aelteres Backend antwortet.
+   */
+  optional_config: z.array(z.string()).default([]),
+  /**
+   * Gruppen, von denen mindestens ein Feld kommen muss.
+   *
+   * Für ein iCalendar-Abo ist das `{url, path}`: eine Adresse **oder** eine
+   * Datei. Als flache Pflichtliste erschiene die Forderung widersprüchlich, als
+   * zwei einzelne Fehler wüsste die Oberfläche nicht, dass eines reicht.
+   */
+  required_one_of: z.array(z.array(z.string())),
   required_credentials: z.array(z.string()),
   optional_credentials: z.array(z.string()),
+  /** Kann in dieser Quelle geschrieben werden? Bestimmt, ob ein Sync-Knopf sinnvoll ist. */
+  supports_writing: z.boolean(),
 });
 
 export const integrationTestResultSchema = z.object({
@@ -44,9 +64,43 @@ export const integrationSyncResultSchema = integrationTestResultSchema.extend({
   indexed_chunks: z.number(),
   removed_documents: z.number(),
   skipped_files: z.number(),
+  /** Neu aus einer Kalenderquelle übernommene Termine. */
+  imported_events: z.number(),
+  /** Aus der Quelle übernommene Änderungen an bestehenden Terminen. */
+  updated_events: z.number(),
+  /** In der Quelle geschriebene Termine - nur nach ausdrücklicher Freigabe. */
+  pushed_events: z.number(),
+  /** In der Quelle gelöschte Termine. */
+  deleted_events: z.number(),
+  /** Lokal verschwundene Termine, die es in der Quelle nicht mehr gab. */
+  removed_events: z.number(),
+  /** Termine, die an beiden Seiten geändert wurden und offen geblieben sind. */
+  conflicts: z.number(),
+  /** Termine, die in der Datei ohne Zeitzone standen. */
+  floating_events: z.number(),
   window_start: z.string().nullable(),
   window_end: z.string().nullable(),
   last_sync_at: z.string().nullable(),
+});
+
+export const integrationAuthorizeSchema = z.object({
+  authorization_url: z.string(),
+  state: z.string(),
+  scopes: z.array(z.string()),
+  message: z.string(),
+});
+
+export const calendarWritingSchema = z.object({
+  share_calendar_for_writing: z.boolean(),
+  preference_key: z.string(),
+  uses: z.array(z.string()),
+});
+
+export const calendarFeedSchema = z.object({
+  url_path: z.string(),
+  active: z.boolean(),
+  rotated: z.boolean(),
+  message: z.string(),
 });
 
 export function parseIntegrationRead(payload: unknown) {
@@ -67,6 +121,18 @@ export function parseIntegrationTestResult(payload: unknown) {
 
 export function parseIntegrationSyncResult(payload: unknown) {
   return integrationSyncResultSchema.parse(payload);
+}
+
+export function parseIntegrationAuthorize(payload: unknown) {
+  return integrationAuthorizeSchema.parse(payload);
+}
+
+export function parseCalendarWriting(payload: unknown) {
+  return calendarWritingSchema.parse(payload);
+}
+
+export function parseCalendarFeed(payload: unknown) {
+  return calendarFeedSchema.parse(payload);
 }
 
 export const documentReadSchema = z.object({
@@ -101,6 +167,10 @@ export const documentAskResponseSchema = z.object({
   source: z.string(),
   model: z.string().nullable().optional(),
   sources: z.array(documentSourceSchema),
+  // Neu gegenueber aelteren Backends. `.default(false)` haelt die Karte
+  // lauffaehig, wenn ein Server ohne Noten antwortet - und "aus" ist der
+  // sichere Fall, nicht der bemerkenswerte.
+  grades_shared: z.boolean().default(false),
 });
 
 export function parseDocumentArray(payload: unknown) {
@@ -134,11 +204,16 @@ export function parseDocumentAnswer(payload: unknown) {
   const parsed = documentAskResponseSchema.parse(payload);
   return {
     answer: parsed.answer,
-    // Das Backend kennt "ai", "fallback" und "none"; alles andere wird als
-    // Fallback behandelt, damit die Oberflaeche nie eine falsche Herkunft behauptet.
-    source: (parsed.source === "ai" || parsed.source === "none" ? parsed.source : "fallback") as "ai" | "fallback" | "none",
+    // Vier Werte, jeder mit eigener Bedeutung: `local` (Server auf diesem
+    // Rechner), `provider` (Online), `fallback` (aus den Daten) und `none`
+    // (kein Treffer). `ai` ist der gespeicherte Altwert und bedeutet
+    // `provider`. Alles Unbekannte wird `fallback` - eine erfundene *lokale*
+    // Herkunft waere die schlimmere Luege, weil sie eine
+    // Datenschutzentscheidung behaupten wuerde.
+    source: normalizeSource(parsed.source),
     model: parsed.model ?? null,
     sources: parsed.sources,
+    grades_shared: parsed.grades_shared,
   };
 }
 
@@ -247,6 +322,11 @@ export const studyTaskReadSchema = z.object({
   completed_at: optionalText,
   blocked_by: z.array(studyTaskPrerequisiteSchema),
   blocking_task_ids: z.array(z.number().int()),
+  // Der Fachschnitt, an dem die Prioritaet dieser Aufgabe haengt. Bewusst
+  // nullable: ein Fach ohne Noten hat keinen Schnitt, und `0` waere eine
+  // schlechte Note.
+  subject_average: z.number().nullable().optional(),
+  subject_passed: z.boolean().nullable().optional(),
 });
 
 export const studyPlanReadSchema = z.object({
@@ -310,6 +390,467 @@ export const studySessionReadSchema = z.object({
   notes: optionalText,
 });
 
+/*
+ * Lernfortschritt und Lernprotokoll (`/v1/progress`).
+ *
+ * Auch das sind echte Schemata: die Karten zeigen Konfidenz, Lernzeit und
+ * einen Wiederholungstermin an, und eine Zahl, die stillschweigend fehlt,
+ * waere dort ein falscher Termin. `next_review_on` ist bewusst `string` und
+ * kein `date`: es kommt als `YYYY-MM-DD` und wird **nicht** als Zeitstempel
+ * geparst - ein Datum in der Zeitzone des Nutzers ist kein UTC-Moment.
+ */
+
+/** `YYYY-MM-DD` aus dem Backend, etwa der Tag der naechsten Wiederholung. */
+const isoDate = z.string();
+
+export const topicProgressReadSchema = z.object({
+  topic_id: z.number().int(),
+  name: z.string(),
+  subject_id: optionalId,
+  subject_name: optionalText,
+  confidence: z.number().min(0).max(1),
+  confidence_step: z.number().min(0).max(1),
+  // Die Bezeichnung kommt vom Backend (`CONFIDENCE_STEPS`). Sie steht hier
+  // bewusst nicht noch einmal als Liste - sonst koennten beide Enden
+  // auseinanderlaufen.
+  confidence_label: z.string(),
+  last_reviewed_at: optionalText,
+  notes: optionalText,
+  interval_days: z.number().int().nullable(),
+  next_review_on: isoDate.nullable(),
+  days_until_review: z.number().int().nullable(),
+  is_due: z.boolean(),
+  studied_minutes: z.number().int(),
+  session_count: z.number().int(),
+  updated_at: z.string(),
+});
+
+export const confidenceStepSchema = z.object({
+  value: z.number().min(0).max(1),
+  label: z.string(),
+  interval_days: z.number().int(),
+});
+
+export const weeklyGoalReadSchema = z.object({
+  goal_minutes: z.number().int(),
+  studied_minutes: z.number().int(),
+  goal_reached: z.boolean(),
+  percent: z.number(),
+  days_studied: z.number().int(),
+  days_remaining: z.number().int(),
+  week_starts_on: isoDate,
+  week_ends_on: isoDate,
+});
+
+export const streakReadSchema = z.object({
+  current_days: z.number().int(),
+  longest_days: z.number().int(),
+  studied_today: z.boolean(),
+  last_studied_on: isoDate.nullable(),
+  days_since_last: z.number().int().nullable(),
+  window_days: z.number().int(),
+});
+
+export const dayTotalSchema = z.object({
+  date: isoDate,
+  minutes: z.number().int(),
+  sessions: z.number().int(),
+});
+
+export const subjectStudyTimeSchema = z.object({
+  subject_id: optionalId,
+  subject_name: z.string(),
+  minutes: z.number().int(),
+  sessions: z.number().int(),
+  share_percent: z.number(),
+  last_studied_at: optionalText,
+});
+
+export const weekdayStudyTimeSchema = z.object({
+  weekday: z.number().int(),
+  label: z.string(),
+  minutes: z.number().int(),
+  sessions: z.number().int(),
+});
+
+export const learningInsightsSchema = z.object({
+  generated_at: z.string(),
+  timezone: z.string(),
+  today: dayTotalSchema,
+  week: weeklyGoalReadSchema,
+  streak: streakReadSchema,
+  by_subject: z.array(subjectStudyTimeSchema),
+  by_weekday: z.array(weekdayStudyTimeSchema),
+  confidence_steps: z.array(confidenceStepSchema),
+  total_minutes: z.number().int(),
+  total_sessions: z.number().int(),
+  open_sessions: z.number().int(),
+  active_minutes: z.number().int(),
+  weekday_window_days: z.number().int(),
+});
+
+/*
+ * Noten (`/v1/grades`).
+ *
+ * Auch das sind echte Schemata. Der Grund ist derselbe wie beim Lernfortschritt:
+ * die Karte zeigt einen Schnitt und eine Linie an, und eine Zahl, die
+ * stillschweigend fehlt, waere dort eine erfundene. `subject_average` ist
+ * bewusst `number | null` und nicht `number`: eine Note ohne Fachschnitt gibt es
+ * nicht, und eine `0` waere eine schlechte Note.
+ */
+
+export const gradeKindSchema = z.enum(["written_exam", "test", "oral"]);
+
+export const gradeReadSchema = z.object({
+  id: z.number().int(),
+  subject_id: optionalId,
+  subject_name: optionalText,
+  grade_value: z.number().positive().max(6),
+  kind: gradeKindSchema,
+  weight: z.number().int().min(1),
+  graded_on: isoDate,
+  comment: optionalText,
+  source: z.string(),
+  document_id: optionalId,
+});
+
+export const gradeAverageSchema = z.object({
+  subject_id: optionalId,
+  subject_name: z.string(),
+  average: z.number().min(0),
+  count: z.number().int().min(0),
+  weight: z.number().int().min(0),
+  passed: z.boolean(),
+});
+
+export const gradeTrendPointSchema = z.object({
+  graded_on: isoDate,
+  average: z.number().min(0),
+  count: z.number().int().min(1),
+  weight: z.number().int().min(1),
+});
+
+export const gradeProjectionSchema = z.object({
+  current_average: z.number().nullable(),
+  passing_grade: z.number(),
+  projected_weight: z.number().int().min(0),
+  needed_average: z.number().nullable(),
+  best_possible_average: z.number().nullable(),
+  still_possible: z.boolean(),
+});
+
+export const gradeSummarySchema = z.object({
+  passing_grade: z.number(),
+  generated_at: z.string(),
+  overall: gradeAverageSchema,
+  by_subject: z.array(gradeAverageSchema),
+  trend: z.array(gradeTrendPointSchema),
+  total_count: z.number().int().min(0),
+  projection: gradeProjectionSchema,
+});
+
+export const gradeSharingSchema = z.object({
+  share_grades_with_ai: z.boolean(),
+  preference_key: z.string(),
+  uses: z.array(z.string()),
+});
+
+export const gradeImportCandidateSchema = z.object({
+  key: z.string().min(1),
+  line_number: z.number().int().min(1),
+  line: z.string(),
+  value: z.number().positive().max(6),
+  kind: gradeKindSchema,
+  graded_on: isoDate,
+  weight: z.number().int().min(1),
+  comment: optionalText,
+  subject_id: optionalId,
+  subject_name: optionalText,
+  subject_recognized: z.boolean(),
+  already_imported: z.boolean(),
+});
+
+export const gradeImportPreviewSchema = z.object({
+  document_id: z.number().int(),
+  filename: z.string(),
+  subject_id: optionalId,
+  default_kind: gradeKindSchema,
+  default_weight: z.number().int().min(1),
+  default_date: z.string().nullable().optional(),
+  entries: z.array(gradeImportCandidateSchema),
+});
+
+export const gradeImportResultSchema = z.object({
+  document_id: z.number().int(),
+  created: z.number().int().min(0),
+  skipped: z.number().int().min(0),
+  created_ids: z.array(z.number().int()),
+});
+
+export function parseGradeArray(payload: unknown) {
+  return z.array(gradeReadSchema).parse(payload).map((entry) => ({
+    id: entry.id,
+    subject_id: entry.subject_id ?? null,
+    subject_name: entry.subject_name ?? null,
+    grade_value: entry.grade_value,
+    kind: entry.kind,
+    weight: entry.weight,
+    graded_on: entry.graded_on,
+    comment: entry.comment ?? null,
+    source: entry.source,
+    document_id: entry.document_id ?? null,
+  }));
+}
+
+export function parseGradeRead(payload: unknown) {
+  return parseGradeArray([payload])[0];
+}
+
+export function parseGradeSummary(payload: unknown) {
+  const parsed = gradeSummarySchema.parse(payload);
+  return {
+    passing_grade: parsed.passing_grade,
+    generated_at: parsed.generated_at,
+    overall: parseGradeAverage(parsed.overall),
+    by_subject: parsed.by_subject.map(parseGradeAverage),
+    trend: parsed.trend.map((punkt) => ({
+      graded_on: punkt.graded_on,
+      average: punkt.average,
+      count: punkt.count,
+      weight: punkt.weight,
+    })),
+    total_count: parsed.total_count,
+    projection: {
+      current_average: parsed.projection.current_average ?? null,
+      passing_grade: parsed.projection.passing_grade,
+      projected_weight: parsed.projection.projected_weight,
+      needed_average: parsed.projection.needed_average ?? null,
+      best_possible_average: parsed.projection.best_possible_average ?? null,
+      still_possible: parsed.projection.still_possible,
+    },
+  };
+}
+
+function parseGradeAverage(entry: z.infer<typeof gradeAverageSchema>) {
+  return {
+    subject_id: entry.subject_id ?? null,
+    subject_name: entry.subject_name,
+    average: entry.average,
+    count: entry.count,
+    weight: entry.weight,
+    passed: entry.passed,
+  };
+}
+
+export function parseGradeSharing(payload: unknown) {
+  const parsed = gradeSharingSchema.parse(payload);
+  return {
+    share_grades_with_ai: parsed.share_grades_with_ai,
+    preference_key: parsed.preference_key,
+    uses: parsed.uses,
+  };
+}
+
+export function parseGradeImportPreview(payload: unknown) {
+  const parsed = gradeImportPreviewSchema.parse(payload);
+  return {
+    document_id: parsed.document_id,
+    filename: parsed.filename,
+    subject_id: parsed.subject_id ?? null,
+    default_kind: parsed.default_kind,
+    default_weight: parsed.default_weight,
+    default_date: parsed.default_date ?? null,
+    entries: parsed.entries.map((eintrag) => ({
+      key: eintrag.key,
+      line_number: eintrag.line_number,
+      line: eintrag.line,
+      value: eintrag.value,
+      kind: eintrag.kind,
+      graded_on: eintrag.graded_on,
+      weight: eintrag.weight,
+      comment: eintrag.comment ?? null,
+      subject_id: eintrag.subject_id ?? null,
+      subject_name: eintrag.subject_name ?? null,
+      subject_recognized: eintrag.subject_recognized,
+      already_imported: eintrag.already_imported,
+    })),
+  };
+}
+
+export function parseGradeImportResult(payload: unknown) {
+  const parsed = gradeImportResultSchema.parse(payload);
+  return {
+    document_id: parsed.document_id,
+    created: parsed.created,
+    skipped: parsed.skipped,
+    created_ids: parsed.created_ids,
+  };
+}
+
+/*
+ * Belohnungen (`/v1/rewards`).
+ *
+ * Auch das sind echte Schemata. Der Grund ist derselbe wie bei den Noten: die Karte
+ * zeigt eine Zahl **mit Obergrenze** und eine Liste von Bedingungen, und eine
+ * `points`-Angabe, die stillschweigend fehlt, waere dort eine erfundene - die
+ * Punktezahl stuende still bei 0, waehrend das Konto gefuellt ist.
+ *
+ * `points` darf 0 sein und ist deshalb `min(0)`, nicht `positive()`: eine Buchung
+ * mit 0 Punkten bedeutet "heute war das Tageskonto schon leer", und genau die soll
+ * die Karte zeigen.
+ */
+
+export const rewardKindSchema = z.enum(["task_completed", "subject_day"]);
+export const rewardScopeKindSchema = z.enum(["global", "subject", "topic", "week"]);
+
+export const rewardEntryReadSchema = z.object({
+  id: z.number().int(),
+  kind: rewardKindSchema,
+  points: z.number().int().min(0),
+  minutes: z.number().int().min(0),
+  subject_id: optionalId,
+  subject_name: optionalText,
+  topic_id: optionalId,
+  topic_name: optionalText,
+  detail: z.string(),
+  earned_on: isoDate,
+  earned_at: z.string(),
+});
+
+export const rewardBadgeReadSchema = z.object({
+  id: z.number().int(),
+  code: z.string(),
+  title: z.string(),
+  description: z.string(),
+  scope: z.string(),
+  scope_kind: rewardScopeKindSchema,
+  subject_id: optionalId,
+  subject_name: optionalText,
+  topic_id: optionalId,
+  topic_name: optionalText,
+  progress: z.number().int().min(0),
+  target: z.number().int().min(1),
+  awarded: z.boolean(),
+  awarded_at: optionalText,
+  repeatable: z.boolean(),
+  unit: z.string(),
+  unit_plural: z.string(),
+});
+
+export const rewardBadgeDefinitionSchema = z.object({
+  code: z.string(),
+  title: z.string(),
+  description: z.string(),
+  target: z.number().int().min(1),
+  unit: z.string(),
+  unit_plural: z.string(),
+  scope_kind: rewardScopeKindSchema,
+  repeatable: z.boolean(),
+});
+
+export const rewardStepSchema = z.object({
+  minutes: z.number().int().min(1),
+  points: z.number().int().min(1),
+});
+
+export const rewardRulesSchema = z.object({
+  task_points: z.number().int().min(1),
+  day_cap: z.number().int().min(1),
+  subject_day_cap: z.number().int().min(1),
+  min_subject_day_minutes: z.number().int().min(1),
+  subject_day_steps: z.array(rewardStepSchema),
+});
+
+export const rewardSummarySchema = z.object({
+  generated_at: z.string(),
+  timezone: z.string(),
+  today_points: z.number().int().min(0),
+  today_cap: z.number().int().min(1),
+  week_points: z.number().int().min(0),
+  total_points: z.number().int().min(0),
+  today: isoDate,
+  week_starts_on: isoDate,
+  week_ends_on: isoDate,
+  awarded_badges: z.number().int().min(0),
+  pending_badges: z.number().int().min(0),
+});
+
+export const rewardOverviewSchema = z.object({
+  summary: rewardSummarySchema,
+  rules: rewardRulesSchema,
+  catalog: z.array(rewardBadgeDefinitionSchema),
+  badges: z.array(rewardBadgeReadSchema),
+  entries: z.array(rewardEntryReadSchema),
+});
+
+export function parseRewardOverview(payload: unknown) {
+  const parsed = rewardOverviewSchema.parse(payload);
+  return {
+    summary: {
+      generated_at: parsed.summary.generated_at,
+      timezone: parsed.summary.timezone,
+      today_points: parsed.summary.today_points,
+      today_cap: parsed.summary.today_cap,
+      week_points: parsed.summary.week_points,
+      total_points: parsed.summary.total_points,
+      today: parsed.summary.today,
+      week_starts_on: parsed.summary.week_starts_on,
+      week_ends_on: parsed.summary.week_ends_on,
+      awarded_badges: parsed.summary.awarded_badges,
+      pending_badges: parsed.summary.pending_badges,
+    },
+    rules: {
+      task_points: parsed.rules.task_points,
+      day_cap: parsed.rules.day_cap,
+      subject_day_cap: parsed.rules.subject_day_cap,
+      min_subject_day_minutes: parsed.rules.min_subject_day_minutes,
+      subject_day_steps: parsed.rules.subject_day_steps.map((stufe) => ({ minutes: stufe.minutes, points: stufe.points })),
+    },
+    catalog: parsed.catalog.map((definition) => ({
+      code: definition.code,
+      title: definition.title,
+      description: definition.description,
+      target: definition.target,
+      unit: definition.unit,
+      unit_plural: definition.unit_plural,
+      scope_kind: definition.scope_kind,
+      repeatable: definition.repeatable,
+    })),
+    badges: parsed.badges.map((badge) => ({
+      id: badge.id,
+      code: badge.code,
+      title: badge.title,
+      description: badge.description,
+      scope: badge.scope,
+      scope_kind: badge.scope_kind,
+      subject_id: badge.subject_id ?? null,
+      subject_name: badge.subject_name ?? null,
+      topic_id: badge.topic_id ?? null,
+      topic_name: badge.topic_name ?? null,
+      progress: badge.progress,
+      target: badge.target,
+      awarded: badge.awarded,
+      awarded_at: badge.awarded_at ?? null,
+      repeatable: badge.repeatable,
+      unit: badge.unit,
+      unit_plural: badge.unit_plural,
+    })),
+    entries: parsed.entries.map((entry) => ({
+      id: entry.id,
+      kind: entry.kind,
+      points: entry.points,
+      minutes: entry.minutes,
+      subject_id: entry.subject_id ?? null,
+      subject_name: entry.subject_name ?? null,
+      topic_id: entry.topic_id ?? null,
+      topic_name: entry.topic_name ?? null,
+      detail: entry.detail,
+      earned_on: entry.earned_on,
+      earned_at: entry.earned_at,
+    })),
+  };
+}
+
 export const fileUploadResponseSchema = z.object({
   id: z.number().int(),
   filename: z.string(),
@@ -319,6 +860,119 @@ export const fileUploadResponseSchema = z.object({
   status: optionalText,
   created_at: optionalText,
 });
+
+/*
+ * Die Benachrichtigungen.
+ *
+ * Echte Schemata, keine Stubs: bei diesen Feldern waere ein
+ * `z.object({}).passthrough()` schlimmer als in den uebrigen Faellen, denn ein
+ * `push_status`, den die Oberflaeche nicht kennt, wuerde still als "unbekannt"
+ * behandelt - und eine Erinnerung, die niemand sieht, faellt nicht auf.
+ */
+
+export const notificationKindSchema = z.enum(["study_task_due", "exam_due"]);
+export const pushStatusSchema = z.enum(["skipped", "sent", "failed"]);
+
+export const notificationReadSchema = z.object({
+  id: z.number().int(),
+  kind: notificationKindSchema,
+  title: z.string(),
+  body: z.string(),
+  url: z.string(),
+  target_id: z.number().int(),
+  push_status: pushStatusSchema,
+  created_at: z.string(),
+  read_at: z.string().nullable(),
+});
+
+export const quietHoursSchema = z.object({
+  enabled: z.boolean(),
+  start: z.string(),
+  end: z.string(),
+  spans_midnight: z.boolean(),
+});
+
+export const notificationSettingsSchema = z.object({
+  enabled: z.boolean(),
+  channels: z.record(z.string(), z.boolean()),
+  channel_labels: z.record(z.string(), z.string()),
+  channels_available: z.array(z.string()),
+  reminder_time: z.string(),
+  quiet_hours: quietHoursSchema,
+  exam_lead_days: z.number().int(),
+  timezone: z.string(),
+  preference_key: z.string(),
+  summary: z.string(),
+});
+
+export const vapidKeySchema = z.object({
+  configured: z.boolean(),
+  public_key: z.string().nullable(),
+  subject: z.string().nullable(),
+});
+
+export const pushSubscriptionSchema = z.object({
+  id: z.number().int(),
+  endpoint_hint: z.string(),
+  user_agent: z.string().nullable(),
+  failures: z.number().int(),
+  last_success_at: z.string().nullable(),
+  last_failure_at: z.string().nullable(),
+  last_error: z.string().nullable(),
+  created_at: z.string(),
+});
+
+export const reminderRunSchema = z.object({
+  considered: z.number().int(),
+  created: z.number().int(),
+  delivered: z.number().int(),
+  push_failed: z.number().int(),
+  scheduler_running: z.boolean(),
+  interval_seconds: z.number(),
+  outcomes: z.array(
+    z.object({
+      user_id: z.number().int(),
+      created: z.number().int(),
+      delivered: z.number().int(),
+      push_failed: z.number().int(),
+      push_attempted: z.boolean(),
+      message: z.string(),
+    }),
+  ),
+  message: z.string(),
+});
+
+export function parseNotificationArray(payload: unknown) {
+  return z.array(notificationReadSchema).parse(payload);
+}
+
+export function parseNotificationSettings(payload: unknown) {
+  return notificationSettingsSchema.parse(payload);
+}
+
+export function parseVapidKey(payload: unknown) {
+  return vapidKeySchema.parse(payload);
+}
+
+export function parsePushSubscriptionArray(payload: unknown) {
+  return z.array(pushSubscriptionSchema).parse(payload);
+}
+
+export function parsePushSubscription(payload: unknown) {
+  return pushSubscriptionSchema.parse(payload);
+}
+
+/** `POST /v1/notifications/read` antwortet nur mit der Zahl der quittierten Zeilen. */
+export const markReadResultSchema = z.object({ read: z.number().int() });
+
+export function parseMarkReadResult(payload: unknown) {
+  return markReadResultSchema.parse(payload).read;
+}
+
+export function parseReminderRun(payload: unknown) {
+  return reminderRunSchema.parse(payload);
+}
+
 
 export function parseSubjectArray(payload: unknown) {
   return z.array(subjectReadSchema).parse(payload).map((entry) => ({
@@ -424,6 +1078,10 @@ export function parseStudyTaskArray(payload: unknown) {
       due_date: prerequisite.due_date ?? null,
     })),
     blocking_task_ids: entry.blocking_task_ids,
+    // Der Generator nimmt den Fachschnitt als Mindestprioritaet; die Karte
+    // zeigt, dass eine Prioritaet nicht nur aus der Konfidenz kam.
+    subject_average: entry.subject_average ?? null,
+    subject_passed: entry.subject_passed ?? null,
   }));
 }
 
@@ -508,6 +1166,87 @@ export function parseStudySessionRead(payload: unknown) {
     completed_at: parsed.completed_at ?? null,
     duration_minutes: parsed.duration_minutes ?? null,
     notes: parsed.notes ?? null,
+  };
+}
+
+export function parseTopicProgressArray(payload: unknown) {
+  return z.array(topicProgressReadSchema).parse(payload).map((entry) => ({
+    topic_id: entry.topic_id,
+    name: entry.name,
+    subject_id: entry.subject_id ?? null,
+    subject_name: entry.subject_name ?? null,
+    confidence: entry.confidence,
+    confidence_step: entry.confidence_step,
+    confidence_label: entry.confidence_label,
+    last_reviewed_at: entry.last_reviewed_at ?? null,
+    notes: entry.notes ?? null,
+    interval_days: entry.interval_days,
+    next_review_on: entry.next_review_on,
+    days_until_review: entry.days_until_review,
+    is_due: entry.is_due,
+    studied_minutes: entry.studied_minutes,
+    session_count: entry.session_count,
+    updated_at: entry.updated_at,
+  }));
+}
+
+export function parseTopicProgressRead(payload: unknown) {
+  return parseTopicProgressArray([payload])[0];
+}
+
+export function parseWeeklyGoalRead(payload: unknown) {
+  const parsed = weeklyGoalReadSchema.parse(payload);
+  return {
+    goal_minutes: parsed.goal_minutes,
+    studied_minutes: parsed.studied_minutes,
+    goal_reached: parsed.goal_reached,
+    percent: parsed.percent,
+    days_studied: parsed.days_studied,
+    days_remaining: parsed.days_remaining,
+    week_starts_on: parsed.week_starts_on,
+    week_ends_on: parsed.week_ends_on,
+  };
+}
+
+export function parseLearningInsights(payload: unknown) {
+  const parsed = learningInsightsSchema.parse(payload);
+  return {
+    generated_at: parsed.generated_at,
+    timezone: parsed.timezone,
+    today: { date: parsed.today.date, minutes: parsed.today.minutes, sessions: parsed.today.sessions },
+    week: parseWeeklyGoalRead(parsed.week),
+    streak: {
+      current_days: parsed.streak.current_days,
+      longest_days: parsed.streak.longest_days,
+      studied_today: parsed.streak.studied_today,
+      last_studied_on: parsed.streak.last_studied_on,
+      days_since_last: parsed.streak.days_since_last ?? null,
+      window_days: parsed.streak.window_days,
+    },
+    by_subject: parsed.by_subject.map((entry) => ({
+      subject_id: entry.subject_id ?? null,
+      subject_name: entry.subject_name,
+      minutes: entry.minutes,
+      sessions: entry.sessions,
+      share_percent: entry.share_percent,
+      last_studied_at: entry.last_studied_at ?? null,
+    })),
+    by_weekday: parsed.by_weekday.map((entry) => ({
+      weekday: entry.weekday,
+      label: entry.label,
+      minutes: entry.minutes,
+      sessions: entry.sessions,
+    })),
+    confidence_steps: parsed.confidence_steps.map((entry) => ({
+      value: entry.value,
+      label: entry.label,
+      interval_days: entry.interval_days,
+    })),
+    total_minutes: parsed.total_minutes,
+    total_sessions: parsed.total_sessions,
+    open_sessions: parsed.open_sessions,
+    active_minutes: parsed.active_minutes,
+    weekday_window_days: parsed.weekday_window_days,
   };
 }
 

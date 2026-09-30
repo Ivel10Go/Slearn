@@ -33,7 +33,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    entrypoint: ["/bin/sh", "/opt/school-assistant/backend-entrypoint.sh"]
     environment:
       DATABASE_URL: "${DATABASE_URL:?DATABASE_URL must be set in .env}"
       APP_ENV: "${APP_ENV:-development}"
@@ -41,6 +40,8 @@ services:
       SECRET_KEY: "${SECRET_KEY:?SECRET_KEY must be set in .env}"
       INTEGRATION_ENCRYPTION_KEY: "${INTEGRATION_ENCRYPTION_KEY:?INTEGRATION_ENCRYPTION_KEY must be set in .env}"
       INTEGRATION_TIMEOUT_SECONDS: "${INTEGRATION_TIMEOUT_SECONDS:-10}"
+      WEBUNTIS_SYNC_ENABLED: "${WEBUNTIS_SYNC_ENABLED:-true}"
+      WEBUNTIS_SYNC_INTERVAL_SECONDS: "${WEBUNTIS_SYNC_INTERVAL_SECONDS:-86400}"
       ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set in .env}"
       BOOTSTRAP_ON_STARTUP: "${BOOTSTRAP_ON_STARTUP:-true}"
@@ -48,6 +49,9 @@ services:
       DEMO_MODE: "${DEMO_MODE:-false}"
       SESSION_COOKIE_NAME: "${SESSION_COOKIE_NAME:-school_session}"
       SESSION_MAX_AGE_SECONDS: "${SESSION_MAX_AGE_SECONDS:-604800}"
+      # Hinter einem TLS-Reverse-Proxy MUSS SESSION_COOKIE_SECURE=true sein. Compose leitet
+      # den Wert NICHT aus APP_ENV=production ab, weil dieselbe Datei lokal im Klartext
+      # benutzt wird. README, Abschnitt "Betrieb hinter HTTPS".
       SESSION_COOKIE_SECURE: "${SESSION_COOKIE_SECURE:-false}"
       SESSION_COOKIE_HTTPONLY: "${SESSION_COOKIE_HTTPONLY:-true}"
       SESSION_COOKIE_SAMESITE: "${SESSION_COOKIE_SAMESITE:-lax}"
@@ -71,15 +75,33 @@ services:
       DOCUMENT_STORAGE_PATH: "/var/lib/school-assistant/documents"
       IMPORT_STORAGE_PATH: "/var/lib/school-assistant/imports"
       BACKUP_STORAGE_PATH: "/var/lib/school-assistant/backups"
+      # Der Reminder-Thread laeuft aus wie der WebUntis-Scheduler: in Settings
+      # bewusst aus, damit ein nativer Start keine ungefragten Nebenwirkungen
+      # hat, im Compose-Stack an.
+      REMINDER_SCHEDULER_ENABLED: "${REMINDER_SCHEDULER_ENABLED:-true}"
+      # Lokale Modelle. Muss read/write sein, sonst liegen die Gewichte nach
+      # einem Neustart nur im Container-Overlay und sind weg.
+      MODEL_STORAGE_PATH: "/var/lib/school-assistant/models"
+      MODEL_DOWNLOAD_TIMEOUT_SECONDS: "${MODEL_DOWNLOAD_TIMEOUT_SECONDS:-60}"
+      MODEL_MIN_FREE_BYTES: "${MODEL_MIN_FREE_BYTES:-536870912}"
+      # Sprach-Assistent. whisper.cpp bringt seinen eigenen HTTP-Dienst mit und
+      # laeuft ausserhalb des Python-Prozesses; Piper ist ein Kommandozeilenwerk.
+      # Beide sind bewusst nicht Teil des Images - der Textmodus ist der
+      # Normalzustand, und ein 200-MB-Rad ohne Importeintrag waere schlechter
+      # als keins. ffmpeg dagegen ist im Image (siehe backend/Dockerfile).
+      SPEECH_ENABLED: "${SPEECH_ENABLED:-false}"
+      WHISPER_SERVER_URL: "${WHISPER_SERVER_URL:-}"
+      WHISPER_LANGUAGE: "${WHISPER_LANGUAGE:-de}"
+      PIPER_BINARY_PATH: "${PIPER_BINARY_PATH:-}"
+      # Lokale KI-Routen: lokal zuerst, mit kuerzerem Budget wenn ein
+      # Online-Provider im Rueckgrat steht.
+      AI_LOCAL_FIRST: "${AI_LOCAL_FIRST:-true}"
+      AI_LOCAL_TIMEOUT_SECONDS: "${AI_LOCAL_TIMEOUT_SECONDS:-60}"
+      AI_LOCAL_FAST_TIMEOUT_SECONDS: "${AI_LOCAL_FAST_TIMEOUT_SECONDS:-15}"
+      AI_GENERATE_TIMEOUT_SECONDS: "${AI_GENERATE_TIMEOUT_SECONDS:-30}"
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      - type: bind
-        source: ./backend-entrypoint.sh
-        target: /opt/school-assistant/backend-entrypoint.sh
-        read_only: true
-        bind:
-          create_host_path: false
       - type: bind
         source: "${DOCUMENTS_HOST_PATH:-./data/documents}"
         target: /var/lib/school-assistant/documents
@@ -98,6 +120,20 @@ services:
         read_only: false
         bind:
           create_host_path: true
+      - type: bind
+        source: "${MODELS_HOST_PATH:-./data/models}"
+        target: /var/lib/school-assistant/models
+        read_only: false
+        bind:
+          create_host_path: true
+      # Nur lesend: das Backend liest das Status-JSON des Workers fuer
+      # `GET /api/v1/backups/status`. Ohne diesen Mount antwortet der
+      # Endpunkt dauerhaft mit `available: false`, weil die Datei fuer das
+      # Backend nicht existiert - nicht weil das Backup fehlschlaegt.
+      - type: volume
+        source: worker-status
+        target: /var/lib/school-assistant/worker-status
+        read_only: true
     healthcheck:
       test:
         - CMD
@@ -136,6 +172,12 @@ services:
       DOCUMENT_STORAGE_PATH: "/var/lib/school-assistant/documents"
       IMPORT_STORAGE_PATH: "/var/lib/school-assistant/imports"
       BACKUP_STORAGE_PATH: "/var/lib/school-assistant/backups"
+      # Der Runner legt den Dump im selben Verzeichnis ab, an dem der Host bindet.
+      # Deshalb read-write - ein read_only-Mount laeuft in einen PermissionError.
+      BACKUP_ENABLED: "${BACKUP_ENABLED:-true}"
+      BACKUP_SCHEDULE: "${BACKUP_SCHEDULE:-0 2 * * *}"
+      BACKUP_RETENTION_DAYS: "${BACKUP_RETENTION_DAYS:-30}"
+      BACKUP_PG_DUMP_BINARY: "${BACKUP_PG_DUMP_BINARY:-}"
     volumes:
       - type: volume
         source: worker-status
@@ -150,7 +192,7 @@ services:
       - type: bind
         source: "${BACKUPS_HOST_PATH:-./data/backups}"
         target: /var/lib/school-assistant/backups
-        read_only: true
+        read_only: false
         bind:
           create_host_path: true
       - type: bind

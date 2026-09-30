@@ -1,10 +1,16 @@
 """Der Willkommenssatz fuer das Dashboard.
 
-Der Satz entsteht aus zwei Wegen: einmal fragen wir den konfigurierten
-KI-Provider, und wenn das nicht moeglich ist, bauen wir denselben Satz
-deterministisch aus den Daten. Der zweite Weg ist kein Notnagel, sondern der
-Normalfall ohne Provider: Das Dashboard darf an einem fehlenden oder
-verweigerenden Modell nie hängen bleiben, und die Daten liegen ohnehin vor.
+Der Satz entsteht aus zwei Wegen: einmal fragen wir die eingetragenen KI-Wege in
+der Reihenfolge aus ``app.services.ai_routing`` (lokal vor Online), und wenn keiner
+davon antwortet, bauen wir denselben Satz deterministisch aus den Daten. Der zweite
+Weg ist kein Notnagel, sondern der Normalfall ohne Provider: Das Dashboard darf an
+einem fehlenden oder verweigerenden Modell nie hängen bleiben, und die Daten liegen
+ohnehin vor.
+
+``source`` sagt, welcher der beiden Wege geliefert hat: ``local`` für einen Server auf
+diesem Rechner, ``provider`` für einen Online-Dienst und ``fallback`` für den Satz aus
+den Daten. Die Oberfläche zeigt das als Badge, damit niemand einen Satz für eine
+KI-Aussage hält, den kein Modell geschrieben hat.
 
 Der fertige Satz wird pro Nutzer und Tag gehalten. Ein Modellaufruf bei jedem
 Öffnen der Seite wäre langsam und teuer, ohne zusätzlichen Nutzen - die Daten
@@ -14,25 +20,22 @@ Der fertige Satz wird pro Nutzer und Tag gehalten. Ein Modellaufruf bei jedem
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Final
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings, require_integration_encryption_key
-from app.core.crypto import decrypt_credentials, has_credentials
+from app.core.config import Settings
 from app.core.time import as_utc, resolve_timezone_name, utc_now, zone_or_utc
-from app.db.entities import SyncSource
 from app.schemas.dashboard import DashboardResponse
-from app.services.ai_provider import AiProviderError, generate_text
+from app.services import ai_routing
 
 logger = logging.getLogger("school_assistant")
 
 _MAX_SENTENCE_LENGTH: Final = 220
-_AI_KIND: Final = "ai_provider"
 # Zeichen, die ein Modell als Auszeichnung mitliefert und die im Dashboard
 # nichts zu suchen haben. Punkt und Komma sind bewusst nicht dabei.
 _MARKUP: Final = " \t*#`>•-–—"
@@ -44,6 +47,7 @@ _SYSTEM_PROMPT: Final = (
     "kein Markdown, keine Anführungszeichen. "
     "Sprich die Schülerin oder den Schüler direkt an. "
     "Nenne nur das, was in den Daten steht, und erfinde nichts. "
+    "Nenne Noten nur, wenn ausdrücklich welche mitgeliefert wurden. "
     "Beginne mit einem Begrüßungssatz wie 'Herzlich willkommen'."
 )
 
@@ -109,8 +113,14 @@ def _next_lesson(data: DashboardResponse, now: datetime, zone: ZoneInfo) -> dict
     }
 
 
-def build_prompt(data: DashboardResponse, now: datetime, zone: ZoneInfo) -> str:
-    """Sammelt die Fakten, aus denen der Provider schreiben soll."""
+def build_prompt(data: DashboardResponse, now: datetime, zone: ZoneInfo, grade_lines: Sequence[str] = ()) -> str:
+    """Sammelt die Fakten, aus denen der Provider schreiben soll.
+
+    ``grade_lines`` ist der einzige Weg, auf dem eine Note in diesen Prompt
+    kommt. Die Liste ist leer, solange die Freigabe nicht gesetzt ist (siehe
+    ``app.services.grades.grade_context_lines``), und eine leere Liste
+    hinterlaesst hier keine Zeile - kein Platzhalter, kein "keine Noten".
+    """
     zeilen = [
         f"Heute: {now.date().isoformat()}",
         f"Stunden heute: {data.summary.total_lessons}",
@@ -136,6 +146,11 @@ def build_prompt(data: DashboardResponse, now: datetime, zone: ZoneInfo) -> str:
         zeilen.append(f"Nächste Klausur: {naechste_klausur.subject_name} - {naechste_klausur.title}")
     if data.summary.day_progress_percent:
         zeilen.append(f"Tagesfortschritt: {data.summary.day_progress_percent} Prozent")
+    # Die Noten stehen am Ende, damit der Satz sie als Hintergrund sieht und
+    # nicht als Tagesauftrag. Erwaehnt werden darf sie nur, wenn die Frage
+    # lautet - sonst schreibt das Modell "dein Schnitt ist 4,2" in eine
+    # Begruessung, die davon handeln sollte, dass heute etwas ansteht.
+    zeilen.extend(grade_lines)
     return "\n".join(zeilen)
 
 
@@ -164,24 +179,6 @@ def _sanitize(text: str) -> str:
     return " ".join(zeilen)
 
 
-def _load_provider(db: Session, user_id: int, settings: Settings) -> SyncSource | None:
-    """Der erste aktive KI-Provider des Nutzers, sofern einer existiert."""
-    rows = db.scalars(
-        select(SyncSource)
-        .where(
-            SyncSource.user_id == user_id,
-            SyncSource.source_type == _AI_KIND,
-            SyncSource.enabled.is_(True),
-        )
-        .order_by(SyncSource.id)
-    ).all()
-    for source in rows:
-        configuration = source.configuration or {}
-        if has_credentials(source.credentials) and configuration.get("base_url"):
-            return source
-    return None
-
-
 def render_greeting(
     db: Session,
     user_id: int,
@@ -190,44 +187,41 @@ def render_greeting(
     now: datetime | None = None,
     user_timezone: str | None = None,
     force: bool = False,
+    grade_lines: Sequence[str] = (),
 ) -> GreetingOutcome:
-    """Liefert den Satz, aus dem Cache oder frisch erzeugt."""
+    """Liefert den Satz und sagt, welcher Weg ihn geschrieben hat.
+
+    Die Reihenfolge und die Zeitbudgets stehen in ``app.services.ai_routing``;
+    hier steht nur der Satz. ``grade_lines`` wird durchgereicht und nicht selbst
+    erzeugt: der Aufrufer entscheidet über die Freigabe, dieser Dienst über den
+    Satz. Damit steht die Datenschutzfrage an genau einer Stelle
+    (``grade_context_lines``) und nicht in einer Hilfsfunktion, die irgendwann
+    einmal jemand aufruft.
+
+    ``AiProviderError`` wird hier **nicht mehr gefangen**, weil es der Weg selbst
+    tut und alle Wege der Reihe nach probiert - auch dann, wenn der Fehler gar
+    nicht von einem Provider kommt. Was diese Funktion zurückgibt, ist damit
+    immer ein fertiger Satz: genau wie vorher.
+    """
     moment = as_utc(now or utc_now())
     zone = zone_or_utc(resolve_timezone_name(user_timezone or settings.timezone, settings.timezone))
 
-    source = _load_provider(db, user_id, settings)
-    if source is None:
-        return GreetingOutcome(text=build_fallback_greeting(data, moment, zone), source="fallback")
+    def aus_daten() -> str:
+        return build_fallback_greeting(data, moment, zone)
 
-    try:
-        key = require_integration_encryption_key(settings)
-    except ValueError:
-        return GreetingOutcome(text=build_fallback_greeting(data, moment, zone), source="fallback")
+    outcome = ai_routing.generate_with_routes(
+        ai_routing.resolve_ai_routes(db, user_id, settings),
+        _SYSTEM_PROMPT,
+        build_prompt(data, moment, zone, grade_lines),
+        max_tokens=120,
+        local_timeout=settings.ai_local_timeout_seconds,
+        local_fast_timeout=settings.ai_local_fast_timeout_seconds,
+        provider_timeout=settings.ai_generate_timeout_seconds,
+    )
+    if outcome is None:
+        return GreetingOutcome(text=aus_daten(), source=ai_routing.SOURCE_FALLBACK)
 
-    try:
-        if not source.credentials:
-            return GreetingOutcome(text=build_fallback_greeting(data, moment, zone), source="fallback")
-        credentials = decrypt_credentials(source.credentials, key)
-    except Exception:  # noqa: BLE001 - defekter Schlüssel darf die Seite nicht kippen
-        return GreetingOutcome(text=build_fallback_greeting(data, moment, zone), source="fallback")
-
-    configuration = source.configuration or {}
-    model = str(configuration.get("model", "Auto"))
-    try:
-        text = generate_text(
-            base_url=str(configuration.get("base_url", "")),
-            model=model,
-            system_prompt=_SYSTEM_PROMPT,
-            user_prompt=build_prompt(data, moment, zone),
-            api_key=credentials.get("api_key", ""),
-            timeout_seconds=settings.integration_timeout_seconds,
-            max_tokens=120,
-        )
-    except AiProviderError as error:
-        logger.warning("Greeting konnte nicht erzeugt werden: %s", error)
-        return GreetingOutcome(text=build_fallback_greeting(data, moment, zone), source="fallback")
-
-    sauber = _sanitize(text)
+    sauber = _sanitize(outcome.text)
     if not sauber:
-        return GreetingOutcome(text=build_fallback_greeting(data, moment, zone), source="fallback")
-    return GreetingOutcome(text=_hard_limit(sauber), source="ai", model=model)
+        return GreetingOutcome(text=aus_daten(), source=ai_routing.SOURCE_FALLBACK)
+    return GreetingOutcome(text=_hard_limit(sauber), source=outcome.source, model=outcome.model)

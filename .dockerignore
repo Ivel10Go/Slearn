@@ -1,3 +1,41 @@
+# Build context for the `worker` service ONLY. docker-compose.yml gives the
+# worker `context: .` with `dockerfile: worker/Dockerfile`; `backend` and
+# `frontend` are separate contexts with their own .dockerignore, so nothing
+# below may ever re-include them.
+#
+# Precedence: the LAST matching rule wins. The order below is therefore not
+# cosmetic -- catch-all, then worker re-inclusion, then re-exclusions. Moving
+# a re-exclusion above `!worker/**` would silently stop working.
 **
+
 !worker/
 !worker/**
+
+# Host build artifacts. These MUST stay behind `!worker/**`: running
+# `python -m unittest discover -s worker/tests`, ruff, mypy or pytest on the
+# host creates worker/__pycache__, worker/tests/__pycache__ and the three
+# tool caches, and an unconditional `!worker/**` re-includes all of them.
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.venv/
+**/venv/
+**/*.egg-info/
+**/.coverage
+**/node_modules/
+**/.next/
+**/.turbo/
+**/out/
+
+# Secrets, VCS metadata and user data. Excluded explicitly rather than left to
+# the `**` catch-all, so that a future, broader `!` rule above cannot leak them
+# into an image layer. `!.env.example` is deliberately NOT re-included: the
+# worker build does not read it, and keeping the context to `worker/` is worth
+# more than the convenience.
+.git
+.gitignore
+.env
+.env.*
+data/

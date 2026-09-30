@@ -1,4 +1,5 @@
 import { parseDashboardApiResponse, parseGreetingResponse, parseScheduleRangeResponse, parseStudyActionResponse, parseStudySession, parseStudyTask } from "./schemas";
+import { normalizeSource, type AiSource, type AnswerSource } from "./ai-runtime";
 
 export type ApiIdentifier = string | number;
 export type StudyTaskStatus = "todo" | "in_progress" | "completed";
@@ -130,13 +131,14 @@ export interface ScheduleRange {
 /**
  * Der Willkommenssatz des Dashboards.
  *
- * `source` unterscheidet, ob ein Modell geschrieben hat oder der Satz aus den
- * Daten gebaut wurde. Die Oberfläche zeigt das als kleinen Hinweis, damit ein
- * Satz nicht als KI-Aussage missverstanden wird.
+ * `source` sagt, **welcher Weg** geschrieben hat: `local` für einen Server auf
+ * diesem Rechner, `provider` für einen Online-Dienst und `fallback` für den Satz
+ * aus den Daten. Die Oberfläche zeigt das als kleinen Hinweis, damit ein Satz
+ * nicht als KI-Aussage missverstanden wird.
  */
 export interface Greeting {
   text: string;
-  source: "ai" | "fallback";
+  source: AiSource;
   model: string | null;
   generatedOn: string;
 }
@@ -168,8 +170,19 @@ export interface IntegrationCatalog {
   label: string;
   description: string;
   required_config: string[];
+  /**
+   * Felder, die man kann, aber nicht muss - beim KI-Server `runtime`.
+   *
+   * Ein Eintrag von heute hat das nicht; das ist kein Fehler. Deshalb auch
+   * hier ein Default, nicht ein Pflichtfeld.
+   */
+  optional_config?: string[];
+  /** Gruppen, von denen mindestens ein Feld kommen muss, etwa `[["url", "path"]]`. */
+  required_one_of: string[][];
   required_credentials: string[];
   optional_credentials: string[];
+  /** Kann in dieser Quelle geschrieben werden? */
+  supports_writing: boolean;
 }
 
 export interface IntegrationTestResult {
@@ -190,9 +203,54 @@ export interface IntegrationSyncResult extends IntegrationTestResult {
   indexed_chunks: number;
   removed_documents: number;
   skipped_files: number;
+  /** Neu aus einer Kalenderquelle übernommene Termine. */
+  imported_events: number;
+  updated_events: number;
+  /** In der Quelle geschriebene Termine. Ohne Freigabe immer null. */
+  pushed_events: number;
+  deleted_events: number;
+  removed_events: number;
+  /** Termine, die an beiden Seiten geändert wurden und offen geblieben sind. */
+  conflicts: number;
+  floating_events: number;
   window_start: string | null;
   window_end: string | null;
   last_sync_at: string | null;
+}
+
+/** Die Adresse, auf der der Browser für die Einwilligung von Google abbiegt. */
+export interface IntegrationAuthorize {
+  authorization_url: string;
+  state: string;
+  scopes: string[];
+  message: string;
+}
+
+/**
+ * Die ausdrückliche Zustimmung, Termine in einen Kalender zu schreiben.
+ *
+ * `preference_key` nennt den Ort, an dem die Entscheidung gespeichert ist. Das
+ * steht in der Antwort, damit die Oberfläche nicht einen zweiten Namen neben
+ * dem echten führt.
+ */
+export interface CalendarWriting {
+  share_calendar_for_writing: boolean;
+  preference_key: string;
+  /** Wozu die Freigabe benutzt wird - als Liste, nicht als Behauptung. */
+  uses: string[];
+}
+
+/**
+ * Die abonnierbare ICS-Adresse des Lernraums.
+ *
+ * `rotated` ist nach dem Erzeugen eines neuen Schlüssels wahr und weist darauf
+ * hin, dass die alte Adresse nicht mehr funktioniert.
+ */
+export interface CalendarFeed {
+  url_path: string;
+  active: boolean;
+  rotated: boolean;
+  message: string;
 }
 
 export interface DocumentRecord {
@@ -222,13 +280,29 @@ export interface DocumentSearchResult {
   hits: DocumentHit[];
 }
 
-export type DocumentAnswerSource = "ai" | "fallback" | "none";
+/**
+ * `none` heisst "kein Treffer, also gar keine Frage" - der einzige Wert, den
+ * der Willkommenssatz nicht kennt.
+ */
+export type DocumentAnswerSource = AnswerSource;
 
 export interface DocumentAnswer {
   answer: string;
   source: DocumentAnswerSource;
   model: string | null;
   sources: DocumentSource[];
+  /**
+   * Ob der Notenstand im Prompt stand.
+   *
+   * Ein eigenes Feld und **kein** Wert von `source`: `source` sagt, woher die
+   * Antwort kommt (`local`/`provider`/`fallback`/`none`), und diese vier Werte
+   * bleiben so. Die Frage einer Lernenden ist aber eine andere - namely ob ihre
+   * Noten rausgegangen sind. Ohne dieses Feld muesste die Oberflaeche raten.
+   *
+   * Der lokale Weg macht diese Freigabe nicht ueberfluessig: sie gilt fuer
+   * jeden Weg, auch fuer einen Server auf diesem Rechner.
+   */
+  grades_shared: boolean;
 }
 
 /**
@@ -334,6 +408,15 @@ export interface StudyTask {
   completed_at: string | null;
   blocked_by: StudyTaskPrerequisite[];
   blocking_task_ids: number[];
+  /**
+   * Der Schnitt des Faches, an dem die Aufgabe haengt.
+   *
+   * `null`, wenn es zu diesem Fach keine Noten gibt - nicht `0`, und nicht
+   * ausgelassen. Der Generator nimmt diesen Wert als Mindestprioritaet, und
+   * damit sichtbar ist, dass eine Prioritaet nicht nur aus der Konfidenz kam.
+   */
+  subject_average: number | null;
+  subject_passed: boolean | null;
 }
 
 export interface StudyPlan {
@@ -424,6 +507,117 @@ export interface StudySessionRecord {
   notes: string | null;
 }
 
+/**
+ * Der Lernstand eines Themas, wie `GET /v1/progress/topics` ihn liefert.
+ *
+ * `confidence_label` und `interval_days` kommen aus **einer** Tabelle im
+ * Backend. Die Oberflaeche haelt deshalb keine eigene: sonst koennten
+ * Bezeichnung und Intervall auseinanderlaufen, ohne dass es auffaellt.
+ *
+ * `next_review_on` ist ein Datum (``YYYY-MM-DD``) in der Zeitzone des Nutzers
+ * und ausdruecklich *kein* Zeitstempel. Deshalb bleibt es ein String, und
+ * `new Date(...)` waere hier der erste Schritt in die falsche Zone.
+ */
+export interface TopicProgress {
+  topic_id: number;
+  name: string;
+  subject_id: number | null;
+  subject_name: string | null;
+  confidence: number;
+  /**
+   * Die untere Grenze der Stufe, in die `confidence` faellt.
+   *
+   * Nicht dasselbe wie `confidence`: ein Aufrufer per API darf einen Wert
+   * zwischen zwei Stufen setzen, und das Auswahlfeld braucht trotzdem einen
+   * Wert, den es anwaehlen kann. Angezeigt wird die Stufe, denn die bestimmt
+   * das Intervall.
+   */
+  confidence_step: number;
+  confidence_label: string;
+  last_reviewed_at: string | null;
+  notes: string | null;
+  /** Ohne `last_reviewed_at` gibt es keinen Anker und damit kein Intervall. */
+  interval_days: number | null;
+  next_review_on: string | null;
+  days_until_review: number | null;
+  is_due: boolean;
+  /** Aus den Lernsessions der Aufgaben dieses Themas, nicht aus der Konfidenz. */
+  studied_minutes: number;
+  session_count: number;
+  updated_at: string;
+}
+
+/** Eine Konfidenzstufe als Angebot fuer das Auswahlfeld. */
+export interface ConfidenceStep {
+  value: number;
+  label: string;
+  interval_days: number;
+}
+
+/** Das Wochenziel und der Ist-Stand derselben Woche (Montag bis Sonntag). */
+export interface WeeklyGoal {
+  goal_minutes: number;
+  studied_minutes: number;
+  goal_reached: boolean;
+  percent: number;
+  days_studied: number;
+  days_remaining: number;
+  week_starts_on: string;
+  week_ends_on: string;
+}
+
+/** Die Serie aufeinanderfolgender Lerntage. `studied_today` heisst "heute schon". */
+export interface Streak {
+  current_days: number;
+  longest_days: number;
+  studied_today: boolean;
+  last_studied_on: string | null;
+  days_since_last: number | null;
+  window_days: number;
+}
+
+export interface DayTotal {
+  date: string;
+  minutes: number;
+  sessions: number;
+}
+
+/** Lernzeit je Fach. `subject_id` ist null fuer Aufgaben ohne Thema. */
+export interface SubjectStudyTime {
+  subject_id: number | null;
+  subject_name: string;
+  minutes: number;
+  sessions: number;
+  share_percent: number;
+  last_studied_at: string | null;
+}
+
+/** `weekday` zaehlt ISO: 0 = Montag, 6 = Sonntag. */
+export interface WeekdayStudyTime {
+  weekday: number;
+  label: string;
+  minutes: number;
+  sessions: number;
+}
+
+export interface LearningInsights {
+  generated_at: string;
+  timezone: string;
+  today: DayTotal;
+  week: WeeklyGoal;
+  streak: Streak;
+  by_subject: SubjectStudyTime[];
+  by_weekday: WeekdayStudyTime[];
+  /** Die Stufentabelle fuer das Auswahlfeld - vom Backend, nicht lokal. */
+  confidence_steps: ConfidenceStep[];
+  total_minutes: number;
+  total_sessions: number;
+  /** Offene Sessions zaehlen nicht in den Summen - sonst waeren sie doppelt. */
+  open_sessions: number;
+  active_minutes: number;
+  weekday_window_days: number;
+}
+
 export interface FileUploadResult {
   id: number;
   filename: string;
@@ -438,6 +632,337 @@ export interface FileUploadResult {
 export interface SubjectOption {
   id: number;
   name: string;
+}
+
+/**
+ * Die drei Arten einer Note, wie `GradeKind` im Backend.
+ *
+ * Eine geschlossene Liste: die Migration traegt dieselben drei Werte als
+ * Check-Constraint. Der deutsche Name steht in `lib/grades.ts`, nicht hier -
+ * ein Enum-Wert ist ein Vertrag, sein Anzeigename ist Darstellung.
+ */
+export type GradeKind = "written_exam" | "test" | "oral";
+
+/** Eine einzelne Note, wie `GET /v1/grades` sie liefert. */
+export interface Grade {
+  id: number;
+  subject_id: number | null;
+  subject_name: string | null;
+  grade_value: number;
+  kind: GradeKind;
+  /** Wie oft die Note in den Schnitt eingeht. 1 ist die Norm. */
+  weight: number;
+  /** Ein Kalendertag (`YYYY-MM-DD`), kein Zeitstempel. */
+  graded_on: string;
+  comment: string | null;
+  source: string;
+  document_id: number | null;
+}
+
+/**
+ * Ein Schnitt, gewichtet.
+ *
+ * `passed` kommt als Wahrheitswert aus dem Backend und wird hier zu einem Wort
+ * uebersetzt - "bestanden" allein waere bei 3,9 eine harte Aussage, die
+ * Oberflaeche darf dazusagen, wie knapp es ist.
+ */
+export interface GradeAverage {
+  subject_id: number | null;
+  subject_name: string;
+  average: number;
+  count: number;
+  weight: number;
+  passed: boolean;
+}
+
+/** Ein Punkt der Verlaufslinie. `count` und `weight` sind kumuliert. */
+export interface GradeTrendPoint {
+  graded_on: string;
+  average: number;
+  count: number;
+  weight: number;
+}
+
+/**
+ * Die Hochrechnung: was ab jetzt noch kommen muss.
+ *
+ * `needed_average` ist `null`, wenn die noetige Note ausserhalb der Skale
+ * liegt - dann gibt es keine Zahl, die man zeigen koennte, und `still_possible`
+ * sagt, warum nicht.
+ */
+export interface GradeProjection {
+  current_average: number | null;
+  passing_grade: number;
+  projected_weight: number;
+  needed_average: number | null;
+  best_possible_average: number | null;
+  still_possible: boolean;
+}
+
+export interface GradeSummary {
+  passing_grade: number;
+  generated_at: string;
+  overall: GradeAverage;
+  by_subject: GradeAverage[];
+  trend: GradeTrendPoint[];
+  total_count: number;
+  projection: GradeProjection;
+}
+
+/** Die Freigabe, ob Noten den KI-Dienst erreichen duerfen. Standard ist `false`. */
+export interface GradeSharing {
+  share_grades_with_ai: boolean;
+  /** Wo die Entscheidung liegt - im Klartext, damit die Karte es zeigen kann. */
+  preference_key: string;
+  /** Wo sie ausgewertet wird. Die Liste kommt vom Backend, sie kann waachsen. */
+  uses: string[];
+}
+
+/** Eine Zeile aus einem Dokument, wie der Server sie liest. */
+export interface GradeImportCandidate {
+  key: string;
+  line_number: number;
+  line: string;
+  value: number;
+  kind: GradeKind;
+  graded_on: string;
+  weight: number;
+  comment: string | null;
+  subject_id: number | null;
+  subject_name: string | null;
+  /** `false` heisst: das Fach stand nicht in der Zeile, es kam aus der Vorgabe. */
+  subject_recognized: boolean;
+  already_imported: boolean;
+}
+
+export interface GradeImportPreview {
+  document_id: number;
+  filename: string;
+  subject_id: number | null;
+  default_kind: GradeKind;
+  default_weight: number;
+  default_date: string | null;
+  entries: GradeImportCandidate[];
+}
+
+export interface GradeImportResult {
+  document_id: number;
+  created: number;
+  skipped: number;
+  created_ids: number[];
+}
+
+/*
+ * Belohnungen (`/v1/rewards`).
+ *
+ * Die Felder kommen eins zu eins aus `app/schemas/rewards.py`, und das ist hier
+ * keine Formalie: die Karte zeigt einen **Zähler mit Obergrenze** und eine Liste
+ * von Bedingungen. Ein `points`, das die Zod-Schemas verschlucken, wäre eine Zahl,
+ * die nicht zur Anzeige passt - und eine Regel, die niemand nachrechnen kann.
+ *
+ * `kind` ist eine geschlossene Liste wie `GradeKind`: die Migration traegt dieselben
+ * beiden Werte als Check-Constraint.
+ */
+export type RewardKind = "task_completed" | "subject_day";
+
+/** Woran eine Auszeichnung haengt. Der Text dazu kommt aus `scope_kind`. */
+export type RewardScopeKind = "global" | "subject" | "topic" | "week";
+
+/** Eine gebuchte Lernhandlung. `points` kann 0 sein - das Tageskonto war voll. */
+export interface RewardEntry {
+  id: number;
+  kind: RewardKind;
+  points: number;
+  /** Die angerechneten Minuten dieses Fachtags. Bei einer Aufgabe immer 0. */
+  minutes: number;
+  subject_id: number | null;
+  subject_name: string | null;
+  topic_id: number | null;
+  topic_name: string | null;
+  detail: string;
+  /** Ein Kalendertag in der Zeitzone des Nutzers, kein Zeitstempel. */
+  earned_on: string;
+  earned_at: string;
+}
+
+/**
+ * Eine Auszeichnung: Bedingung, Fortschritt, Zeitpunkt.
+ *
+ * `progress`/`target` tragen die Bedingung in Zahlen - die Karte zeigt daraus einen
+ * Balken und einen Text, statt selbst zu zählen. Eine einmal verdiente Auszeichnung
+ * friert bei ihrem Wert ein: `awarded` bleibt wahr, auch wenn neue Aufgaben in
+ * dasselbe Fach kommen.
+ */
+export interface RewardBadge {
+  id: number;
+  code: string;
+  title: string;
+  description: string;
+  /** `global`, `subject:7`, `topic:12` oder `week:2026-W40`. */
+  scope: string;
+  scope_kind: RewardScopeKind;
+  subject_id: number | null;
+  subject_name: string | null;
+  topic_id: number | null;
+  topic_name: string | null;
+  progress: number;
+  target: number;
+  awarded: boolean;
+  awarded_at: string | null;
+  /** Ob die Bedingung mehrfach erreichbar ist. Steht im Katalog, nicht in einer Konvention. */
+  repeatable: boolean;
+  /** Was gezählt wird, in der Einzahl: "Tag", "Minute", "Aufgabe". */
+  unit: string;
+  /** Die Mehrzahl in der Form, die der Satz braucht: "Tagen" neben "Tag". */
+  unit_plural: string;
+}
+
+/** Der Katalog als Vertrag - auch fuer Auszeichnungen, die es noch nicht gibt. */
+export interface RewardBadgeDefinition {
+  code: string;
+  title: string;
+  description: string;
+  target: number;
+  unit: string;
+  unit_plural: string;
+  scope_kind: RewardScopeKind;
+  repeatable: boolean;
+}
+
+/** Eine Stufe der Fachtag-Staffel: ab so vielen Minuten gibt es so viele Punkte. */
+export interface RewardStep {
+  minutes: number;
+  points: number;
+}
+
+/** Die Punktregel in Zahlen, damit die Karte sie nicht nachbaut. */
+export interface RewardRules {
+  task_points: number;
+  day_cap: number;
+  subject_day_cap: number;
+  min_subject_day_minutes: number;
+  subject_day_steps: RewardStep[];
+}
+
+/**
+ * Die Zahlen des Kontos.
+ *
+ * `today_points` gegen `today_cap` ist die einzige Stelle, an der die Obergrenze
+ * sichtbar wird. Ohne sie wäre eine Zahl, die nicht weiterwächst, eine Enttäuschung
+ * statt einer Regel.
+ */
+export interface RewardSummary {
+  generated_at: string;
+  timezone: string;
+  today_points: number;
+  today_cap: number;
+  week_points: number;
+  total_points: number;
+  today: string;
+  week_starts_on: string;
+  week_ends_on: string;
+  awarded_badges: number;
+  pending_badges: number;
+}
+
+/** Alles fuer die Belohnungskarte - eine Antwort, weil alles zusammen gelesen wird. */
+export interface RewardOverview {
+  summary: RewardSummary;
+  rules: RewardRules;
+  catalog: RewardBadgeDefinition[];
+  badges: RewardBadge[];
+  entries: RewardEntry[];
+}
+
+/*
+ * Die Benachrichtigungen.
+ *
+ * Echte Typen, keine Stubs: bei diesen Feldern waere ein
+ * `Record<string, unknown>` schlimmer als in den uebrigen Faellen, denn ein
+ * `push_status`, den die Oberflaeche nicht kennt, wuerde still als "unbekannt"
+ * behandelt - und eine Erinnerung, die niemand sieht, faellt nicht auf.
+ */
+
+/** Die zwei Arten, fuer die es eine Erinnerung gibt. Geschlossen, wie die Notenarten. */
+export type NotificationKind = "study_task_due" | "exam_due";
+
+/** Was aus dem Push-Versand geworden ist. `skipped` heisst: es gab keinen Weg. */
+export type PushStatus = "skipped" | "sent" | "failed";
+
+/** Die Ruhezeit als **lokale** Uhrzeiten. `spans_midnight` sagt, ob sie ueber Mitternacht laeuft. */
+export interface QuietHours {
+  enabled: boolean;
+  start: string;
+  end: string;
+  spans_midnight: boolean;
+}
+
+export interface LernraumNotification {
+  id: number;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  /** Ein Anker der Einzelseite, etwa `/#study-tasks`. Kein eigener Pfad. */
+  url: string;
+  target_id: number;
+  push_status: PushStatus;
+  created_at: string;
+  read_at: string | null;
+}
+
+/** Die Erinnerungseinstellungen: Hauptschalter, Kanaele, Uhrzeit, Ruhezeiten. */
+export interface NotificationSettings {
+  enabled: boolean;
+  channels: Record<string, boolean>;
+  channel_labels: Record<string, string>;
+  channels_available: string[];
+  reminder_time: string;
+  quiet_hours: QuietHours;
+  exam_lead_days: number;
+  timezone: string;
+  preference_key: string;
+  summary: string;
+}
+
+/** Der oeffentliche VAPID-Schluessel, falls der Server eines eingerichtet hat. */
+export interface VapidKey {
+  configured: boolean;
+  public_key: string | null;
+  subject: string | null;
+}
+
+export interface PushSubscriptionRecord {
+  id: number;
+  /** Nur der Ursprung des Endpunkts: der vollstaendige enthaelt ein Geheimnis. */
+  endpoint_hint: string;
+  user_agent: string | null;
+  failures: number;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  last_error: string | null;
+  created_at: string;
+}
+
+export interface ReminderOutcome {
+  user_id: number;
+  created: number;
+  delivered: number;
+  push_failed: number;
+  push_attempted: boolean;
+  message: string;
+}
+
+/** Das Ergebnis eines Laufs - auch des, den ein Mensch ausgeloest hat. */
+export interface ReminderRunReport {
+  considered: number;
+  created: number;
+  delivered: number;
+  push_failed: number;
+  /** Ob der planmaessige Thread laeuft. Sonst weiss die Oberflaeche es nicht. */
+  scheduler_running: boolean;
+  interval_seconds: number;
+  outcomes: ReminderOutcome[];
+  message: string;
 }
 
 // Helper functions
@@ -599,15 +1124,20 @@ export function normalizeScheduleRange(payload: unknown): ScheduleRange {
 
 export function normalizeGreeting(payload: unknown): Greeting {
   const parsed = record(parseGreetingResponse(payload));
+  // `normalizeSource` kennt den gespeicherten Altwert "ai" und behandelt alles
+  // Unbekannte als "fallback": die Oberflaeche behauptet nie eine Herkunft, die
+  // sie nicht belegen kann - und behauptet erst recht keine *lokale*, weil das
+  // eine Datenschutzentscheidung behaupten wuerde. `none` gibt es beim Satz
+  // nicht; es waere eine Kategorie zu viel.
+  const quelle = normalizeSource(parsed.source);
   return {
     text: text(parsed.text, "Herzlich willkommen."),
-    // Das Backend kennt nur "ai" und "fallback"; alles andere wird als Fallback
-    // behandelt, damit die Oberflaeche nie eine falsche Herkunft behauptet.
-    source: parsed.source === "ai" ? "ai" : "fallback",
+    source: quelle === "none" ? "fallback" : quelle,
     model: typeof parsed.model === "string" && parsed.model ? parsed.model : null,
     generatedOn: text(parsed.generated_on, ""),
   };
 }
+
 
 export function normalizeDashboard(payload: unknown): DashboardData {
   const parsed: any = parseDashboardApiResponse(payload);

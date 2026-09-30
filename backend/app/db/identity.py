@@ -22,10 +22,12 @@ from app.core.time import utc_now
 from .base import Base
 
 if TYPE_CHECKING:
-    from .academic import CalendarEvent, Exam, Homework, Lesson
+    from .academic import CalendarEvent, Exam, Grade, Homework, Lesson
     from .content import Document, LearningProgress, Topic
+    from .notify import Notification, PushSubscription
     from .planning import StudyPlan, StudyPlanTask, StudySession, StudyTaskSeries
     from .quiz import Quiz, QuizAnswer, QuizAttempt
+    from .rewards import RewardBadge, RewardEntry
 
 
 JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
@@ -59,6 +61,7 @@ class User(Base):
     lessons: Mapped[list[Lesson]] = relationship(back_populates="user", cascade="all, delete-orphan")
     homeworks: Mapped[list[Homework]] = relationship(back_populates="user", cascade="all, delete-orphan")
     exams: Mapped[list[Exam]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    grades: Mapped[list[Grade]] = relationship(back_populates="user", cascade="all, delete-orphan")
     sync_sources: Mapped[list[SyncSource]] = relationship(back_populates="user", cascade="all, delete-orphan")
     calendar_events: Mapped[list[CalendarEvent]] = relationship(back_populates="user", cascade="all, delete-orphan")
     documents: Mapped[list[Document]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -75,6 +78,15 @@ class User(Base):
     quizzes: Mapped[list[Quiz]] = relationship(back_populates="user", cascade="all, delete-orphan")
     quiz_attempts: Mapped[list[QuizAttempt]] = relationship(back_populates="user", cascade="all, delete-orphan")
     quiz_answers: Mapped[list[QuizAnswer]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    notifications: Mapped[list[Notification]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    push_subscriptions: Mapped[list[PushSubscription]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    # Punkte und Auszeichnungen. Sie haengen mit ``CASCADE`` am Benutzer und
+    # nicht an einer Aufgabe: eine geloeschte Lernaufgabe nimmt die Buchung
+    # nicht mit, denn "an diesem Tag gelernt" bleibt wahr.
+    reward_entries: Mapped[list[RewardEntry]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    reward_badges: Mapped[list[RewardBadge]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class UserSettings(Base):
@@ -85,6 +97,12 @@ class UserSettings(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC", server_default="UTC")
     theme: Mapped[str] = mapped_column(String(32), nullable=False, default="system", server_default="system")
+    # Der **Hauptschalter** der Erinnerungen, seit der Benachrichtigungs-Welle
+    # verdrahtet (vorher eine tote Spalte aus `0001`). Er allein erzeugt keine
+    # Erinnerung: die Kanaele, die Uhrzeit und die Ruhezeiten stehen in
+    # `preferences` unter dem Schluessel `notifications`. Ein Boolean skaliert
+    # nicht auf "Kanäle, Uhrzeit, Ruhezeiten" - deshalb ist er die eine
+    # Sammelschaltung und nicht die Form des ganzen Einstellungsdialogs.
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     preferences: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -174,9 +192,12 @@ class Subject(Base):
     lessons: Mapped[list[Lesson]] = relationship(back_populates="subject")
     homeworks: Mapped[list[Homework]] = relationship(back_populates="subject")
     exams: Mapped[list[Exam]] = relationship(back_populates="subject")
+    grades: Mapped[list[Grade]] = relationship(back_populates="subject")
     documents: Mapped[list[Document]] = relationship(back_populates="subject")
     topics: Mapped[list[Topic]] = relationship(back_populates="subject")
     quizzes: Mapped[list[Quiz]] = relationship(back_populates="subject")
+    reward_entries: Mapped[list[RewardEntry]] = relationship(back_populates="subject")
+    reward_badges: Mapped[list[RewardBadge]] = relationship(back_populates="subject")
 
 
 class SyncSource(Base):

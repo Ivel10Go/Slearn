@@ -13,6 +13,9 @@ __pycache__/
 .coverage.*
 coverage.xml
 htmlcov/
+# `pip install -e ".[dev]"` aus backend/ erzeugt backend/*.egg-info/.
+# Die Installationsanleitung in .github/workflows/ci.yml nutzt genau diese Form.
+*.egg-info/
 .venv/
 venv/
 env/

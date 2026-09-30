@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseIntegrationSyncResult } from "./schemas";
+import {
+  parseCalendarFeed,
+  parseCalendarWriting,
+  parseDocumentAnswer,
+  parseDocumentArray,
+  parseDocumentSearchResult,
+  parseIntegrationAuthorize,
+  parseIntegrationCatalogArray,
+  parseIntegrationSyncResult,
+} from "./schemas";
 import { isDemoTaskId, normalizeDashboard, normalizeStudyAction, normalizeStudyTask } from "./types";
 
 describe("Study-Normalisierung", () => {
@@ -138,8 +147,14 @@ describe("Dashboard-Validierung", () => {
 });
 
 describe("Dokumente-Parsing", () => {
-  it("behaelt die Dokumentfelder im Sync-Ergebnis", () => {
-    const result = parseIntegrationSyncResult({
+  /**
+   * Ein vollstaendiges Sync-Ergebnis. Die Kalenderfelder sind Pflicht, weil der
+   * Server sie bei jedem Abruf mitschickt - auch bei einem Dokumentabruf, wo
+   * sie null sind. Sie deshalb hier nicht zu streichen: das Schema soll eine
+   * unvollstaendige Antwort wirklich ablehnen.
+   */
+  function syncErgebnis(overrides: Record<string, unknown> = {}) {
+    return {
       ok: true,
       status: "success",
       message: "Sync fertig.",
@@ -154,12 +169,105 @@ describe("Dokumente-Parsing", () => {
       indexed_chunks: 42,
       removed_documents: 0,
       skipped_files: 1,
+      imported_events: 0,
+      updated_events: 0,
+      pushed_events: 0,
+      deleted_events: 0,
+      removed_events: 0,
+      conflicts: 0,
+      floating_events: 0,
       window_start: null,
       window_end: null,
       last_sync_at: null,
-    });
+      ...overrides,
+    };
+  }
+
+  it("behaelt die Dokumentfelder im Sync-Ergebnis", () => {
+    const result = parseIntegrationSyncResult(syncErgebnis());
 
     expect(result).toMatchObject({ imported_documents: 3, indexed_chunks: 42, skipped_files: 1 });
+  });
+
+  it("behaelt die Kalenderfelder im Sync-Ergebnis", () => {
+    const result = parseIntegrationSyncResult(
+      syncErgebnis({ imported_events: 4, pushed_events: 1, conflicts: 2, floating_events: 3 }),
+    );
+
+    expect(result).toMatchObject({ imported_events: 4, pushed_events: 1, conflicts: 2, floating_events: 3 });
+  });
+
+  it("lehnt ein Sync-Ergebnis ohne Kalenderzahlen ab", () => {
+    const unvollstaendig = syncErgebnis() as Record<string, unknown>;
+    delete unvollstaendig.conflicts;
+
+    expect(() => parseIntegrationSyncResult(unvollstaendig)).toThrow();
+  });
+
+  it("liest die Alternativgruppen und das Schreibrecht aus dem Katalog", () => {
+    const katalog = parseIntegrationCatalogArray([
+      {
+        kind: "ical",
+        label: "iCalendar (ICS)",
+        description: "Liest Termine.",
+        required_config: [],
+        required_one_of: [["url", "path"]],
+        required_credentials: [],
+        optional_credentials: [],
+        supports_writing: false,
+      },
+      {
+        kind: "google_calendar",
+        label: "Google Kalender",
+        description: "Liest und schreibt.",
+        required_config: ["client_id"],
+        required_one_of: [],
+        required_credentials: ["client_secret"],
+        optional_credentials: ["refresh_token"],
+        supports_writing: true,
+      },
+    ]);
+
+    expect(katalog[0].required_one_of).toEqual([["url", "path"]]);
+    expect(katalog[0].supports_writing).toBe(false);
+    expect(katalog[1].supports_writing).toBe(true);
+  });
+
+  it("liest die Zustimmung zum Schreiben und ihre Verwendungen", () => {
+    const zustimmung = parseCalendarWriting({
+      share_calendar_for_writing: false,
+      preference_key: "share_calendar_for_writing",
+      uses: ["Termine schreiben"],
+    });
+
+    expect(zustimmung.share_calendar_for_writing).toBe(false);
+    expect(zustimmung.uses).toEqual(["Termine schreiben"]);
+    // Fehlt ein Feld, ist das eine kaputte Antwort und kein Standard.
+    expect(() => parseCalendarWriting({ preference_key: "x", uses: [] })).toThrow();
+  });
+
+  it("liest die abonnierbare Adresse und den Zustand der Rotation", () => {
+    const feed = parseCalendarFeed({
+      url_path: "/api/v1/calendar/feed/abc",
+      active: true,
+      rotated: true,
+      message: "Neuer Schlüssel.",
+    });
+
+    expect(feed.active).toBe(true);
+    expect(feed.rotated).toBe(true);
+  });
+
+  it("liest die Autorisierungsadresse und die verlangten Rechte", () => {
+    const autorisierung = parseIntegrationAuthorize({
+      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth?state=x",
+      state: "signiert",
+      scopes: ["https://www.googleapis.com/auth/calendar.events"],
+      message: "Google zeigt jetzt an, welche Rechte die Verbindung braucht.",
+    });
+
+    expect(autorisierung.authorization_url).toContain("state=x");
+    expect(autorisierung.scopes).toHaveLength(1);
   });
 
   it("normalisiert eine Dokumentliste auf string | null", () => {
@@ -186,5 +294,17 @@ describe("Dokumente-Parsing", () => {
     });
     expect(result).toMatchObject({ source: "fallback", model: null });
     expect(result.sources).toEqual([]);
+  });
+
+  it("behaelt die vier Herkuenfte auseinander", () => {
+    // `local`, `provider`, `fallback` und `none` sind vier verschiedene
+    // Antworten auf vier verschiedene Fragen; `ai` ist der gespeicherte
+    // Altwert von `provider`.
+    const quelle = (source: string) => parseDocumentAnswer({ answer: "A.", source, sources: [] }).source;
+    expect(quelle("local")).toBe("local");
+    expect(quelle("provider")).toBe("provider");
+    expect(quelle("ai")).toBe("provider");
+    expect(quelle("fallback")).toBe("fallback");
+    expect(quelle("none")).toBe("none");
   });
 });

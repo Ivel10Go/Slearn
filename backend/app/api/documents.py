@@ -12,6 +12,7 @@ from app.schemas.documents import (
     DocumentSearchResponse,
     DocumentSourceOut,
 )
+from app.services import grades as grades_service
 from app.services.documents import answer_question, search_chunks
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
@@ -58,11 +59,31 @@ def ask_documents(
     db: DatabaseSession,
     settings: AppSettings,
 ) -> DocumentAskResponse:
-    result = answer_question(db, current_user.id, settings, payload.question, limit=payload.limit)
+    """Beantwortet eine Frage aus den eigenen Dokumenten.
+
+    **Noten gehen nur mit ausdruecklicher Freigabe mit.** ``grade_context_lines()``
+    liefert ohne gesetzte Freigabe eine leere Liste, und eine leere Liste kommt
+    nicht in den Prompt. Es gibt hier also keinen Zustand, in dem eine Note
+    mitgeschickt wird, ohne dass die Lernende es vorher entschieden hat.
+
+    ``source`` bleibt dreiwertig (``ai``/``fallback``/``none``) und beantwortet
+    weiterhin nur die Frage, woher die Antwort stammt. Ob Noten dabeigewesen
+    sind, sagt das eigene Feld ``grades_shared`` - zwei Fragen, zwei Felder.
+    """
+    grade_context = grades_service.grade_context_lines(db, current_user.id)
+    result = answer_question(
+        db,
+        current_user.id,
+        settings,
+        payload.question,
+        limit=payload.limit,
+        grade_context=grade_context,
+    )
     return DocumentAskResponse(
         answer=result.answer,
         source=result.source,
         model=result.model,
+        grades_shared=result.grades_shared,
         sources=[
             DocumentSourceOut(
                 document_id=source.document_id,

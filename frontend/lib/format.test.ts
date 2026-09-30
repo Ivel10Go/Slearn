@@ -269,25 +269,34 @@ describe("Willkommenssatz", () => {
   it("übernimmt Text, Herkunft und Modell", () => {
     const greeting = normalizeGreeting({
       text: "Herzlich willkommen, um 8:00 beginnt Mathematik.",
-      source: "ai",
-      model: "gpt-4o-mini",
+      source: "local",
+      model: "qwen2.5",
       generated_on: "2026-09-25",
     });
 
     expect(greeting.text).toBe("Herzlich willkommen, um 8:00 beginnt Mathematik.");
-    expect(greeting.source).toBe("ai");
-    expect(greeting.model).toBe("gpt-4o-mini");
+    expect(greeting.source).toBe("local");
+    expect(greeting.model).toBe("qwen2.5");
     expect(greeting.generatedOn).toBe("2026-09-25");
   });
 
+  it("liest den gespeicherten Altwert 'ai' als Online-Provider", () => {
+    // Ein Cacheeintrag von gestern darf nicht als Datenluege erscheinen.
+    expect(normalizeGreeting({ text: "Hallo", source: "ai" }).source).toBe("provider");
+    expect(normalizeGreeting({ text: "Hallo", source: "provider" }).source).toBe("provider");
+  });
+
   it("behandelt unbekannte Herkunft als Daten-Satz", () => {
-    // So behauptet die Oberfläche nie eine KI, die nicht geantwortet hat.
+    // So behauptet die Oberfläche nie eine KI, die nicht geantwortet hat - und
+    // erst recht keine *lokale*, weil das eine Datenschutzentscheidung wäre.
     expect(normalizeGreeting({ text: "Hallo", source: "irgendwas" }).source).toBe("fallback");
     expect(normalizeGreeting({ text: "Hallo" }).source).toBe("fallback");
+    // `none` gibt es beim Willkommenssatz nicht.
+    expect(normalizeGreeting({ text: "Hallo", source: "none" }).source).toBe("fallback");
   });
 
   it("übersteht eine Antwort ohne Text", () => {
-    const greeting = normalizeGreeting({ source: "ai" });
+    const greeting = normalizeGreeting({ source: "local" });
     expect(greeting.text.length).toBeGreaterThan(0);
     expect(greeting.model).toBeNull();
   });

@@ -6,14 +6,19 @@ import { AppShell } from "@/components/app-shell";
 import { SettingsView } from "@/components/settings/settings-view";
 import { logout } from "@/lib/api";
 import { useIntegrations } from "@/lib/use-integrations";
+import { useNotifications } from "@/lib/use-notifications";
 
 export default function SettingsPage() {
   const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const notifications = useNotifications();
   const {
     user,
     integrations,
     catalog,
+    runtime,
+    writing,
+    feed,
     error,
     actionError,
     status,
@@ -25,7 +30,10 @@ export default function SettingsPage() {
     changeIntegration,
     checkIntegration,
     runSync,
+    authorizeIntegration,
     removeIntegration,
+    toggleWriting,
+    createFeed,
   } = useIntegrations();
 
   /**
@@ -57,18 +65,25 @@ export default function SettingsPage() {
         user={user}
         integrations={integrations}
         catalog={catalog}
+        runtime={runtime}
         error={error}
         actionError={actionError}
         status={status}
         pendingAction={pendingAction}
         testResults={testResults}
         syncResults={syncResults}
+writing={writing}
+        feed={feed}
+        notifications={notifications}
         onRetry={retry}
         onAdd={addIntegration}
         onToggle={(integration, enabled) => void changeIntegration(integration.id, { enabled })}
         onTest={(integration) => void checkIntegration(integration.id)}
         onSync={(integration) => void runSync(integration.id)}
+        onAuthorize={(integration) => void authorizeIntegration(integration.id)}
         onDelete={(integration) => void removeIntegration(integration.id)}
+        onToggleWriting={(enabled) => void toggleWriting(enabled)}
+        onCreateFeed={() => void createFeed()}
         onLogout={() => void abmelden()}
         isLoggingOut={isLoggingOut}
       />

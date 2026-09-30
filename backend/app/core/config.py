@@ -54,9 +54,236 @@ class Settings(BaseSettings):
         le=120,
         validation_alias=AliasChoices("INTEGRATION_TIMEOUT_SECONDS", "integration_timeout_seconds"),
     )
+    # Der planmäßige Abruf ist absichtlich nicht eingeschaltet. Wer ihn nicht
+    # braucht, soll beim Start nicht ungefragt Netzverbindungen zu einem
+    # Schulportal aufbauen; der Compose-Stack schaltet ihn ausdrücklich ein.
+    # Ohne die zwei Werte bleibt der Weg über den Button in den Einstellungen.
+    webuntis_sync_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("WEBUNTIS_SYNC_ENABLED", "webuntis_sync_enabled"),
+    )
+    webuntis_sync_interval_seconds: float = Field(
+        default=24 * 60 * 60,
+        gt=0,
+        le=7 * 24 * 60 * 60,
+        validation_alias=AliasChoices("WEBUNTIS_SYNC_INTERVAL_SECONDS", "webuntis_sync_interval_seconds"),
+    )
+    # Der Erinnerungslauf hat ein anderes Intervall als der WebUntis-Abruf und
+    # eigene Fehlergrenzen. Auch er ist per Default aus: wer ihn nicht
+    # einschaltet, soll beim Start keine Arbeit bekommen, die er nicht
+    # bestellt hat. Der Knopf "Jetzt pruefen" in den Einstellungen geht
+    # unabhaengig davon.
+    reminder_scheduler_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("REMINDER_SCHEDULER_ENABLED", "reminder_scheduler_enabled"),
+    )
+    reminder_interval_seconds: float = Field(
+        default=5 * 60,
+        ge=60,
+        le=24 * 60 * 60,
+        validation_alias=AliasChoices("REMINDER_INTERVAL_SECONDS", "reminder_interval_seconds"),
+    )
+    # Web-Push. Der private Schluessel gehoert hier und **nicht** in den
+    # Service Worker: der Service Worker laeuft im Browser und wuerde ihn an
+    # jeden lesen, der die Datei bekommt. Fehlt der Schluessel, arbeitet der
+    # ganze Erinnerungsweg ueber die geoeffnete Seite - es ist kein Fehler,
+    # Push nicht eingerichtet zu haben.
+    #
+    # Jede `AliasChoices`-Liste fuehrt **drei** Schreibweisen: die
+    # Umgebungsvariable, einen sprechenden Namen und den Feldnamen. Das dritte
+    # entfaellt nicht - ohne es nimmt `Settings(web_push_private_key=...)` den
+    # Wert nicht an, weil Pydantic bei gesetztem Alias den Feldnamen ignoriert.
+    web_push_private_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "WEB_PUSH_VAPID_PRIVATE_KEY",
+            "web_push_vapid_private_key",
+            "web_push_private_key",
+        ),
+    )
+    # Optional. Ohne diesen Wert wird der oeffentliche Schluessel aus dem
+    # privaten berechnet; mit ihm muss er dazu passen, sonst koennte sich die
+    # Seite fuer ein Schluesselpaar anmelden, mit dem der Server nicht
+    # zeichnen kann.
+    web_push_public_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "WEB_PUSH_VAPID_PUBLIC_KEY",
+            "web_push_vapid_public_key",
+            "web_push_public_key",
+        ),
+    )
+    # Pflichtangabe des Push-Protokolls: eine Mailadresse oder eine HTTPS-
+    # Adresse, unter der der Betreiber erreichbar ist. Ohne sie akzeptiert kein
+    # echter Push-Dienst die Anfrage.
+    web_push_subject: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "WEB_PUSH_VAPID_SUBJECT",
+            "web_push_vapid_subject",
+            "web_push_subject",
+        ),
+    )
+    web_push_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        le=120,
+        validation_alias=AliasChoices(
+            "WEB_PUSH_TIMEOUT_SECONDS",
+            "web_push_timeout_seconds",
+        ),
+    )
     document_storage_path: str = Field(
         default="/var/lib/school-assistant/documents",
         validation_alias=AliasChoices("DOCUMENT_STORAGE_PATH", "document_storage_path"),
+    )
+    # Modelle bekommen einen **eigenen** Ablageort und nicht den Dokumentordner.
+    # Drei Gruende: ein Modell ist gross und wird nicht durchsucht, der
+    # Dokumentordner wird von einem Admin aufgeraeumt und waere dann ein
+    # Loch in der Lernplan-Erstellung, und ein gemischter Ordner macht
+    # `du -sh` unbrauchbar. Der Pfad ist der **interne** Container-Pfad; das
+    # Host-Verzeichnis kommt als `MODELS_HOST_PATH` in docker-compose.yml dazu
+    # und ist von hier aus getrennt - dasselbe Muster wie BACKUP_STORAGE_PATH
+    # neben BACKUPS_HOST_PATH.
+    model_storage_path: str = Field(
+        default="/var/lib/school-assistant/models",
+        validation_alias=AliasChoices("MODEL_STORAGE_PATH", "model_storage_path"),
+    )
+    # Lese-Timeout eines Blocks. Kein Gesamtlimit: ein 2-GB-Modell ueber eine
+    # langsame Leitung darf sich Zeit nehmen, solange Daten kommen.
+    model_download_timeout_seconds: float = Field(
+        default=60.0,
+        gt=0,
+        le=600,
+        validation_alias=AliasChoices("MODEL_DOWNLOAD_TIMEOUT_SECONDS", "model_download_timeout_seconds"),
+    )
+    # Reserve, die beim Download nie angefasst wird. Ohne sie fuellt ein
+    # grosses Modell eine knappe Partition und reisst dabei PostgreSQL mit.
+    model_min_free_bytes: int = Field(
+        default=512 * 1024 * 1024,
+        ge=0,
+        validation_alias=AliasChoices("MODEL_MIN_FREE_BYTES", "model_min_free_bytes"),
+    )
+    # Reihenfolge der KI-Wege. **Standard ist lokal zuerst**, und das ist eine
+    # Produktentscheidung, keine Voreinstellung aus Bequemlichkeit: ein lokaler
+    # Server kostet nichts und versendet nichts. Wer es umkehrt, etwa weil der
+    # lokale Weg im Schulnetz zu langsam ist, stellt es hier um - der Weg selbst
+    # ist derselbe, es wird nur andersherum probiert.
+    ai_local_first: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("AI_LOCAL_FIRST", "ai_local_first"),
+    )
+    # Zeitbudget fuer einen lokalen Modelllauf, **wenn er der einzige Weg ist**.
+    # Dann gibt es nichts, wofuer man sich beeilen koennte, und ein 8B-Modell auf
+    # CPU darf sich Zeit nehmen. Bewusst weit ueber
+    # `integration_timeout_seconds` - das ist der *Verbindungs*-test (10 s).
+    ai_local_timeout_seconds: float = Field(
+        default=60.0,
+        gt=0,
+        le=600,
+        validation_alias=AliasChoices("AI_LOCAL_TIMEOUT_SECONDS", "ai_local_timeout_seconds"),
+    )
+    # Dasselbe Budget, aber **kuerzer**, wenn hinter dem lokalen Weg noch ein
+    # Online-Provider wartet. Das ist das gestufte Zurueckfallen: ein lokales
+    # Modell, das in 15 Sekunden nichts liefert, verstellt dem schnelleren Weg
+    # nur die Reihenfolge. Ohne Provider im Rueckgrat gilt der grosse Wert.
+    ai_local_fast_timeout_seconds: float = Field(
+        default=15.0,
+        gt=0,
+        le=600,
+        validation_alias=AliasChoices("AI_LOCAL_FAST_TIMEOUT_SECONDS", "ai_local_fast_timeout_seconds"),
+    )
+    # Zeitbudget fuer eine Generierung beim Online-Provider. Ebenso getrennt vom
+    # Verbindungstest - ein Modelllauf dauert laenger als ein `GET /models`.
+    ai_generate_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        le=600,
+        validation_alias=AliasChoices("AI_GENERATE_TIMEOUT_SECONDS", "ai_generate_timeout_seconds"),
+    )
+    # Der Backup-Stand liegt in der Statusdatei des Workers. Das Backend greift
+    # nicht auf den Worker zu, sondern liest dieselbe Datei - und das nur, wenn
+    # beide das Volume `worker-status` teilen. Der Standardwert ist deshalb
+    # bewusst unveraendert, auch wenn der Pfad in einem Aufruf nichts findet.
+    worker_status_path: str = Field(
+        default="/var/lib/school-assistant/worker-status/worker-status.json",
+        validation_alias=AliasChoices("WORKER_STATUS_PATH", "worker_status_path"),
+    )
+    # --- Sprach-Assistent -------------------------------------------------
+    # Alles hier ist **optional** und per Default aus. Der Grund ist derselbe
+    # wie beim WebUntis-Abruf: ein nacktes `python -m uvicorn` soll beim Start
+    # keine ungefragten Verbindungen aufbauen, und die Sprachfunktionen sollen
+    # ohne Modelle vollstaendigstaendig lauffaehig sein.
+    speech_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("SPEECH_ENABLED", "speech_enabled"),
+    )
+    # Die Laufzeiten liegen **ausserhalb** des Python-Prozesses: whisper.cpp
+    # bringt seinen eigenen HTTP-Dienst mit, Piper ist ein Kommandozeilenwerk.
+    # Beide Pfade sind deshalb nur ein Name im `PATH` - und `None` heisst
+    # "eingetragen, aber nicht installiert", was die Faehigkeitsabfrage als
+    # deutschen Satz ausgibt statt als Fehler.
+    whisper_server_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("WHISPER_SERVER_URL", "whisper_server_url"),
+    )
+    whisper_server_timeout_seconds: float = Field(
+        default=120.0,
+        gt=0,
+        le=600,
+        validation_alias=AliasChoices("WHISPER_SERVER_TIMEOUT_SECONDS", "whisper_server_timeout_seconds"),
+    )
+    # Leer lassen heisst: die Sprache aus der Aufnahme selbst schaetzen lassen
+    # und keine Sprachangabe mitschicken. Das ist fuer einen deutschen Lernraum
+    # fast immer richtig und haelt den Aufruf portabel.
+    whisper_language: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("WHISPER_LANGUAGE", "whisper_language"),
+    )
+    piper_binary_path: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("PIPER_BINARY_PATH", "piper_binary_path"),
+    )
+    # ffmpeg wird nur fuer alles gebraucht, was **nicht** bereits ein
+    # 16-kHz-Mono-WAV ist - also praktisch immer, weil Chrome WebM und Safari
+    # MP4 aufnehmen. Fehlt es, bleibt der Textmodus und eine WAV-Datei moeglich.
+    ffmpeg_binary_path: str = Field(
+        default="ffmpeg",
+        validation_alias=AliasChoices("FFMPEG_BINARY_PATH", "ffmpeg_binary_path"),
+    )
+    # Obergrenze einer Aufnahme. Ohne sie ist ein `/transcribe`-Endpunkt eine
+    # Einladung, den Arbeitsspeicher des Containers zu fuellen; 12 MiB sind
+    # rund sieben Minuten Ton und damit mehr, als jemand diktiert.
+    speech_max_upload_bytes: int = Field(
+        default=12 * 1024 * 1024,
+        ge=1024,
+        le=64 * 1024 * 1024,
+        validation_alias=AliasChoices("SPEECH_MAX_UPLOAD_BYTES", "speech_max_upload_bytes"),
+    )
+    speech_max_seconds: int = Field(
+        default=120,
+        ge=5,
+        le=600,
+        validation_alias=AliasChoices("SPEECH_MAX_SECONDS", "speech_max_seconds"),
+    )
+    speech_max_text_characters: int = Field(
+        default=4000,
+        ge=100,
+        le=40000,
+        validation_alias=AliasChoices("SPEECH_MAX_TEXT_CHARACTERS", "speech_max_text_characters"),
+    )
+    # Leeres Feld heisst: das kleinste geladene Modell nehmen, tiny vor base.
+    # Ein Eintrag ist nur noetig, wenn jemand eine bestimmte Groesse erzwingen
+    # will - und dann darf die Oberflaeche nicht still etwas anderes nehmen.
+    speech_stt_model_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("SPEECH_STT_MODEL_ID", "speech_stt_model_id"),
+    )
+    # Dasselbe fuer die Stimme. Leer heisst: eine **deutsche** geladene Stimme,
+    # sonst die kleinste - aber nie stillschweigend eine andere Sprache.
+    speech_tts_voice_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("SPEECH_TTS_VOICE_ID", "speech_tts_voice_id"),
     )
     admin_username: str | None = Field(default=None, validation_alias=AliasChoices("ADMIN_USERNAME", "admin_username"))
     admin_password: SecretStr | None = Field(
@@ -217,3 +444,36 @@ def require_integration_encryption_key(settings: Settings) -> str:
     if not value:
         raise RuntimeError("INTEGRATION_ENCRYPTION_KEY must be configured")
     return value
+
+
+def require_web_push_private_key(settings: Settings) -> str:
+    """Der private VAPID-Schluessel - oder ein klarer Grund, warum es ihn nicht gibt.
+
+    Ein ``RuntimeError`` ist hier die *richtige* Sorte Fehler: es ist eine
+    Konfigurationsfrage und kein Datenproblem, und genau so behandelt es der
+    Endpunkt (503) wie der Scheduler.
+    """
+    value = _secret_value(settings.web_push_private_key).strip()
+    if not value:
+        raise RuntimeError("WEB_PUSH_VAPID_PRIVATE_KEY must be configured")
+    return value
+
+
+def require_web_push_subject(settings: Settings) -> str:
+    """Die Kontaktangabe des Push-Protokolls (``mailto:`` oder ``https:``)."""
+    value = (settings.web_push_subject or "").strip()
+    if not value:
+        raise RuntimeError("WEB_PUSH_VAPID_SUBJECT must be configured")
+    if not value.startswith(("mailto:", "https://")):
+        raise RuntimeError("WEB_PUSH_VAPID_SUBJECT must start with mailto: or https://")
+    return value
+
+
+def configured_web_push_public_key(settings: Settings) -> str | None:
+    """Der oeffentliche Schluessel, **falls** einer eingetragen ist.
+
+    Ein gesetzter Wert wird nicht gegengeprueft: das ist Aufgabe von
+    ``app/services/web_push.py``, das Schluesselpaar als solches liest. Hier
+    gibt es nur ``str`` zurueck oder ``None``.
+    """
+    return _secret_value(settings.web_push_public_key).strip() or None

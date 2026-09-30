@@ -3,18 +3,27 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
+  authorizeIntegration as authorizeIntegrationRequest,
+  createCalendarFeed,
   createIntegration,
   deleteIntegration,
+  getAiRuntime,
+  getCalendarFeed,
+  getCalendarWriting,
   getIntegrationCatalog,
   getIntegrations,
   getSession,
+  setCalendarWriting,
   syncIntegration,
   testIntegration,
   updateIntegration,
   type IntegrationChanges,
   type IntegrationWrite,
 } from "./api";
+import type { AiRuntimePayload } from "./ai-runtime";
 import type {
+  CalendarFeed,
+  CalendarWriting,
   IntegrationCatalog,
   IntegrationRead,
   IntegrationSyncResult,
@@ -28,6 +37,18 @@ interface SettingsState {
   user: UserResponse | null;
   integrations: IntegrationRead[];
   catalog: IntegrationCatalog[];
+  /**
+   * Die bekannten lokalen KI-Laufzeiten, oder `null`.
+   *
+   * Eigener Fehlerpfad: faellt diese Abfrage aus, sind die Vorschlaege im
+   * Formular weg - die restlichen Einstellungen stehen aber. Deshalb kein
+   * `Promise.all`, das den ganzen Bildschirm mitreisst.
+   */
+  runtime: AiRuntimePayload | null;
+  /** Die Zustimmung zum Schreiben in verbundene Kalender. */
+  writing: CalendarWriting | null;
+  /** Die abonnierbare ICS-Adresse. */
+  feed: CalendarFeed | null;
   error: string | null;
   status: SettingsStatus;
 }
@@ -36,9 +57,13 @@ const initialState: SettingsState = {
   user: null,
   integrations: [],
   catalog: [],
+  runtime: null,
+  writing: null,
+  feed: null,
   error: null,
   status: "loading",
 };
+
 
 function errorMessage(error: unknown) {
   if (error instanceof ApiError) {
@@ -76,11 +101,26 @@ export function useIntegrations() {
         return;
       }
 
-      const [integrations, catalog] = await Promise.all([getIntegrations(), getIntegrationCatalog()]);
+      const [integrations, catalog, writing, feed] = await Promise.all([
+        getIntegrations(),
+        getIntegrationCatalog(),
+        getCalendarWriting(),
+        getCalendarFeed(),
+      ]);
       if (currentRequest !== requestId.current) {
         return;
       }
-      setState({ user, integrations, catalog, error: null, status: "ready" });
+      /*
+        Die Laufzeiten kommen **nach** dem Rest und mit eigenem Fehlerpfad: sie
+        sind ein Vorschlag im Formular, kein Zustand, ohne den die Einstellungen
+        unbrauchbar waeren. Versagt der Abruf, bleibt `runtime` `null` und die
+        Karte sagt das - statt den ganzen Bildschirm zu leeren.
+      */
+      const runtime = await getAiRuntime().catch(() => null);
+      if (currentRequest !== requestId.current) {
+        return;
+      }
+      setState({ user, integrations, catalog, runtime, writing, feed, error: null, status: "ready" });
     } catch (error) {
       if (currentRequest !== requestId.current) {
         return;
@@ -189,6 +229,30 @@ export function useIntegrations() {
     [refreshIntegrations, runAction],
   );
 
+  /**
+   * Startet den Einwilligungslauf von Google und lässt den Browser dort hin.
+   *
+   * Der Server liefert nur die Adresse. Das Weiterleiten passiert hier von
+   * Hand, weil die Oberfläche vorher noch die Freigabe zum Schreiben zeigen
+   * muss - und weil `window.location` nur im Browser existiert. In einem
+   * Server-Render gäbe es das nicht, deshalb die Prüfung.
+   *
+   * Der Rückweg von Google endet beim **Backend** (`/v1/integrations/{id}/oauth/callback`),
+   * nicht hier: der Autorisierungscode soll nicht durch den Anwendungszustand.
+   * Das Backend legt das Token ab und zeigt eine Seite mit einem Link zurück
+   * auf `/settings` - deshalb ist nach dem Hinweg ein Neuladen nötig, damit die
+   * Verbindung mit dem Token sichtbar wird.
+   */
+  const authorizeIntegration = useCallback(
+    (integrationId: number) =>
+      runAction(`authorize:${integrationId}`, () => authorizeIntegrationRequest(integrationId), async (result) => {
+        if (typeof window !== "undefined" && result.authorization_url) {
+          window.location.assign(result.authorization_url);
+        }
+      }),
+    [runAction],
+  );
+
   const removeIntegration = useCallback(
     (integrationId: number) =>
       runAction(
@@ -214,6 +278,30 @@ export function useIntegrations() {
     [runAction],
   );
 
+  /**
+   * Die Zustimmung zum Schreiben setzen oder zurücknehmen.
+   *
+   * Die Antwort wird **nicht** neu geladen: sie ist genau die Anzeige, die jetzt
+   * gebraucht wird, und ein weiterer Abruf würde nur die gerade geschriebene
+   * Entscheidung wieder einholen.
+   */
+  const toggleWriting = useCallback(
+    (enabled: boolean) =>
+      runAction("writing", () => setCalendarWriting(enabled), (writing) => {
+        setState((current) => ({ ...current, writing }));
+      }),
+    [runAction],
+  );
+
+  /** Einen neuen Abo-Schlüssel erzeugen. Der alte ist danach ungültig. */
+  const createFeed = useCallback(
+    () =>
+      runAction("feed", () => createCalendarFeed(), (feed) => {
+        setState((current) => ({ ...current, feed }));
+      }),
+    [runAction],
+  );
+
   return {
     ...state,
     pendingAction,
@@ -225,6 +313,9 @@ export function useIntegrations() {
     changeIntegration,
     checkIntegration,
     runSync,
+    authorizeIntegration,
     removeIntegration,
+    toggleWriting,
+    createFeed,
   };
 }

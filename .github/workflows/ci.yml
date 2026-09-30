@@ -1,0 +1,221 @@
+name: CI
+
+# Lint, typecheck, tests and builds for the three package boundaries.
+#
+# There is no root package.json and no task runner: each area is checked with
+# the exact command that AGENTS.md documents, from the directory it belongs to.
+# The two traps that cost the most time to rediscover are encoded here:
+#
+#   * `next build` needs --webpack. Turbopack aborts reproducibly with
+#     "TurbopackInternalError: ModuleGraph::from_graphs was canceled", also on
+#     a completely full C: drive. The frontend image (frontend/Dockerfile) uses
+#     the same flag, so this job builds exactly what the image builds.
+#   * The worker tests run from the repository ROOT, not from worker/. They are
+#     plain stdlib unittest and need no dependencies at all.
+#
+# Cost control: the ARM64 image builds live in arm64.yml (weekly + manual),
+# because QEMU emulation of `npm ci` + `next build` is far too slow for a pull
+# request. What stays in the PR path is arm64-wheels, which proves the same
+# thing that actually breaks -- a pin without a linux/arm64 wheel -- in seconds
+# and without emulation.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: frontend (${{ matrix.check }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Every check reports on its own; one failure must not hide the others.
+      fail-fast: false
+      matrix:
+        check: [test, lint, typecheck]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: install
+        run: npm ci
+      - name: test (vitest)
+        if: matrix.check == 'test'
+        # vitest exits 1 on the accepted baseline, so that exit code is dropped
+        # and the baseline check owns the step result. This step deliberately
+        # has no continue-on-error: an unexpected failing test still fails the
+        # job, and a missing report is a hard error.
+        run: |
+          npm test -- --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/vitest.json" || true
+          node ../.github/ci/check-known-failures.mjs frontend-test "$RUNNER_TEMP/vitest.json"
+      - name: lint (eslint)
+        if: matrix.check == 'lint'
+        # Same contract as the test step. The accepted baseline is 22
+        # @typescript-eslint/no-explicit-any findings in lib/schemas.ts and
+        # lib/types.ts and nothing else; see .github/ci/known-failures.mjs.
+        run: |
+          npm run lint -- --format json --output-file "$RUNNER_TEMP/eslint.json" || true
+          node ../.github/ci/check-known-failures.mjs frontend-lint "$RUNNER_TEMP/eslint.json"
+      - name: typecheck (tsc --noEmit)
+        if: matrix.check == 'typecheck'
+        run: npm run typecheck
+
+  frontend-build:
+    name: frontend build (next build --webpack)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: install
+        run: npm ci
+      - name: build
+        # Not `npm run build`: that script is plain `next build` (Turbopack).
+        run: npx next build --webpack
+
+  backend:
+    name: backend (${{ matrix.check }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [pytest, ruff, mypy]
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          # requirements.txt is what the image installs, pyproject.toml holds the
+          # pinned dev tools. Both belong in the cache key.
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/pyproject.toml
+      - name: install
+        # One resolution over both sources: requirements.txt keeps the job equal
+        # to backend/Dockerfile, the [dev] extra adds pytest/ruff/mypy. No new
+        # lock file is introduced for that. Editable, so that every tool in this
+        # job sees the checked-out sources; the only side effect on a developer
+        # machine is backend/*.egg-info/, which .gitignore does not cover yet.
+        run: pip install -r requirements.txt -e ".[dev]"
+      - name: tests (pytest)
+        if: matrix.check == 'pytest'
+        # Needs no PostgreSQL: tests/conftest.py creates a SQLite database per
+        # test in tmp_path and runs the Alembic migrations on it.
+        run: python -m pytest
+      - name: lint (ruff)
+        if: matrix.check == 'ruff'
+        run: python -m ruff check app alembic tests
+      - name: typecheck (mypy)
+        if: matrix.check == 'mypy'
+        run: python -m mypy app
+
+  worker:
+    name: worker (unittest, from repo root)
+    runs-on: ubuntu-latest
+    # No working-directory: the suite is discovered from the repository root,
+    # because worker/tests/test_healthcheck.py imports `worker.healthcheck`.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: tests (unittest, no dependencies needed)
+        run: python -m unittest discover -s worker/tests -v
+      - name: compile the module the tests do not import
+        # worker/main.py is never imported by the tests, so a syntax error there
+        # would otherwise only surface in the image build.
+        run: python -m py_compile worker/main.py worker/healthcheck.py worker/env.py worker/backup.py
+
+  arm64-wheels:
+    name: arm64 wheel availability
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: resolve every pin for linux/arm64
+        # Proves the Raspberry Pi premise without QEMU and without a second
+        # builder. Two --platform tags are required: pip accepts a wheel for a
+        # target glibc only downwards per tag, and the two dependency families
+        # here sit at different levels -- psycopg-binary needs manylinux_2_28
+        # (glibc 2.27+), pydantic-core only publishes manylinux_2_17. A single
+        # tag therefore rejects one of the two.
+        #
+        # --only-binary=:all: mirrors the image: python:3.12-slim has no
+        # compiler, so a pin that has no arm64 wheel breaks `docker build` on the
+        # Pi exactly as it breaks this step. pgvector is pure Python
+        # (pgvector-0.5.0-py3-none-any.whl) and unaffected by the architecture;
+        # the arch-specific parts of the stack are psycopg-binary and the
+        # pgvector/pgvector image manifest, which arm64.yml checks by building.
+        run: |
+          python -m pip download \
+            --only-binary=:all: \
+            --platform manylinux_2_28_aarch64 \
+            --platform manylinux_2_17_aarch64 \
+            --python-version 3.12 \
+            --implementation cp \
+            --abi cp312 \
+            --dest "$RUNNER_TEMP/arm64-wheels" \
+            --requirement backend/requirements.txt \
+            --requirement worker/requirements.txt
+          ls -1 "$RUNNER_TEMP/arm64-wheels" | wc -l
+
+  compose-config:
+    name: compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: validate the compose file
+        # --quiet prints nothing. Without it the output would contain the
+        # interpolated credentials, which must not end up in a log.
+        run: docker compose config --quiet
+        env:
+          # Throwaway values for a parse, not secrets. They are never written
+          # to a .env file and never leave this step.
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+          DATABASE_URL: postgresql+psycopg://ci:ci@postgres:5432/ci
+          SECRET_KEY: ci-placeholder-not-a-secret
+          INTEGRATION_ENCRYPTION_KEY: ci-placeholder-not-a-secret
+          ADMIN_PASSWORD: ci-placeholder-not-a-secret
+
+  worker-image:
+    name: worker image (amd64 build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build the worker image from the repository root
+        # This is the only build that depends on the root .dockerignore, which
+        # pins the context to worker/ and re-excludes the host artefacts. A
+        # regression there breaks the image, not a linter, so it is worth a job.
+        # Nothing is pushed and nothing is run -- the ARM64 leg that actually
+        # needs a Pi or QEMU lives in arm64.yml.
+        run: docker build --file worker/Dockerfile --tag school-assistant-worker:ci-check .

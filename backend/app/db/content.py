@@ -28,12 +28,24 @@ from .base import Base
 from .identity import Subject, SyncSource, User
 
 if TYPE_CHECKING:
+    from .academic import Grade
     from .planning import StudyPlanTask, StudyTaskSeries
     from .quiz import Quiz, QuizQuestion
+    from .rewards import RewardBadge, RewardEntry
 
 
 JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
-VECTOR_TYPE = Numeric(precision=1536).with_variant(Vector(dim=1536), "postgresql")
+# Die Reihenfolge von `with_variant` ist hier nicht Geschmack, sondern Funktion.
+# `cosine_distance` haengt am Comparator des pgvector-Typs, und der Comparator
+# kommt vom **Python**-Typ der Spalte - nicht vom DDL-Typ, den der Dialekt
+# gewaehlt. Mit `Numeric(...).with_variant(Vector(...), "postgresql")` war der
+# Python-Typ `Numeric`, der DDL-Typ auf Postgres aber `VECTOR` - die Spalte sah
+# in der Datenbank korrekt aus, und `DocumentChunk.embedding.cosine_distance(...)`
+# warf trotzdem `AttributeError`. Da `_vector_search` nur `AiProviderError`
+# faengt, wurde daraus ein 500 statt einer Trefferliste.
+# Also: `Vector` als Basistyp, `Numeric` nur fuer SQLite, wo es kein pgvector
+# gibt und die Embeddings dort ohnehin nie durchgesucht werden.
+VECTOR_TYPE = Vector(dim=1536).with_variant(Numeric(precision=1536), "sqlite")
 
 
 class Document(Base):
@@ -65,6 +77,9 @@ class Document(Base):
     user: Mapped[User] = relationship(back_populates="documents")
     subject: Mapped[Subject | None] = relationship(back_populates="documents")
     sync_source: Mapped[SyncSource | None] = relationship(back_populates="documents")
+    # Noten, die aus diesem Dokument uebernommen wurden. Beim Loeschen des
+    # Dokuments faellt nur der Verweis weg, nicht die Note.
+    grades: Mapped[list[Grade]] = relationship(back_populates="document")
     topics: Mapped[list[Topic]] = relationship(secondary="topic_documents", back_populates="documents")
     chunks: Mapped[list[DocumentChunk]] = relationship(back_populates="document", cascade="all, delete-orphan")
 
@@ -116,6 +131,8 @@ class Topic(Base):
     study_task_series: Mapped[list[StudyTaskSeries]] = relationship(back_populates="topic")
     quizzes: Mapped[list[Quiz]] = relationship(back_populates="topic")
     quiz_questions: Mapped[list[QuizQuestion]] = relationship(back_populates="topic")
+    reward_entries: Mapped[list[RewardEntry]] = relationship(back_populates="topic")
+    reward_badges: Mapped[list[RewardBadge]] = relationship(back_populates="topic")
     progress: Mapped[LearningProgress | None] = relationship(
         back_populates="topic", uselist=False, cascade="all, delete-orphan"
     )

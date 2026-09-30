@@ -30,7 +30,9 @@ import { Input } from "@/components/ui/input";
 import { CalendarSection } from "@/components/manage/calendar-section";
 import { ExamsSection } from "@/components/manage/exams-section";
 import { HomeworkSection } from "@/components/manage/homework-section";
+import { SpeechControls } from "@/components/speech/speech-controls";
 import { ApiError, askDocuments, completeStudyTask, startStudyTask, stopStudyTask } from "@/lib/api";
+import { describeSource } from "@/lib/ai-runtime";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   formatDate,
@@ -43,6 +45,9 @@ import { useNow } from "@/lib/use-now";
 import { useGreeting } from "@/lib/use-greeting";
 import { isDemoTaskId, type DashboardData, type DashboardLesson, type DashboardStudyTask, type DocumentAnswer, type LessonState, type StudyActionResult, type StudyTaskStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { GradesCard } from "./grades-card";
+import { ProgressCard } from "./progress-card";
+import { RewardsCard } from "./rewards-card";
 import { ScheduleCard } from "./schedule-view";
 
 interface DashboardViewProps {
@@ -256,13 +261,20 @@ function mergeStudyAction(task: DashboardStudyTask, result: StudyActionResult, a
 /**
  * Die Kopfzeile des Dashboards.
  *
- * Der Satz kommt vom Backend und ist einmal pro Tag vom KI-Provider erzeugt.
- * Steht dort `source: "fallback"`, hat kein Modell geschrieben - der Satz wurde
- * aus den Daten gebaut. Das wird sichtbar gemacht, damit niemand einen
- * Zufallssatz fuer eine KI-Aussage haelt.
+ * Der Satz kommt vom Backend und ist einmal pro Tag von einem KI-Weg erzeugt.
+ * Das Badge sagt, **welcher** Weg das war: ein Server auf diesem Rechner, ein
+ * Online-Dienst oder - bei `fallback` - gar kein Modell, sondern der Satz aus den
+ * Daten. Das wird sichtbar gemacht, damit niemand einen Zufallssatz fuer eine
+ * KI-Aussage haelt.
+ *
+ * Die Herkunft wird ueber `describeSource` beschriftet, damit Dashboard und
+ * Dokumentenfrage **eine** Formulierung teilen. Zwei Stellen, die "Lokales
+ * Modell" und "Von der KI" unabhaengig voneinander erfinden, waeren genau die
+ * zwei Herkunftssysteme, die es nicht geben soll.
  */
 function GreetingHeader({ username }: { username?: string | null }) {
   const { greeting, error, status, refresh, refreshing } = useGreeting();
+  const herkunft = greeting ? describeSource(greeting.source, greeting.model) : null;
 
   return (
     <header id="overview" className={cn(anchorClass, "flex flex-col justify-between gap-4 sm:flex-row sm:items-start")}>
@@ -272,8 +284,8 @@ function GreetingHeader({ username }: { username?: string | null }) {
           Dein Tagesbriefing
         </p>
         {status === "loading" ? (
-          <Skeleton className="h-9 w-full max-w-xl" />
-        ) : status === "error" || !greeting ? (
+          <Skeleton className="h-9 w-full max-xl" />
+        ) : status === "error" || !greeting || !herkunft ? (
           <>
             <h1 className="text-2xl font-extrabold tracking-[-0.03em] sm:text-3xl">
               Willkommen{username ? `, ${username}` : ""}.
@@ -288,11 +300,8 @@ function GreetingHeader({ username }: { username?: string | null }) {
               {greeting.text}
             </h1>
             <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-              <Badge variant={greeting.source === "ai" ? "info" : "secondary"}>
-                {greeting.source === "ai" ? "Von der KI" : "Aus deinen Daten"}
-              </Badge>
-              {greeting.source === "ai" && greeting.model ? <span>{greeting.model}</span> : null}
-              {greeting.source === "ai" && greeting.generatedOn ? (
+              <Badge variant={herkunft.fromModel ? "info" : "secondary"}>{herkunft.text}</Badge>
+              {greeting.generatedOn ? (
                 <>
                   <span className="text-border">·</span>
                   <span>für {formatDate(new Date(`${greeting.generatedOn}T12:00:00`))}</span>
@@ -302,6 +311,7 @@ function GreetingHeader({ username }: { username?: string | null }) {
           </>
         )}
       </div>
+
       <div className="flex shrink-0 items-center gap-2">
         <Button
           type="button"
@@ -318,7 +328,7 @@ function GreetingHeader({ username }: { username?: string | null }) {
   );
 }
 
-function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
+function StudyTasksCard({ tasks, onLernzeitGeaendert }: { tasks: DashboardStudyTask[]; onLernzeitGeaendert?: () => void }) {
   const now = useNow();
   const [taskOverrides, setTaskOverrides] = useState<Record<string, DashboardStudyTask>>({});
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
@@ -331,6 +341,11 @@ function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
     try {
       const result = action === "start" ? await startStudyTask(task.id) : action === "stop" ? await stopStudyTask(task.id) : await completeStudyTask(task.id);
       setTaskOverrides((current) => ({ ...current, [task.id]: mergeStudyAction(task, result, action) }));
+      // Start, Stopp und Abschluss aendern die Lernzeit - und damit Tageswert,
+      // Serie und Wochenziel der Fortschrittskarte. Ohne diesen Hinweis
+      // zeigte sie bis zum naechsten Neuladen einen Stand, den es nicht mehr
+      // gibt.
+      onLernzeitGeaendert?.();
     } catch (error) {
       setActionError(error instanceof ApiError ? error.message : "Die Lernaktion konnte nicht ausgeführt werden.");
     } finally {
@@ -450,14 +465,40 @@ function UsageCard({ data }: { data: DashboardData }) {
   );
 }
 
+/**
+ * Die Herkunft einer Dokumenten-Antwort.
+ *
+ * Dieselbe Beschriftung wie im Tagesbriefing (`describeSource`), damit die Frage
+ * "woher kommt das?" an beiden Stellen dieselbe Antwort bekommt. Der einzige
+ * Unterschied ist der Text: hier stammt der Daten-Satz aus den Dokumenten, dort
+ * aus dem Tagesstand.
+ */
 function AnswerBadge({ answer }: { answer: DocumentAnswer }) {
-  if (answer.source === "none") {
-    return <Badge variant="outline">Keine Treffer</Badge>;
+  const herkunft = describeSource(answer.source, answer.model);
+  if (herkunft.fromModel) {
+    return <Badge variant="secondary">{herkunft.text}</Badge>;
   }
-  if (answer.source === "ai") {
-    return <Badge variant="secondary">{answer.model ? `KI-Antwort · ${answer.model}` : "KI-Antwort"}</Badge>;
+  if (answer.source === "none") {
+    return <Badge variant="outline">{herkunft.text}</Badge>;
   }
   return <Badge variant="info">Aus deinen Dokumenten</Badge>;
+}
+
+
+/**
+ * Der Hinweis, ob der Notenstand im Prompt stand.
+ *
+ * Die Frage ist eine andere als die nach dem Modell: eine Lernende, die nach
+ * ihrer Note fragt, muss erfahren koennen, ob das Modell ihre Note überhaupt
+ * gesehen hat. Bejaht heisst es erst nach einer ausdruecklichen Freigabe, und
+ * die steht in der Notenkarte.
+ */
+function NotenHinweis({ gradesShared }: { gradesShared: boolean }) {
+  return gradesShared ? (
+    <Badge variant="info">Noten mitgeschickt</Badge>
+  ) : (
+    <Badge variant="outline">Noten nicht mitgeschickt</Badge>
+  );
 }
 
 function AssistantCard() {
@@ -532,6 +573,10 @@ function AssistantCard() {
 
         {answer ? (
           <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <AnswerBadge answer={answer} />
+              <NotenHinweis gradesShared={answer.grades_shared} />
+            </div>
             <p className="rounded-2xl border border-border bg-background/60 px-4 py-3 text-sm leading-6">{answer.answer}</p>
             {answer.sources.length > 0 ? (
               <ul className="space-y-2">
@@ -559,6 +604,15 @@ function AssistantCard() {
           </div>
         )}
         <p className="text-xs leading-5 text-muted-foreground">Antworten entstehen aus deinen eigenen Dokumenten; ohne verbundenen KI-Dienst wird aus den Treffern zitiert.</p>
+
+        {/*
+          Die Spracheingabe und die Sprachausgabe hängen an **dieser** Karte und
+          nicht an einer eigenen. Der Grund ist derselbe wie bei den Modellen:
+          das Diktat schreibt in genau dieses Fragefeld, und der Vorleseknopf
+          liest genau diese Antwort. Eine eigene Sprachkarte waere ein zweiter
+          Textweg - und der waere nicht derselbe.
+        */}
+        <SpeechControls onText={setQuestion} antwort={answer?.answer} />
       </CardContent>
     </Card>
   );
@@ -567,6 +621,20 @@ function AssistantCard() {
 export function DashboardView({ data, error, isLoading, onRetry, username }: DashboardViewProps) {
   const now = useNow();
   const reference = useMemo(() => now ?? new Date(), [now]);
+  /**
+   * Zaehler, keine Zeitangabe: die Fortschritts- und die Belohnungskarte laden
+   * neu, wenn sich dieser Wert aendert. Beide brauchen ihn, weil **ein**
+   * Ereignis - eine abgeschlossene Lernsession - beides verschiebt: Tageszeit,
+   * Serie und Wochenziel links, Punkte und Auszeichnungen rechts.
+   *
+   * Bewusst **ein** Zaehler fuer zwei Karten und nicht zwei. Zwei Zaehler
+   * koennten nur etwas anderes beobachten als dasselbe Ereignis - und damit
+   * entweder zu frueh oder zu spaet aktualisieren. Der Zaehler wird genau an der
+   * Stelle hochgezaehlt, an der die Aenderung ausgeloest wird, und die Karten
+   * lesen ihn beide. Das ist derselbe Zaehler, den es schon gibt; es kam kein
+   * zweiter Weg dazu, den Zustand zu aendern.
+   */
+  const [lernzeitKey, setLernzeitKey] = useState(0);
   const focusLesson = useMemo(() => {
     if (!data) {
       return undefined;
@@ -641,7 +709,26 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <div className="space-y-6">
-          <StudyTasksCard tasks={data.studyTasks} />
+          <StudyTasksCard tasks={data.studyTasks} onLernzeitGeaendert={() => setLernzeitKey((zaehler) => zaehler + 1)} />
+          <ProgressCard refreshKey={lernzeitKey} />
+          {/*
+            Die Belohnungskarte haengt am selben Zaehler wie die Fortschrittskarte
+            und steht direkt darunter: beide antworten auf dieselbe Frage ("wie
+            stehe ich heute da?") und beide aendern sich in derselben Sekunde. Sie
+            laedt selbst und teilt sich keinen Zustand mit den Karten daneben - ein
+            Zaehler, der in zwei Karten dupliziert waere, koennte nur eins von
+            beiden zu frueh aktualisieren.
+          */}
+          <RewardsCard refreshKey={lernzeitKey} />
+          {/*
+            Die Notenkarte steht neben der Fortschrittskarte, nicht unter
+            `/lernen`: Schnitt, Verlauf und Hochrechnung beantworten die Frage
+            "wie stehe ich?", und das ist eine Frage des Tagesueberblicks. Sie
+            laedt selbst und teilt sich keinen Zustand mit den Karten daneben -
+            eine Notenliste, die eine Aenderung in einer anderen Karte erst
+            bemerkt, waere ein dritter Weg in dieselbe Sache.
+          */}
+          <GradesCard />
           <ExamsSection reference={reference} />
           <HomeworkSection reference={reference} />
         </div>

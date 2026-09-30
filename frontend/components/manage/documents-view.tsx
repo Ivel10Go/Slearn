@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SectionBanner } from "@/components/manage/row-actions";
 import { askDocuments, getDocuments, searchDocuments, uploadFile, type DocumentAskInput, type DocumentSearchInput } from "@/lib/api";
+import { describeSource } from "@/lib/ai-runtime";
 import { formatDateTime } from "@/lib/format";
 import { useAction, useList } from "@/lib/use-collection";
 import { cn } from "@/lib/utils";
@@ -42,12 +43,20 @@ function useDocuments() {
   return useList<DocumentRecord>(() => getDocuments());
 }
 
+/**
+ * Die Herkunft einer Antwort, in derselben Formulierung wie im Dashboard.
+ *
+ * `describeSource` kommt aus `lib/ai-runtime` - dieselbe Funktion wie in der
+ * Kopfzeile. Zwei Texte fuer dieselbe Frage waeren zwei Herkunftssysteme, und
+ * genau die soll es nicht geben.
+ */
 function AntwortHerkunft({ antwort }: { antwort: DocumentAnswer }) {
-  if (antwort.source === "none") {
-    return <Badge variant="outline">Keine Treffer</Badge>;
+  const herkunft = describeSource(antwort.source, antwort.model);
+  if (herkunft.fromModel) {
+    return <Badge variant="secondary">{herkunft.text}</Badge>;
   }
-  if (antwort.source === "ai") {
-    return <Badge variant="secondary">{antwort.model ? `KI-Antwort · ${antwort.model}` : "KI-Antwort"}</Badge>;
+  if (antwort.source === "none") {
+    return <Badge variant="outline">{herkunft.text}</Badge>;
   }
   return <Badge variant="info">Aus deinen Dokumenten</Badge>;
 }
@@ -293,7 +302,10 @@ export function DocumentsView() {
 
             {frage.result ? (
               <div className="space-y-3">
-                <AntwortHerkunft antwort={frage.result} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <AntwortHerkunft antwort={frage.result} />
+                  {frage.result.grades_shared ? <Badge variant="info">Noten mitgeschickt</Badge> : <Badge variant="outline">Noten nicht mitgeschickt</Badge>}
+                </div>
                 <p className="border border-border bg-background/60 px-4 py-3 text-sm leading-6">{frage.result.answer}</p>
                 {frage.result.sources.length > 0 ? (
                   <ul className="space-y-2">

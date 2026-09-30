@@ -1,22 +1,30 @@
-from fastapi import APIRouter, HTTPException, status
+import html
+import logging
+
+from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.deps import AppSettings, CurrentUser, DatabaseSession
 from app.api.helpers import owned_or_404
-from app.core.config import require_integration_encryption_key
+from app.core import oauth_state
+from app.core.config import require_integration_encryption_key, require_secret
 from app.core.crypto import CredentialDecryptionError, decrypt_credentials, encrypt_credentials
 from app.core.time import utc_now
 from app.db.entities import SyncSource
 from app.schemas.common import MessageResponse
 from app.schemas.integrations import (
+    IntegrationAuthorizeRead,
     IntegrationCreate,
     IntegrationRead,
     IntegrationSyncResult,
     IntegrationTestResult,
     IntegrationUpdate,
 )
+from app.services import calendar_consent, google_calendar
+from app.services.calendar_sync import CalendarSyncError
 from app.services.integrations import (
     INTEGRATION_KINDS,
     INTEGRATION_SPECS,
@@ -27,10 +35,12 @@ from app.services.integrations import (
     missing_fields,
     normalize_config,
     normalize_credentials,
-    sync_integration,
+    run_integration_sync,
 )
 
 router = APIRouter(prefix="/api/v1/integrations", tags=["integrations"])
+
+logger = logging.getLogger("school_assistant.integrations")
 
 
 def _encryption_key(settings: AppSettings) -> str:
@@ -78,8 +88,11 @@ def integration_catalog(settings: AppSettings) -> list[dict[str, object]]:
             "label": spec.label,
             "description": spec.description,
             "required_config": list(spec.required_config),
+            "optional_config": list(spec.optional_config),
+            "required_one_of": [list(group) for group in spec.required_one_of],
             "required_credentials": list(spec.required_credentials),
             "optional_credentials": list(spec.optional_credentials),
+            "supports_writing": spec.supports_writing,
         }
         for spec in INTEGRATION_SPECS.values()
     ]
@@ -238,6 +251,7 @@ def test_integration(
             credentials=credentials,
             document_storage_path=settings.document_storage_path,
             timeout_seconds=settings.integration_timeout_seconds,
+            timezone_name=current_user.timezone or settings.timezone,
         )
     except IntegrationConnectionError as exc:
         source.status = "error"
@@ -260,67 +274,51 @@ def sync_integration_endpoint(
 ) -> IntegrationSyncResult:
     """Holt Daten aus der Integration und speichert sie lokal.
 
-    Bewusst kein automatischer Import beim Start: der Abruf dauert mehrere
-    Sekunden und braucht eine bestehende Sitzung beim Schulportal, also muss
-    ihn die Oberfläche anstoßen.
+    Der Abruf dauert mehrere Sekunden und braucht eine bestehende Sitzung beim
+    Schulportal, deshalb holt ihn die Oberfläche über diesen Knopf. Ein
+    planmäßiger Lauf im Hintergrund teilt sich denselben Ablauf in
+    ``run_integration_sync``, beachtet aber zusätzlich ``last_sync_at``.
+    Ein Klick hier bleibt davon unberührt: der Knopf holt immer, auch wenn der
+    planmäßige Lauf heute schon gelaufen ist.
     """
     source = _owned_integration(db, integration_id, current_user.id)
     integration = _read(source, settings)
 
-    if integration.missing_fields:
-        source.status = "error"
-        source.last_error = f"Fehlende Angaben: {', '.join(integration.missing_fields)}"
-        db.commit()
-        return IntegrationSyncResult(
-            ok=False,
-            status="error",
-            message=source.last_error,
-            missing_fields=integration.missing_fields,
-        )
-
-    label = INTEGRATION_SPECS[source.source_type].label
-    if not source.enabled:
-        source.status = "disabled"
-        source.last_error = None
-        db.commit()
-        return IntegrationSyncResult(
-            ok=False,
-            status="disabled",
-            message=f"{label} ist deaktiviert, es wurden keine Daten geholt.",
-        )
-
-    key = _encryption_key(settings)
-    credentials = decrypt_credentials(source.credentials, key) if source.credentials else {}
     try:
-        outcome = sync_integration(
+        run = run_integration_sync(
             db=db,
             source=source,
             config=integration.config,
-            credentials=credentials,
+            credential_keys=integration.credential_keys,
             settings=settings,
             timezone_name=current_user.timezone or settings.timezone,
-            timeout_seconds=settings.integration_timeout_seconds,
         )
-    except IntegrationConnectionError as exc:
-        db.rollback()
-        source = _owned_integration(db, integration_id, current_user.id)
-        source.status = "error"
-        source.last_error = str(exc)
-        db.commit()
-        return IntegrationSyncResult(ok=False, status="error", message=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Integration encryption is not configured",
+        ) from exc
     except SQLAlchemyError:
         db.rollback()
         raise
 
-    message = outcome.describe()
-    lesson_fields = getattr(outcome, "imported_lessons", 0)
-    if lesson_fields:
+    if not run.ok:
+        return IntegrationSyncResult(
+            ok=False,
+            status=run.status,
+            message=run.message,
+            missing_fields=list(run.missing_fields),
+        )
+
+    outcome = run.outcome
+    message = run.message
+    if getattr(outcome, "imported_lessons", 0):
         skipped = getattr(outcome, "skipped_entries", 0)
         if skipped:
             message += f" {skipped} unvollständige Einträge wurden übersprungen."
     return IntegrationSyncResult(
         ok=True,
-        status="connected",
+        status=run.status,
         message=message,
         imported_lessons=getattr(outcome, "imported_lessons", 0),
         subjects=getattr(outcome, "subjects", 0),
@@ -332,7 +330,203 @@ def sync_integration_endpoint(
         indexed_chunks=getattr(outcome, "indexed_chunks", 0),
         removed_documents=getattr(outcome, "removed_documents", 0),
         skipped_files=getattr(outcome, "skipped_files", 0),
+        imported_events=getattr(outcome, "imported_events", 0),
+        updated_events=getattr(outcome, "updated_events", 0),
+        pushed_events=getattr(outcome, "pushed_events", 0),
+        deleted_events=getattr(outcome, "deleted_events", 0),
+        removed_events=getattr(outcome, "removed_events", 0),
+        conflicts=getattr(outcome, "conflicts", 0),
+        floating_events=getattr(outcome, "floating_events", 0),
         window_start=getattr(outcome, "window_start", None),
         window_end=getattr(outcome, "window_end", None),
         last_sync_at=source.last_sync_at,
     )
+
+
+# -- Google Kalender: Einwilligung und Rückkehr ----------------------------
+#
+# Der Rückweg zeigt bewusst auf **diese** Routen und nicht auf die Oberfläche.
+# Ein Autorisierungscode im Frontend liefe durch Anwendungszustand und Browser-
+# Verlauf; hier ist er ein einmaliger Parameter, der sofort gegen ein Token
+# eingetauscht und danach verworfen wird.
+#
+# Die Reihenfolge im Rückweg ist nicht verhandelbar: ``state`` **vor** dem
+# Tausch. Ein Code, der zu einer fremden Autorisierung gehört, darf den Server
+# nicht einmal erreichen.
+#
+# Der Rückweg liefert HTML und keine Weiterleitung. Grund ist der Proxy:
+# ``lib/proxy.ts`` verwirft den ``location``-Kopf jeder Antwort, also käme ein
+# ``307`` ohne Ziel beim Browser an. Stattdessen bekommt der Nutzer eine Seite
+# mit einem Link zurück auf ``/settings`` - und weil der Aufruf über denselben
+# Ursprung läuft, stimmt der relative Pfad ohne jede Konfiguration.
+
+
+def _google_integration(db: Session, integration_id: int, user_id: int) -> SyncSource:
+    source = _owned_integration(db, integration_id, user_id)
+    if source.source_type != "google_calendar":
+        # 404 statt 400: eine fremde Art zu autorisieren würde sonst verraten,
+        # dass die Id überhaupt existiert.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
+    return source
+
+
+def _signing_secret(settings: AppSettings) -> str:
+    try:
+        return require_secret(settings)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Application signing is not configured",
+        ) from exc
+
+
+@router.post("/{integration_id}/authorize", response_model=IntegrationAuthorizeRead)
+def authorize_integration(
+    integration_id: int,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    settings: AppSettings,
+) -> IntegrationAuthorizeRead:
+    """Bereitet die Einwilligung vor und gibt die Adresse für den Browser zurück.
+
+    Der Server leitet **nicht** selbst um. Die Oberfläche soll vorher noch
+    prüfen können, ob die Einwilligung zum Schreiben erteilt ist - und das ist
+    hier die einzige Stelle, an der das noch **vor** dem Google-Bildschirm
+    passieren kann.
+
+    Fehlt die Einwilligung, wird 422 mit Klartext geantwortet: Die Schreib-Scope
+    wird nicht einmal angefragt, solange niemand sie erteilt hat.
+    """
+    source = _google_integration(db, integration_id, current_user.id)
+    integration = _read(source, settings)
+    if integration.missing_fields:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Missing required values: {', '.join(integration.missing_fields)}",
+        )
+    if not calendar_consent.calendar_writing_allowed(db, current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Für Google Kalender wird zuerst die Freigabe zum Schreiben gebraucht. "
+                "Ohne sie wird nur gelesen, und die Verbindung hier startet gar nicht."
+            ),
+        )
+    state = oauth_state.sign_state(source.id, current_user.id, _signing_secret(settings))
+    try:
+        url = google_calendar.build_authorization_url(
+            client_id=integration.config.get("client_id", ""),
+            redirect_uri=integration.config.get("redirect_uri", ""),
+            state=state,
+        )
+    except google_calendar.GoogleOAuthError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    source.status = "pending"
+    source.last_error = None
+    db.commit()
+    return IntegrationAuthorizeRead(
+        authorization_url=url,
+        state=state,
+        scopes=list(google_calendar.SCOPES),
+        message="Google zeigt jetzt an, welche Rechte die Verbindung braucht.",
+    )
+
+
+@router.get(
+    "/{integration_id}/oauth/callback",
+    response_class=HTMLResponse,
+    responses={400: {"content": {"text/html": {}}}},
+)
+def oauth_callback(
+    integration_id: int,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    settings: AppSettings,
+    code: str = Query(default=""),
+    state: str = Query(default=""),
+    error: str = Query(default=""),
+) -> HTMLResponse:
+    """Nimmt den Autorisierungscode entgegen und legt das Token verschlüsselt ab.
+
+    Google schickt den Browser hierher. Weil der Aufruf über
+    ``/api/backend/v1/...`` läuft, ist das dieselbe Herkunft wie die Oberfläche -
+    das Sitzungs-Cookie ist da und ``current_user`` wird gefunden. Ohne Sitzung
+    ist das 401, auch wenn Google gerade erfolgreich war; das ist der Preis
+    dafür, dass keine fremde Seite den Code einschieben kann.
+
+    Ein Fehler wird als **HTML mit Klartext** beantwortet und nicht als JSON mit
+    Fehlercode: der Browser landet hier in einem Tab, nicht in einem
+    ``fetch``. Ein 500 mit leerem Bildschirm wäre eine Sackgasse.
+    """
+    source = _google_integration(db, integration_id, current_user.id)
+    key = _encryption_key(settings)
+
+    if error.strip():
+        return _authorization_page(
+            "Die Verbindung wurde abgebrochen",
+            f"Google meldet: {error.strip()}. Es wurden keine Daten gespeichert.",
+        )
+
+    try:
+        claims = oauth_state.verify_state(state, _signing_secret(settings))
+    except oauth_state.OAuthStateError as exc:
+        return _authorization_page("Diese Verbindung passt nicht", str(exc))
+
+    # Beide Bindungen prüfen: der state nennt Integration **und** Nutzer. Wäre
+    # nur die Integration geprüft, könnte eine Lernende den state einer anderen
+    # an eine eigene, noch leere Integration kleben.
+    if claims.subject != source.id or claims.actor != current_user.id:
+        return _authorization_page(
+            "Diese Verbindung passt nicht",
+            "Der state gehört zu einer anderen Autorisierung und wurde verworfen.",
+        )
+
+    credentials = decrypt_credentials(source.credentials, key) if source.credentials else {}
+    integration = _read(source, settings)
+    try:
+        tokens = google_calendar.exchange_code(
+            client_id=integration.config.get("client_id", ""),
+            client_secret=credentials.get("client_secret", ""),
+            code=code,
+            redirect_uri=integration.config.get("redirect_uri", ""),
+            timeout_seconds=settings.integration_timeout_seconds,
+        )
+    except (google_calendar.GoogleOAuthError, CalendarSyncError) as exc:
+        source.status = "error"
+        source.last_error = str(exc)
+        db.commit()
+        return _authorization_page("Google hat den Code nicht angenommen", str(exc))
+
+    source.credentials = encrypt_credentials(google_calendar.tokens_to_credentials(tokens, credentials), key)
+    source.status = "configured"
+    source.last_error = None
+    db.commit()
+    logger.info("google_calendar_authorized integration_id=%s user_id=%s", source.id, current_user.id)
+    return _authorization_page(
+        "Google Kalender ist verbunden",
+        "Die Termine werden ab jetzt mit deinem Kalender abgeglichen. "
+        "Der Zugriff ist verschlüsselt gespeichert.",
+    )
+
+
+def _authorization_page(heading: str, message: str) -> HTMLResponse:
+    """Eine schlichte deutsche Seite für das Ende des Autorisierungslaufs.
+
+    Bewusst ohne Skript und ohne externes Bild: die Seite läuft unter der
+    Content-Security-Policy der Oberfläche, und ein eingebettetes Skript wäre der
+    einzige Grund, sie anpassen zu müssen. Der Text steht deshalb als
+    HTML-Escape drin - Google liefert Fehlertexte zurück, und die sind Eingabe
+    von außen.
+    """
+    body = (
+        "<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        "<title>{heading}</title></head>"
+        "<body style=\"font-family: system-ui, sans-serif; margin: 3rem auto; max-width: 34rem; "
+        "line-height: 1.6; color: #171717\">"
+        "<h1 style=\"font-size: 1.25rem\">{heading}</h1>"
+        "<p>{message}</p>"
+        "<p><a href=\"/settings\">Zurück zu den Einstellungen</a></p>"
+        "</body></html>"
+    ).format(heading=html.escape(heading), message=html.escape(message))
+    return HTMLResponse(content=body)
