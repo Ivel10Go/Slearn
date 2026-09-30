@@ -138,6 +138,10 @@ Die nichtöffentliche Backend-Basis lautet `http://backend:8000`. Über das Fron
 | Kalender | `GET, POST /api/v1/calendar` | Bevorstehende Ereignisse listen oder anlegen |
 | Kalender | `GET, POST /api/v1/calendar/events` | Alias der Kalenderrouten |
 | Kalenderereignis | `GET, PATCH, DELETE /api/v1/calendar/events/{event_id}` | Einzelnes Ereignis verwalten |
+| Datei | `POST /api/v1/files` | Datei als `multipart/form-data` hochladen; Ablage im Dokumentenverzeichnis unter UUID-Namen, SHA-256-Prüfsumme und sofortige Indizierung in Abschnitte. Mit KI-Provider kostet das Embeddings, ohne Provider bleibt der Text durchsuchbar. Nicht lesbare Dateien werden mit `status: "error"` gespeichert statt den Upload zu verweigern |
+| Dokumente | `GET /api/v1/documents` | Eigene Dokumente, neueste zuerst; jeder Eintrag trägt `status` (`indexed`, `error`, beim Ordner-Sync auch `indexing`), `source` und `processed_at` |
+| Dokumentsuche | `POST /api/v1/documents/search` | Abschnitte der eigenen Dokumente suchen. Die Stichwortsuche liefert immer Treffer; nur mit Provider und PostgreSQL kommen Vektortreffer hinzu, was einen Embedding-Aufruf kostet |
+| Dokumentenfrage | `POST /api/v1/documents/ask` | Frage mit Quellenangaben beantworten; kostet einen Modellaufruf. `source` ist `ai` hinter einem echten Modell, `fallback` bei fehlendem Provider oder Modellfehler und `none` ohne jeden Treffer |
 | Lernaufgabe | `GET, POST /api/v1/study/tasks` | Aufgaben listen oder anlegen; Liste unterstützt `status`, `study_plan_id` und `order` (`priority`, `due`, `position`) |
 | Lernaufgabe | `GET, PATCH, DELETE /api/v1/study/tasks/{task_id}` | Einzelne Lernaufgabe verwalten, inklusive Priorität und Fälligkeit |
 | Lernsession | `POST /api/v1/study/tasks/{task_id}/start` | Lernsession starten; idempotent für denselben Benutzer und dieselbe Aufgabe. Eine blockierte Aufgabe antwortet mit 409 |

@@ -2,8 +2,8 @@
 
 ## Sofort
 
-- [ ] README-Alembic-Stand korrigieren: Kapitel „Storage und Datenbank" nennt nur 2 Revisionen, real sind es 5 (`0003`, `0004`, `0005`)
-- [ ] API-Tabelle im README um `/api/v1/files`-Zeilen ergänzen
+- [x] README-Alembic-Stand korrigieren: war bereits erledigt, alle 6 Revisionen sind in `README.md:268-273` gelistet
+- [x] API-Tabelle im README um `/api/v1/files`-Zeilen ergänzen
 - [ ] Doppelten Migrations-Start auflösen: `backend/Dockerfile` CMD vs. `backend-entrypoint.sh`
 - [ ] Root-`.dockerignore` bei neuen Worker-Dateien mitpflegen und dokumentieren
 
