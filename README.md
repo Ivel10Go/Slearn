@@ -154,6 +154,15 @@ Die nichtöffentliche Backend-Basis lautet `http://backend:8000`. Über das Fron
 | Serie | `GET, POST /api/v1/study/series` | Wiederkehrende Aufgaben listen oder anlegen; die erste Occurrence entsteht sofort, jede weitere erst beim Abschluss der vorigen |
 | Serie | `GET, PATCH, DELETE /api/v1/study/series/{series_id}` | Vorlage ändern (wirkt erst auf künftige Aufgaben) oder Serie beenden und offene Aufgaben stornieren |
 | Klausurvorbereitung | `POST /api/v1/exams/{exam_id}/tasks` | Aus den Klausurthemen Aufgaben in einem Lernplan erzeugen, nach Lernstand sortiert und verkettet. Ein zweiter Lauf legt nichts doppelt an |
+| Lernstand | `GET /api/v1/progress/topics` | Konfidenz je Thema mit Label, Intervall und nächstem Wiederholungstermin |
+| Lernstand | `PUT /api/v1/progress/topics/{topic_id}` | Konfidenz und Wiederholungsdatum setzen; legt die Zeile bei Bedarf an, daher PUT |
+| Lernprotokoll | `GET /api/v1/progress/insights` | Serie, Wochenziel, Lernzeit je Fach und Wochentagsverteilung, alle in der Zeitzone des Benutzers |
+| Wochenziel | `PATCH /api/v1/progress/goal` | Wochenziel in Minuten setzen; ohne Teilung auf die vergangenen Wochentage |
+| Noten | `GET, POST /api/v1/grades` | Noten listen oder anlegen |
+| Note | `GET, PATCH, DELETE /api/v1/grades/{grade_id}` | Einzelne Note verwalten |
+| Notenschnitt | `GET /api/v1/grades/summary` | Schnitt je Fach und gesamt, Verlauf und Hochrechnung bestanden/nicht bestanden |
+| Notenfreigabe | `GET, PUT /api/v1/grades/sharing` | Ob Noten an den KI-Dienst gehen dürfen; **Standard ist aus**, ein unlesbarer Zustand bedeutet ebenfalls aus |
+| Notenimport | `GET, POST /api/v1/grades/import` | Zeilen aus einem abgegebenen Dokument als Vorschau lesen und bestätigt übernehmen; zweiseitig, damit die Oberfläche keine Note erfinden kann |
 | Integrationen | `GET /api/v1/integrations` | Eigene Integrationen inklusive Status und `last_sync_at` |
 | Integration | `POST /api/v1/integrations` | Anlegen aus dem Katalog; Zugangsdaten werden verschlüsselt gespeichert |
 | Integration | `PATCH /api/v1/integrations/{integration_id}` | Name, Config, Zugangsdaten oder `enabled` ändern |
@@ -278,6 +287,7 @@ Die drei Host-Pfade dürfen in `.env` optional auf andere absolute Verzeichnisse
 - `20260925_0004_add_fields` ergänzt `subjects.short_name` und `lessons.is_cancelled`.
 - `20260925_0005_greeting_cache` hält den Willkommenssatz je Nutzer und Tag.
 - `20260929_0006_task_manager` ergänzt Priorität und Fälligkeit an Lernaufgaben und legt `study_task_series` sowie `study_task_dependencies` an. Die Änderungen an `study_plan_tasks` laufen über `batch_alter_table`, weil SQLite kein `ALTER TABLE ... ADD CONSTRAINT` kennt.
+- `20260930_0007_grades` legt `grades` an. `exam` wird dafür **nicht** erweitert, es behält Titel, Datum und Quelle.
 
 Der Backend-Entrypoint ist eine POSIX-Shell-Datei und wird ausdrücklich mit `/bin/sh` gestartet. Er führt zuerst aus:
 

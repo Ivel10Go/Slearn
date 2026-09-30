@@ -54,10 +54,10 @@
 
 ## Backup-Runner
 
-- [ ] `pg_dump` nach `BACKUP_SCHEDULE`, Rotation nach `BACKUP_RETENTION_DAYS`
-- [ ] Im Worker umsetzen, `last_backup` ins Status-JSON
-- [ ] Restore-Test dokumentieren, Status in Settings-UI
-- [ ] Backup-Pfad für Desktop-Variante anpassen
+- [x] `pg_dump` nach `BACKUP_SCHEDULE`, Rotation nach `BACKUP_RETENTION_DAYS` — im Worker, `pg_dump` kommt als `postgresql-client-15` ins Image, Rotation nach Tagen löscht nie das neueste Backup
+- [x] Im Worker umsetzen, `last_backup` ins Status-JSON — additiver `backup`-Block; die Healthcheck-Strenge (`status`/`database`/`last_heartbeat`) bleibt unverändert
+- [x] Restore-Test dokumentieren, Status in Settings-UI — Runbook im README, `GET /api/v1/backups/status`. Benötigt den `worker-status`-Mount am Backend (nachgezogen)
+- [x] Backup-Pfad für Desktop-Variante anpassen — Ablagepfad konfigurierbar; README trennt „heute schon umgesetzt" von „erst mit der Desktop-Variante"
 
 ## Dokumente durchsuchbar (RAG)
 
@@ -86,13 +86,13 @@ Das Grundsystem steht: `StudyPlanTask` mit `start`/`stop`/`complete` (`app/api/s
 
 ## Noten
 
-- [ ] Alembic-Migration: eigenes `Grade`-Modell, `Exam` erweitert sich nicht (es hat heute nur Titel/Datum/Quelle)
-- [ ] Felder: Note, Art (Klassenarbeit, Test, mündlich), Gewichtung, Datum, Fach, Kommentar
-- [ ] Noten-UI im Dashboard: Schnitt je Fach und gesamt, Verlauf als schlichte Linie ohne Diagramm-Bibliothek
-- [ ] Manuelle Erfassung und Übernahme aus einem abgegebenen Dokument
-- [ ] Noten in Lernplan und KI-Kontext einbeziehen, damit Prioritäten am Notenstand hängen
-- [ ] Hochrechnung bestanden/nicht bestanden statt nur Rückblick
-- [ ] Eigenes Rechtemanagement: Noten nicht ungefragt in `documents/ask` oder an den Provider schicken
+- [x] Alembic-Migration: eigenes `Grade`-Modell, `Exam` erweitert sich nicht (es hat heute nur Titel/Datum/Quelle) — `20260930_0007_grades`, `Exam` unangetastet
+- [x] Felder: Note, Art (Klassenarbeit, Test, mündlich), Gewichtung, Datum, Fach, Kommentar — plus `source`/`external_id` für den Dokumentimport
+- [x] Noten-UI im Dashboard: Schnitt je Fach und gesamt, Verlauf als schlichte Linie ohne Diagramm-Bibliothek — `components/dashboard/grades-card.tsx`, `polyline` von Hand in einem `viewBox`
+- [x] Manuelle Erfassung und Übernahme aus einem abgegebenen Dokument — zweiseitiger Import, Schlüssel ist der Zeileninhalt, nicht die Zeilennummer
+- [x] Noten in Lernplan und KI-Kontext einbeziehen, damit Prioritäten am Notenstand hängen — `exam_priority()`: **Reihenfolge bleibt die Konfidenz**, Priorität ist `max(konfidenz, notenstand)`; ohne Noten ergibt die Note 0, nicht 4
+- [x] Hochrechnung bestanden/nicht bestanden statt nur Rückblick — liegt die errechnete Note außerhalb 1,0–6,0, ist sie `None` und nicht geklemmt
+- [x] Eigenes Rechtemanagement: Noten nicht ungefragt in `documents/ask` oder an den Provider schicken — Freigabe in `settings.preferences["share_grades_with_ai"]`, **Standard aus**, jeder unlesbare Zustand bedeutet aus; genau ein Weg zum Provider (`grade_context_lines()`), und ein Widerruf löscht den heutigen `GreetingCache`-Eintrag
 
 ## Lernfortschritt und Lernprozess
 

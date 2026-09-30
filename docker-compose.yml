@@ -96,6 +96,14 @@ services:
         read_only: false
         bind:
           create_host_path: true
+      # Nur lesend: das Backend liest das Status-JSON des Workers fuer
+      # `GET /api/v1/backups/status`. Ohne diesen Mount antwortet der
+      # Endpunkt dauerhaft mit `available: false`, weil die Datei fuer das
+      # Backend nicht existiert - nicht weil das Backup fehlschlaegt.
+      - type: volume
+        source: worker-status
+        target: /var/lib/school-assistant/worker-status
+        read_only: true
     healthcheck:
       test:
         - CMD
@@ -134,6 +142,12 @@ services:
       DOCUMENT_STORAGE_PATH: "/var/lib/school-assistant/documents"
       IMPORT_STORAGE_PATH: "/var/lib/school-assistant/imports"
       BACKUP_STORAGE_PATH: "/var/lib/school-assistant/backups"
+      # Der Runner legt den Dump im selben Verzeichnis ab, an dem der Host bindet.
+      # Deshalb read-write - ein read_only-Mount laeuft in einen PermissionError.
+      BACKUP_ENABLED: "${BACKUP_ENABLED:-true}"
+      BACKUP_SCHEDULE: "${BACKUP_SCHEDULE:-0 2 * * *}"
+      BACKUP_RETENTION_DAYS: "${BACKUP_RETENTION_DAYS:-30}"
+      BACKUP_PG_DUMP_BINARY: "${BACKUP_PG_DUMP_BINARY:-}"
     volumes:
       - type: volume
         source: worker-status
@@ -148,7 +162,7 @@ services:
       - type: bind
         source: "${BACKUPS_HOST_PATH:-./data/backups}"
         target: /var/lib/school-assistant/backups
-        read_only: true
+        read_only: false
         bind:
           create_host_path: true
       - type: bind

@@ -150,7 +150,7 @@ jobs:
       - name: compile the module the tests do not import
         # worker/main.py is never imported by the tests, so a syntax error there
         # would otherwise only surface in the image build.
-        run: python -m py_compile worker/main.py worker/healthcheck.py
+        run: python -m py_compile worker/main.py worker/healthcheck.py worker/env.py worker/backup.py
 
   arm64-wheels:
     name: arm64 wheel availability
