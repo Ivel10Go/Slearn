@@ -25,6 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { BackupStatusCard } from "@/components/settings/backup-status-card";
+import { ModelCatalogCard } from "@/components/settings/model-catalog-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -986,6 +987,7 @@ export function SettingsView({
           onDelete={onDelete}
         />
         <div className="space-y-6">
+          <ModelCatalogCard />
           <AccountCard user={user} onLogout={onLogout} isLoggingOut={isLoggingOut} />
           <CalendarFeedCard
             feed={feed}
