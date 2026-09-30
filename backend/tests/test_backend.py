@@ -17,12 +17,14 @@ from app.db.entities import (
     Lesson,
     Room,
     StudyPlan,
+    StudyPlanTask,
     StudySession,
     Subject,
     SyncSource,
     Teacher,
     Topic,
     User,
+    UserSettings,
 )
 from app.schemas.auth import UserRead
 from app.services import integrations as integrations_service
@@ -41,6 +43,14 @@ from app.services.demo_seed import seed_demo_data
 from app.services.documents import chunk_text, read_document_text
 from app.services.integrations import IntegrationConnectionError, sync_integration, sync_window
 from app.services.lessons import MAX_RANGE_DAYS, LessonRangeError, validate_range
+from app.services.progress import (
+    DEFAULT_WEEKLY_GOAL_MINUTES,
+    confidence_label,
+    current_streak,
+    longest_streak,
+    review_interval_days,
+    week_bounds,
+)
 from app.services.webuntis import (
     WebUntisAuthError,
     WebUntisClient,
@@ -2874,3 +2884,463 @@ def test_greeting_fallback_shows_local_school_time(
 
     assert "09:35" in satz, satz
     assert "07:35" not in satz, satz
+
+
+# --- Lernfortschritt und Lernprozess ---------------------------------------
+
+BERLIN = ZoneInfo("Europe/Berlin")
+
+
+def _task_with_topic(db: Session, user: User, plan_id: int, topic: Topic, title: str) -> int:
+    """Eine Lernaufgabe an einem Thema - ohne die API, weil ``create_task`` kein Thema traegt."""
+    task = StudyPlanTask(
+        user_id=user.id,
+        study_plan_id=plan_id,
+        topic_id=topic.id,
+        title=title,
+        duration_minutes=30,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task.id
+
+
+def _add_session(
+    db: Session,
+    user: User,
+    task_id: int,
+    started_at: datetime,
+    duration_minutes: int | None,
+) -> StudySession:
+    """Eine Lernsession mit festem Zeitpunkt.
+
+    ``duration_minutes=None`` legt eine **offene** Session an - so, wie sie
+    ``POST /study/tasks/{id}/start`` hinterlaesst. Ueber die API waere das nicht
+    moeglich: der Start nimmt immer ``utc_now()``.
+    """
+    session = StudySession(
+        user_id=user.id,
+        task_id=task_id,
+        started_at=as_utc(started_at),
+        completed_at=as_utc(started_at + timedelta(minutes=duration_minutes or 0)) if duration_minutes is not None else None,
+        duration_minutes=duration_minutes,
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+def test_progress_routen_sind_registriert(app_client: TestClient) -> None:
+    pfade = {route.path for route in app_client.app.routes}
+    assert "/api/v1/progress/insights" in pfade
+    assert "/api/v1/progress/topics" in pfade
+    assert "/api/v1/progress/topics/{topic_id}" in pfade
+    assert "/api/v1/progress/goal" in pfade
+
+
+def test_progress_routen_brauchen_eine_anmeldung(app_client: TestClient) -> None:
+    assert app_client.get("/api/v1/progress/insights").status_code == 401
+    assert app_client.get("/api/v1/progress/topics").status_code == 401
+    assert app_client.put("/api/v1/progress/topics/1", json={"confidence": 0.5}).status_code == 401
+    assert app_client.patch("/api/v1/progress/goal", json={"goal_minutes": 300}).status_code == 401
+
+
+def test_konfidenzstufen_geben_bezeichnung_und_intervall() -> None:
+    """Fuenf Stufen, je eine Bezeichnung und ein Intervall.
+
+    Der Test ist die Tabelle in Textform: wer sie aendert, faellt hier auf,
+    statt still in der Oberflaeche anzukommen.
+    """
+    erwartet = {
+        0.0: ("unsicher", 1),
+        0.24: ("unsicher", 1),
+        0.25: ("geübt", 3),
+        0.49: ("geübt", 3),
+        0.5: ("sicher", 7),
+        0.75: ("fest", 14),
+        1.0: ("gefestigt", 30),
+    }
+    for wert, (bezeichnung, tage) in erwartet.items():
+        assert (confidence_label(wert), review_interval_days(wert)) == (bezeichnung, tage)
+    # Ausserhalb der Skala greift die naechste Stufe, nicht ein Fehler.
+    assert confidence_label(-3.0) == "unsicher"
+    assert confidence_label(4.0) == "gefestigt"
+
+
+def test_streak_regeln_sind_dokumentiert_und_pruefbar() -> None:
+    heute = date(2026, 9, 30)
+    # Nichts gelernt: keine Serie.
+    assert current_streak(set(), heute) == 0
+    # Heute ist noch offen - gestern allein ergibt schon eine Serie von einem Tag.
+    assert current_streak({heute - timedelta(days=1)}, heute) == 1
+    assert current_streak({heute}, heute) == 1
+    assert current_streak({heute, heute - timedelta(days=1), heute - timedelta(days=2)}, heute) == 3
+    # Zwei Tage Luecke beenden die Serie.
+    assert current_streak({heute - timedelta(days=3), heute - timedelta(days=2)}, heute) == 0
+    assert current_streak({heute - timedelta(days=1), heute - timedelta(days=3)}, heute) == 1
+    # Die laengste Serie zaehlt durchgehende Tage, nicht die Zahl der Tage.
+    assert longest_streak(set()) == 0
+    assert longest_streak({date(2026, 9, 1), date(2026, 9, 2), date(2026, 9, 10)}) == 2
+    assert longest_streak({date(2026, 9, 1), date(2026, 9, 2), date(2026, 9, 3)}) == 3
+
+
+def test_woche_beginnt_am_montag() -> None:
+    assert week_bounds(date(2026, 9, 30)) == (date(2026, 9, 28), date(2026, 10, 4))
+    assert week_bounds(date(2026, 9, 28)) == (date(2026, 9, 28), date(2026, 10, 4))
+    assert week_bounds(date(2026, 10, 4)) == (date(2026, 9, 28), date(2026, 10, 4))
+
+
+def test_fortschritt_schreibt_konfidenz_und_wiederholungsdatum(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    user.timezone = "Europe/Berlin"
+    db.commit()
+    login(client)
+    thema = create_topic(db, user, "Ableitungen")
+    create_topic(db, user, "Integrationen")
+
+    antwort = client.put(f"/api/v1/progress/topics/{thema.id}", json={"confidence": 0.9})
+    assert antwort.status_code == 200, antwort.text
+    koerper = antwort.json()
+    assert koerper["confidence"] == 0.9
+    assert koerper["confidence_label"] == "fest"
+    # `confidence_step` ist die untere Grenze der Stufe, nicht der Rohwert: ein
+    # Wert zwischen zwei Stufen braucht trotzdem einen Wert, den das
+    # Auswahlfeld anwaehlen kann.
+    assert koerper["confidence_step"] == 0.75
+    # Ohne Datum eingetragen gilt "jetzt": eine Einschaetzung ohne Zeitpunkt ist
+    # eine Wiederholung in diesem Moment, und ohne Anker waere kein Intervall
+    # berechenbar.
+    assert koerper["last_reviewed_at"] is not None
+    bewertet_am = datetime.fromisoformat(koerper["last_reviewed_at"].replace("Z", "+00:00")).astimezone(BERLIN).date()
+    assert koerper["interval_days"] == 14
+    assert koerper["next_review_on"] == (bewertet_am + timedelta(days=14)).isoformat()
+    assert koerper["days_until_review"] == 14
+    assert koerper["is_due"] is False
+    assert koerper["studied_minutes"] == 0
+    assert koerper["session_count"] == 0
+
+    # Ein Thema ohne Lernstand ist kein Fehler, sondern unsicher.
+    eintraege = client.get("/api/v1/progress/topics").json()
+    assert {eintrag["name"] for eintrag in eintraege} == {"Ableitungen", "Integrationen"}
+    unsicher = next(eintrag for eintrag in eintraege if eintrag["name"] == "Integrationen")
+    assert unsicher["confidence"] == 0
+    assert unsicher["confidence_label"] == "unsicher"
+    assert unsicher["last_reviewed_at"] is None
+    assert unsicher["next_review_on"] is None
+    assert unsicher["interval_days"] is None
+    assert unsicher["is_due"] is False
+
+    # Ein Datum von Hand loescht den Anker - dann gibt es auch keinen Termin.
+    zurueck = client.put(f"/api/v1/progress/topics/{thema.id}", json={"confidence": 0.5, "last_reviewed_at": None})
+    assert zurueck.status_code == 200
+    assert zurueck.json()["last_reviewed_at"] is None
+    assert zurueck.json()["next_review_on"] is None
+    assert zurueck.json()["interval_days"] is None
+    assert zurueck.json()["confidence_label"] == "sicher"
+
+    # Ein nachgetragener Zeitpunkt wird uebernommen statt durch "jetzt" ersetzt.
+    nachgetragen = client.put(
+        f"/api/v1/progress/topics/{thema.id}",
+        json={"confidence": 0.5, "last_reviewed_at": "2026-09-20T10:00:00Z", "notes": "Kurz notiert"},
+    )
+    assert nachgetragen.json()["last_reviewed_at"].startswith("2026-09-20T10:00")
+    assert nachgetragen.json()["next_review_on"] == "2026-09-27"
+    assert nachgetragen.json()["notes"] == "Kurz notiert"
+
+    # Ausserhalb der Skala und unbekannte Felder sind 422, kein stilles Klemmen.
+    assert client.put(f"/api/v1/progress/topics/{thema.id}", json={"confidence": 1.4}).status_code == 422
+    assert client.put(f"/api/v1/progress/topics/{thema.id}", json={"confidence": -0.1}).status_code == 422
+    assert client.put(f"/api/v1/progress/topics/{thema.id}", json={"confidence": 0.5, "unsinn": 1}).status_code == 422
+    assert client.put("/api/v1/progress/topics/999999", json={"confidence": 0.5}).status_code == 404
+
+
+def test_fortschritt_ist_je_nutzer_getrennt(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    thema = create_topic(db, user, "Kernphysik")
+    assert client.put(f"/api/v1/progress/topics/{thema.id}", json={"confidence": 0.5}).status_code == 200
+    assert client.get("/api/v1/progress/topics").json()[0]["confidence"] == 0.5
+
+    other = User(
+        username="other-progress",
+        password_hash=hash_password("other-password"),
+        is_active=True,
+        is_admin=False,
+        timezone="UTC",
+    )
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+
+    client.cookies.clear()
+    headers = {"Authorization": f"Bearer {create_session_token(other.id, 'test-secret-key', 3600)}"}
+    assert client.get("/api/v1/progress/topics", headers=headers).json() == []
+    # 404 statt 403: die Existenz der Id gehoert dem anderen Nutzer.
+    fremd = client.put(f"/api/v1/progress/topics/{thema.id}", json={"confidence": 1.0}, headers=headers)
+    assert fremd.status_code == 404
+    db.expire_all()
+    assert db.get(LearningProgress, (user.id, thema.id)).confidence == 0.5
+
+
+def test_lernprotokoll_zaehlt_dauer_je_fach_und_wochentag_in_der_nutzerzone(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """Die Wochentage sind die des Nutzers, nicht die von UTC.
+
+    Die erste Sitzung liegt in ``Europe/Berlin`` an einem anderen Tag als in
+    UTC - Montag 00:10 ist Sonntag 22:10 UTC. Wuerde hier in UTC gerechnet,
+    kaeme Sonntag statt Montag heraus.
+    """
+    client, db, user = app_context
+    user.timezone = "Europe/Berlin"
+    db.commit()
+    login(client)
+    fach = Subject(user_id=user.id, name="Sport", color="#111111")
+    db.add(fach)
+    db.commit()
+    db.refresh(fach)
+    plan = create_plan(client, db, user)
+    thema = create_topic(db, user, "Ausdauer", fach)
+    task_id = _task_with_topic(db, user, plan["id"], thema, "Ausdauer trainieren")
+
+    montag_frueh = datetime.combine(date(2026, 9, 21), time(0, 10), tzinfo=BERLIN)
+    assert montag_frueh.astimezone(timezone.utc).date() == date(2026, 9, 20)
+    _add_session(db, user, task_id, montag_frueh, 25)
+    # Samstag 23:30 Ortszeit ist Samstag 21:30 UTC - derselbe Tag.
+    samstag_spät = datetime.combine(date(2026, 9, 26), time(23, 30), tzinfo=BERLIN)
+    assert samstag_spät.astimezone(timezone.utc).date() == date(2026, 9, 26)
+    _add_session(db, user, task_id, samstag_spät, 35)
+
+    koerper = client.get("/api/v1/progress/insights").json()
+
+    assert koerper["timezone"] == "Europe/Berlin"
+    assert koerper["total_minutes"] == 60
+    assert koerper["total_sessions"] == 2
+    # Die Stufentabelle reist mit, damit das Auswahlfeld keine eigene fuehrt.
+    assert [(stufe["value"], stufe["label"], stufe["interval_days"]) for stufe in koerper["confidence_steps"]] == [
+        (0.0, "unsicher", 1),
+        (0.25, "geübt", 3),
+        (0.5, "sicher", 7),
+        (0.75, "fest", 14),
+        (1.0, "gefestigt", 30),
+    ]
+    assert [(eintrag["subject_name"], eintrag["minutes"]) for eintrag in koerper["by_subject"]] == [("Sport", 60)]
+    assert koerper["by_subject"][0]["share_percent"] == 100.0
+    assert [eintrag["weekday"] for eintrag in koerper["by_weekday"]] == [0, 1, 2, 3, 4, 5, 6]
+    wochentage = {eintrag["label"]: eintrag["minutes"] for eintrag in koerper["by_weekday"]}
+    assert wochentage["Montag"] == 25
+    assert wochentage["Samstag"] == 35
+    # Der Sonntag bleibt leer: die 00:10-Sitzung gehoert dem Montag.
+    assert wochentage["Sonntag"] == 0
+
+
+def test_aufgaben_ohne_thema_landen_sichtbar_in_ohne_fach(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    login(client)
+    fach = Subject(user_id=user.id, name="Loeres Lernen", color="#222222")
+    db.add(fach)
+    db.commit()
+    db.refresh(fach)
+    plan = create_plan(client, db, user)
+    thema = create_topic(db, user, "Loses Lernen", fach)
+    with_topic = _task_with_topic(db, user, plan["id"], thema, "Mit Thema")
+    ohne_thema = create_task(client, db, user)["id"]
+    assert isinstance(ohne_thema, int)
+    _add_session(db, user, with_topic, datetime(2026, 9, 21, 17, 0, tzinfo=timezone.utc), 50)
+    _add_session(db, user, ohne_thema, datetime(2026, 9, 21, 18, 0, tzinfo=timezone.utc), 10)
+
+    by_subject = client.get("/api/v1/progress/insights").json()["by_subject"]
+
+    # Eine Aufgabe ohne Thema hat kein Fach. Ihre Lernzeit wird nicht weggezaehlt,
+    # sondern landet sichtbar in einem eigenen Korb.
+    assert [(eintrag["subject_name"], eintrag["minutes"]) for eintrag in by_subject] == [
+        ("Loeres Lernen", 50),
+        ("Ohne Fach", 10),
+    ]
+    # Die Prozentzahl bezieht sich auf die Summe aller Faechers.
+    assert [eintrag["share_percent"] for eintrag in by_subject] == [83.3, 16.7]
+
+
+def test_streak_und_wochenziel_kommen_aus_den_lernsessions(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    user.timezone = "Europe/Berlin"
+    db.commit()
+    login(client)
+    plan = create_plan(client, db, user)
+    thema = create_topic(db, user, "Analysis")
+    task_id = _task_with_topic(db, user, plan["id"], thema, "Analysis üben")
+
+    heute = datetime.now(BERLIN).date()
+    montag, sonntag = week_bounds(heute)
+    # Gestern und vorgestern je 30 Minuten: eine laufende Serie von zwei Tagen.
+    _add_session(db, user, task_id, datetime.combine(heute - timedelta(days=2), time(17, 0), tzinfo=BERLIN), 30)
+    _add_session(db, user, task_id, datetime.combine(heute - timedelta(days=1), time(17, 0), tzinfo=BERLIN), 30)
+    # Eine Luecke, damit es etwas zu vergleichen gibt.
+    _add_session(db, user, task_id, datetime.combine(heute - timedelta(days=4), time(17, 0), tzinfo=BERLIN), 45)
+    # Gestartet und sofort gestoppt: null Minuten, und die zaehlt nicht als Lerntag.
+    _add_session(db, user, task_id, datetime.combine(heute, time(8, 0), tzinfo=BERLIN), 0)
+    # Der Montag 00:10 dieser Woche liegt immer in der Woche und immer in der
+    # Vergangenheit - auch wenn der Test an einem Montag laeuft.
+    _add_session(db, user, task_id, datetime.combine(montag, time(0, 10), tzinfo=BERLIN), 60)
+
+    koerper = client.get("/api/v1/progress/insights").json()
+    serie = koerper["streak"]
+
+    assert serie["current_days"] == 2
+    assert serie["longest_days"] == 2
+    assert serie["studied_today"] is False
+    assert serie["last_studied_on"] == (heute - timedelta(days=1)).isoformat()
+    assert serie["days_since_last"] == 1
+    assert serie["window_days"] == 365
+    # Die null-Minuten-Session ist kein Lerntag.
+    assert koerper["today"] == {"date": heute.isoformat(), "minutes": 0, "sessions": 0}
+
+    # Die Woche laeuft von Montag bis Sonntag in der Zone des Nutzers.
+    woche = koerper["week"]
+    assert woche["week_starts_on"] == montag.isoformat()
+    assert woche["week_ends_on"] == sonntag.isoformat()
+    assert woche["days_remaining"] == (sonntag - heute).days + 1
+    # Erwartung selbst gerechnet: die beiden Serientage liegen nur in dieser
+    # Woche, wenn heute nicht der Montag ist.
+    erwartete_tage = {montag, heute - timedelta(days=1), heute - timedelta(days=2)}
+    erwartete_tage = {tag for tag in erwartete_tage if montag <= tag <= sonntag}
+    assert woche["studied_minutes"] == 60 * len(erwartete_tage)
+    assert woche["days_studied"] == len(erwartete_tage)
+    assert woche["goal_minutes"] == DEFAULT_WEEKLY_GOAL_MINUTES
+    assert woche["goal_reached"] is False
+    assert woche["percent"] == round((60 * len(erwartete_tage) / DEFAULT_WEEKLY_GOAL_MINUTES) * 100, 1)
+
+    # Ein eigenes Wochenziel wird gespeichert und im selben Fenster gemessen.
+    gespeichert = client.patch("/api/v1/progress/goal", json={"goal_minutes": 30})
+    assert gespeichert.status_code == 200
+    assert gespeichert.json()["goal_minutes"] == 30
+    assert gespeichert.json()["goal_reached"] is True
+    assert client.get("/api/v1/progress/insights").json()["week"]["goal_minutes"] == 30
+    # Ein Ziel ist eine Zahl in einem vertretbaren Rahmen, kein Wort.
+    assert client.patch("/api/v1/progress/goal", json={"goal_minutes": 0}).status_code == 422
+    assert client.patch("/api/v1/progress/goal", json={"goal_minutes": "viel"}).status_code == 422
+
+
+def test_wochenziel_ueberschreibt_keine_fremden_einstellungen(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """``settings.preferences`` ist ein fremdes Verzeichnis, kein Platz fuer das Lernziel allein."""
+    client, db, user = app_context
+    db.add(UserSettings(user_id=user.id, preferences={"notizen": "Behalten"}))
+    db.commit()
+    login(client)
+
+    assert client.patch("/api/v1/progress/goal", json={"goal_minutes": 120}).status_code == 200
+
+    db.expire_all()
+    assert db.get(UserSettings, 1).preferences == {"notizen": "Behalten", "weekly_goal_minutes": 120}
+
+
+def test_offene_session_zaehlt_nicht_mit_und_beim_beenden_genau_einmal(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    user.timezone = "Europe/Berlin"
+    db.commit()
+    login(client)
+    plan = create_plan(client, db, user)
+    thema = create_topic(db, user, "Chemie")
+    task_id = _task_with_topic(db, user, plan["id"], thema, "Chemie lernen")
+    # Eine abgeschlossene Sitzung von gestern als Vergleich.
+    gestern = datetime.now(BERLIN).date() - timedelta(days=1)
+    _add_session(db, user, task_id, datetime.combine(gestern, time(17, 0), tzinfo=BERLIN), 40)
+
+    session = client.post(f"/api/v1/study/tasks/{task_id}/start")
+    assert session.status_code == 200, session.text
+    assert session.json()["completed_at"] is None
+
+    offen = client.get("/api/v1/progress/insights").json()
+    # Die offene Session steht nur in den offenen Feldern - nie in den Summen.
+    assert offen["open_sessions"] == 1
+    assert offen["total_minutes"] == 40
+    assert offen["total_sessions"] == 1
+    assert offen["active_minutes"] == 0
+
+    assert client.post(f"/api/v1/study/tasks/{task_id}/complete").status_code == 200
+    danach = client.get("/api/v1/progress/insights").json()
+    assert danach["open_sessions"] == 0
+    assert danach["active_minutes"] == 0
+    # Die geschlossene Sitzung gehoert jetzt genau einmal dazu, mit mindestens
+    # einer Minute - so setzt `_close_sessions` es fest.
+    assert danach["total_minutes"] == 41
+    assert danach["total_sessions"] == 2
+    assert [eintrag["minutes"] for eintrag in danach["by_subject"]] == [41]
+
+
+def test_geschriebener_fortschritt_steuert_den_klausur_generator(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """Der Generator liest dieselbe Konfidenz, die der Fortschritts-Endpoint schreibt.
+
+    Ohne Lernstand gilt jedes Thema als unsicher (Konfidenz 0, hoechste
+    Prioritaet). Sobald wirklich Werte stehen, verschiebt sich die Lernreihenfolge
+    - und zwar deshalb, weil ``LearningProgress`` jetzt gefuellt wird, und nicht
+    weil der Generator eine eigene Wahrheit haelt.
+    """
+    client, db, user = app_context
+    user.timezone = "Europe/Berlin"
+    db.commit()
+    login(client)
+    plan = create_plan(client, db, user)
+    fach = Subject(user_id=user.id, name="Geschichte", color="#64748B")
+    db.add(fach)
+    db.commit()
+    db.refresh(fach)
+    sicher = create_topic(db, user, "Bundeswehr", fach)
+    unsicher = create_topic(db, user, "Industrialisierung", fach)
+
+    assert client.put(f"/api/v1/progress/topics/{sicher.id}", json={"confidence": 0.9}).status_code == 200
+    assert client.put(f"/api/v1/progress/topics/{unsicher.id}", json={"confidence": 0.1}).status_code == 200
+    exam = client.post(
+        "/api/v1/exams",
+        json={
+            "subject_id": fach.id,
+            "title": "Epochen",
+            "date": (datetime.now(timezone.utc) + timedelta(days=5)).isoformat(),
+        },
+    )
+    assert exam.status_code == 201
+    erzeugt = client.post(
+        f"/api/v1/exams/{exam.json()['id']}/tasks",
+        json={"study_plan_id": plan["id"], "chain_dependencies": False},
+    )
+    assert erzeugt.status_code == 201, erzeugt.text
+    aufgaben = erzeugt.json()["created_tasks"]
+    # Das unsichere Thema zuerst, mit der hoeheren Prioritaet und dem frueheren Termin.
+    assert [aufgabe["topic_name"] for aufgabe in aufgaben] == ["Industrialisierung", "Bundeswehr"]
+    assert [aufgabe["priority"] for aufgabe in aufgaben] == [4, 0]
+    assert aufgaben[0]["scheduled_for"] < aufgaben[1]["scheduled_for"]
+
+    # Wird derselbe Fortschritt umgedreht, dreht sich der Plan mit - in einem
+    # zweiten Plan, damit die Idempotenz des Generators nicht dazwischenfunkt.
+    assert client.put(f"/api/v1/progress/topics/{unsicher.id}", json={"confidence": 1.0}).status_code == 200
+    zweiter_plan = create_plan(client, db, user, "Zweiter Plan")
+    gedreht = client.post(
+        f"/api/v1/exams/{exam.json()['id']}/tasks",
+        json={"study_plan_id": zweiter_plan["id"], "chain_dependencies": False},
+    )
+    assert gedreht.status_code == 201, gedreht.text
+    gedreht_aufgaben = gedreht.json()["created_tasks"]
+    assert [aufgabe["topic_name"] for aufgabe in gedreht_aufgaben] == ["Bundeswehr", "Industrialisierung"]
+    assert [aufgabe["priority"] for aufgabe in gedreht_aufgaben] == [0, 0]
+    assert gedreht_aufgaben[0]["scheduled_for"] < gedreht_aufgaben[1]["scheduled_for"]
+
+    # Das Dashboard meldet denselben Stand, den die Fortschrittsliste fuehrt.
+    themen_im_dashboard = client.get("/api/v1/dashboard").json()["upcoming_exams"][0]["topics"]
+    assert {thema["name"]: thema["confidence"] for thema in themen_im_dashboard} == {
+        "Bundeswehr": 0.9,
+        "Industrialisierung": 1.0,
+    }

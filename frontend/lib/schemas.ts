@@ -310,6 +310,105 @@ export const studySessionReadSchema = z.object({
   notes: optionalText,
 });
 
+/*
+ * Lernfortschritt und Lernprotokoll (`/v1/progress`).
+ *
+ * Auch das sind echte Schemata: die Karten zeigen Konfidenz, Lernzeit und
+ * einen Wiederholungstermin an, und eine Zahl, die stillschweigend fehlt,
+ * waere dort ein falscher Termin. `next_review_on` ist bewusst `string` und
+ * kein `date`: es kommt als `YYYY-MM-DD` und wird **nicht** als Zeitstempel
+ * geparst - ein Datum in der Zeitzone des Nutzers ist kein UTC-Moment.
+ */
+
+/** `YYYY-MM-DD` aus dem Backend, etwa der Tag der naechsten Wiederholung. */
+const isoDate = z.string();
+
+export const topicProgressReadSchema = z.object({
+  topic_id: z.number().int(),
+  name: z.string(),
+  subject_id: optionalId,
+  subject_name: optionalText,
+  confidence: z.number().min(0).max(1),
+  confidence_step: z.number().min(0).max(1),
+  // Die Bezeichnung kommt vom Backend (`CONFIDENCE_STEPS`). Sie steht hier
+  // bewusst nicht noch einmal als Liste - sonst koennten beide Enden
+  // auseinanderlaufen.
+  confidence_label: z.string(),
+  last_reviewed_at: optionalText,
+  notes: optionalText,
+  interval_days: z.number().int().nullable(),
+  next_review_on: isoDate.nullable(),
+  days_until_review: z.number().int().nullable(),
+  is_due: z.boolean(),
+  studied_minutes: z.number().int(),
+  session_count: z.number().int(),
+  updated_at: z.string(),
+});
+
+export const confidenceStepSchema = z.object({
+  value: z.number().min(0).max(1),
+  label: z.string(),
+  interval_days: z.number().int(),
+});
+
+export const weeklyGoalReadSchema = z.object({
+  goal_minutes: z.number().int(),
+  studied_minutes: z.number().int(),
+  goal_reached: z.boolean(),
+  percent: z.number(),
+  days_studied: z.number().int(),
+  days_remaining: z.number().int(),
+  week_starts_on: isoDate,
+  week_ends_on: isoDate,
+});
+
+export const streakReadSchema = z.object({
+  current_days: z.number().int(),
+  longest_days: z.number().int(),
+  studied_today: z.boolean(),
+  last_studied_on: isoDate.nullable(),
+  days_since_last: z.number().int().nullable(),
+  window_days: z.number().int(),
+});
+
+export const dayTotalSchema = z.object({
+  date: isoDate,
+  minutes: z.number().int(),
+  sessions: z.number().int(),
+});
+
+export const subjectStudyTimeSchema = z.object({
+  subject_id: optionalId,
+  subject_name: z.string(),
+  minutes: z.number().int(),
+  sessions: z.number().int(),
+  share_percent: z.number(),
+  last_studied_at: optionalText,
+});
+
+export const weekdayStudyTimeSchema = z.object({
+  weekday: z.number().int(),
+  label: z.string(),
+  minutes: z.number().int(),
+  sessions: z.number().int(),
+});
+
+export const learningInsightsSchema = z.object({
+  generated_at: z.string(),
+  timezone: z.string(),
+  today: dayTotalSchema,
+  week: weeklyGoalReadSchema,
+  streak: streakReadSchema,
+  by_subject: z.array(subjectStudyTimeSchema),
+  by_weekday: z.array(weekdayStudyTimeSchema),
+  confidence_steps: z.array(confidenceStepSchema),
+  total_minutes: z.number().int(),
+  total_sessions: z.number().int(),
+  open_sessions: z.number().int(),
+  active_minutes: z.number().int(),
+  weekday_window_days: z.number().int(),
+});
+
 export const fileUploadResponseSchema = z.object({
   id: z.number().int(),
   filename: z.string(),
@@ -508,6 +607,87 @@ export function parseStudySessionRead(payload: unknown) {
     completed_at: parsed.completed_at ?? null,
     duration_minutes: parsed.duration_minutes ?? null,
     notes: parsed.notes ?? null,
+  };
+}
+
+export function parseTopicProgressArray(payload: unknown) {
+  return z.array(topicProgressReadSchema).parse(payload).map((entry) => ({
+    topic_id: entry.topic_id,
+    name: entry.name,
+    subject_id: entry.subject_id ?? null,
+    subject_name: entry.subject_name ?? null,
+    confidence: entry.confidence,
+    confidence_step: entry.confidence_step,
+    confidence_label: entry.confidence_label,
+    last_reviewed_at: entry.last_reviewed_at ?? null,
+    notes: entry.notes ?? null,
+    interval_days: entry.interval_days,
+    next_review_on: entry.next_review_on,
+    days_until_review: entry.days_until_review,
+    is_due: entry.is_due,
+    studied_minutes: entry.studied_minutes,
+    session_count: entry.session_count,
+    updated_at: entry.updated_at,
+  }));
+}
+
+export function parseTopicProgressRead(payload: unknown) {
+  return parseTopicProgressArray([payload])[0];
+}
+
+export function parseWeeklyGoalRead(payload: unknown) {
+  const parsed = weeklyGoalReadSchema.parse(payload);
+  return {
+    goal_minutes: parsed.goal_minutes,
+    studied_minutes: parsed.studied_minutes,
+    goal_reached: parsed.goal_reached,
+    percent: parsed.percent,
+    days_studied: parsed.days_studied,
+    days_remaining: parsed.days_remaining,
+    week_starts_on: parsed.week_starts_on,
+    week_ends_on: parsed.week_ends_on,
+  };
+}
+
+export function parseLearningInsights(payload: unknown) {
+  const parsed = learningInsightsSchema.parse(payload);
+  return {
+    generated_at: parsed.generated_at,
+    timezone: parsed.timezone,
+    today: { date: parsed.today.date, minutes: parsed.today.minutes, sessions: parsed.today.sessions },
+    week: parseWeeklyGoalRead(parsed.week),
+    streak: {
+      current_days: parsed.streak.current_days,
+      longest_days: parsed.streak.longest_days,
+      studied_today: parsed.streak.studied_today,
+      last_studied_on: parsed.streak.last_studied_on,
+      days_since_last: parsed.streak.days_since_last ?? null,
+      window_days: parsed.streak.window_days,
+    },
+    by_subject: parsed.by_subject.map((entry) => ({
+      subject_id: entry.subject_id ?? null,
+      subject_name: entry.subject_name,
+      minutes: entry.minutes,
+      sessions: entry.sessions,
+      share_percent: entry.share_percent,
+      last_studied_at: entry.last_studied_at ?? null,
+    })),
+    by_weekday: parsed.by_weekday.map((entry) => ({
+      weekday: entry.weekday,
+      label: entry.label,
+      minutes: entry.minutes,
+      sessions: entry.sessions,
+    })),
+    confidence_steps: parsed.confidence_steps.map((entry) => ({
+      value: entry.value,
+      label: entry.label,
+      interval_days: entry.interval_days,
+    })),
+    total_minutes: parsed.total_minutes,
+    total_sessions: parsed.total_sessions,
+    open_sessions: parsed.open_sessions,
+    active_minutes: parsed.active_minutes,
+    weekday_window_days: parsed.weekday_window_days,
   };
 }
 

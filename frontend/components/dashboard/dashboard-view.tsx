@@ -43,6 +43,7 @@ import { useNow } from "@/lib/use-now";
 import { useGreeting } from "@/lib/use-greeting";
 import { isDemoTaskId, type DashboardData, type DashboardLesson, type DashboardStudyTask, type DocumentAnswer, type LessonState, type StudyActionResult, type StudyTaskStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { ProgressCard } from "./progress-card";
 import { ScheduleCard } from "./schedule-view";
 
 interface DashboardViewProps {
@@ -318,7 +319,7 @@ function GreetingHeader({ username }: { username?: string | null }) {
   );
 }
 
-function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
+function StudyTasksCard({ tasks, onLernzeitGeaendert }: { tasks: DashboardStudyTask[]; onLernzeitGeaendert?: () => void }) {
   const now = useNow();
   const [taskOverrides, setTaskOverrides] = useState<Record<string, DashboardStudyTask>>({});
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
@@ -331,6 +332,11 @@ function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
     try {
       const result = action === "start" ? await startStudyTask(task.id) : action === "stop" ? await stopStudyTask(task.id) : await completeStudyTask(task.id);
       setTaskOverrides((current) => ({ ...current, [task.id]: mergeStudyAction(task, result, action) }));
+      // Start, Stopp und Abschluss aendern die Lernzeit - und damit Tageswert,
+      // Serie und Wochenziel der Fortschrittskarte. Ohne diesen Hinweis
+      // zeigte sie bis zum naechsten Neuladen einen Stand, den es nicht mehr
+      // gibt.
+      onLernzeitGeaendert?.();
     } catch (error) {
       setActionError(error instanceof ApiError ? error.message : "Die Lernaktion konnte nicht ausgeführt werden.");
     } finally {
@@ -567,6 +573,13 @@ function AssistantCard() {
 export function DashboardView({ data, error, isLoading, onRetry, username }: DashboardViewProps) {
   const now = useNow();
   const reference = useMemo(() => now ?? new Date(), [now]);
+  /**
+   * Zaehler, keine Zeitangabe: die Fortschrittskarte laedt neu, wenn sich
+   * dieser Wert aendert. Sie braucht ihn, weil eine abgeschlossene Lernsession
+   * Tageszeit, Serie und Wochenziel verschiebt, ohne dass sich die
+   * Dashboard-Daten selbst aendern.
+   */
+  const [lernzeitKey, setLernzeitKey] = useState(0);
   const focusLesson = useMemo(() => {
     if (!data) {
       return undefined;
@@ -641,7 +654,8 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <div className="space-y-6">
-          <StudyTasksCard tasks={data.studyTasks} />
+          <StudyTasksCard tasks={data.studyTasks} onLernzeitGeaendert={() => setLernzeitKey((zaehler) => zaehler + 1)} />
+          <ProgressCard refreshKey={lernzeitKey} />
           <ExamsSection reference={reference} />
           <HomeworkSection reference={reference} />
         </div>

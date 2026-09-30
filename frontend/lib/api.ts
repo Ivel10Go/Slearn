@@ -2,8 +2,8 @@
 
 import { getDemoDashboard, getDemoScheduleRange, isDemoFallbackEnabled } from "./demo";
 import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type CalendarEvent, type DashboardData, type DocumentAnswer, type DocumentRecord, type DocumentSearchResult, type Exam, type FileUploadResult, type Greeting, type Homework, type ScheduleRange, type StudySessionRecord, type StudyTask, type StudyTaskState, type Subject, type SubjectOption } from "./types";
-import { collectSubjectNames, parseCalendarEventArray, parseCalendarEventRead, parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseExamArray, parseExamRead, parseExamTaskPlanResult, parseFileUploadResponse, parseHomeworkArray, parseHomeworkRead, parseIntegrationArray, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseStudyDependencyArray, parseStudyDependencyRead, parseStudyPlanArray, parseStudyPlanRead, parseStudySeriesArray, parseStudySeriesRead, parseStudySessionRead, parseStudyTaskArray, parseStudyTaskRead, parseSubjectArray, parseSubjectRead, parseUserResponse, parseUserSession } from "./schemas";
-import type { ExamTaskPlanResult, IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult, StudyPlan, StudyTaskDependency, StudyTaskOrder, StudyTaskSeries, StudyTaskSeriesInput } from "./types";
+import { collectSubjectNames, parseCalendarEventArray, parseCalendarEventRead, parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseExamArray, parseExamRead, parseExamTaskPlanResult, parseFileUploadResponse, parseHomeworkArray, parseHomeworkRead, parseIntegrationArray, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseLearningInsights, parseStudyDependencyArray, parseStudyDependencyRead, parseStudyPlanArray, parseStudyPlanRead, parseStudySeriesArray, parseStudySeriesRead, parseStudySessionRead, parseStudyTaskArray, parseStudyTaskRead, parseSubjectArray, parseSubjectRead, parseTopicProgressArray, parseTopicProgressRead, parseUserResponse, parseUserSession, parseWeeklyGoalRead } from "./schemas";
+import type { ExamTaskPlanResult, IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult, LearningInsights, StudyPlan, StudyTaskDependency, StudyTaskOrder, StudyTaskSeries, StudyTaskSeriesInput, TopicProgress, WeeklyGoal } from "./types";
 
 const API_PREFIX = "/api/backend";
 
@@ -762,6 +762,69 @@ export async function generateExamTasks(
     body: JSON.stringify(compact(input)),
   });
   return parseExamTaskPlanResult(payload);
+}
+
+/* -------------------------------------------------------- Lernfortschritt */
+
+export interface TopicProgressWrite {
+  /** 0 bis 1. Die fuenf Stufen holt sich die Oberflaeche aus `TopicProgress`. */
+  confidence: number;
+  /**
+   * Weglassen heisst "jetzt" (das Backend traegt `utc_now()` ein), `null`
+   * loescht den Anker. `compact` behält ein `null` - nur `undefined` faellt
+   * weg, und genau das ist hier der Unterschied zwischen "leeren" und
+   * "unveraendert lassen".
+   */
+  last_reviewed_at?: string | null;
+  notes?: string | null;
+}
+
+/**
+ * Das Lernprotokoll als Auswertung: Serie, Wochenziel, Lernzeit je Fach und
+ * Verteilung auf die Wochentage.
+ *
+ * Ohne Demo-Fallback, wie bei den anderen Lerndaten: eine erfundene Serie waere
+ * an ihren Zahlen nicht als solche erkennbar, und eine erfundene Lernzeit
+ * schon gar nicht.
+ */
+export async function getLearningInsights(): Promise<LearningInsights> {
+  return parseLearningInsights(await apiRequest("/v1/progress/insights"));
+}
+
+/**
+ * Der Lernstand aller Themen, optional auf ein Fach eingeschraenkt.
+ *
+ * `subjectId` wird von der Fortschrittskarte nicht gebraucht - sie zeigt alle
+ * Themen. Er ist hier, weil der Endpunkt ihn anbietet und eine zweite
+ * Filterstelle in der Oberflaeche es waere.
+ */
+export async function getTopicProgress(subjectId?: number): Promise<TopicProgress[]> {
+  return parseTopicProgressArray(await apiRequest(collectionPath("/v1/progress/topics", { subject_id: subjectId })));
+}
+
+/**
+ * Konfidenz und Wiederholungsdatum eines Themas schreiben.
+ *
+ * `PUT` und nicht `PATCH`, weil der Aufruf die Zeile anlegt, falls sie fehlt.
+ * Das Backend nennt Bezeichnung und Intervall zurueck - die Oberflaeche
+ * uebernimmt die Antwort, statt sie selbst zu berechnen.
+ */
+export async function saveTopicProgress(topicId: number, input: TopicProgressWrite): Promise<TopicProgress> {
+  assertId(topicId, "Das Thema");
+  const payload = await apiRequest(resourcePath("progress/topics", topicId), {
+    method: "PUT",
+    body: JSON.stringify(compact(input)),
+  });
+  return parseTopicProgressRead(payload);
+}
+
+/** Das Wochenziel in gelernten Minuten. Antwort ist die Woche mit dem neuen Ziel. */
+export async function setWeeklyGoal(goalMinutes: number): Promise<WeeklyGoal> {
+  const payload = await apiRequest("/v1/progress/goal", {
+    method: "PATCH",
+    body: JSON.stringify({ goal_minutes: goalMinutes }),
+  });
+  return parseWeeklyGoalRead(payload);
 }
 
 /* ------------------------------------------------------------------- Dateien */
