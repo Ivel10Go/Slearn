@@ -14,6 +14,7 @@ Der fertige Satz wird pro Nutzer und Tag gehalten. Ein Modellaufruf bei jedem
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Final
@@ -44,6 +45,7 @@ _SYSTEM_PROMPT: Final = (
     "kein Markdown, keine Anführungszeichen. "
     "Sprich die Schülerin oder den Schüler direkt an. "
     "Nenne nur das, was in den Daten steht, und erfinde nichts. "
+    "Nenne Noten nur, wenn ausdrücklich welche mitgeliefert wurden. "
     "Beginne mit einem Begrüßungssatz wie 'Herzlich willkommen'."
 )
 
@@ -109,8 +111,14 @@ def _next_lesson(data: DashboardResponse, now: datetime, zone: ZoneInfo) -> dict
     }
 
 
-def build_prompt(data: DashboardResponse, now: datetime, zone: ZoneInfo) -> str:
-    """Sammelt die Fakten, aus denen der Provider schreiben soll."""
+def build_prompt(data: DashboardResponse, now: datetime, zone: ZoneInfo, grade_lines: Sequence[str] = ()) -> str:
+    """Sammelt die Fakten, aus denen der Provider schreiben soll.
+
+    ``grade_lines`` ist der einzige Weg, auf dem eine Note in diesen Prompt
+    kommt. Die Liste ist leer, solange die Freigabe nicht gesetzt ist (siehe
+    ``app.services.grades.grade_context_lines``), und eine leere Liste
+    hinterlaesst hier keine Zeile - kein Platzhalter, kein "keine Noten".
+    """
     zeilen = [
         f"Heute: {now.date().isoformat()}",
         f"Stunden heute: {data.summary.total_lessons}",
@@ -136,6 +144,11 @@ def build_prompt(data: DashboardResponse, now: datetime, zone: ZoneInfo) -> str:
         zeilen.append(f"Nächste Klausur: {naechste_klausur.subject_name} - {naechste_klausur.title}")
     if data.summary.day_progress_percent:
         zeilen.append(f"Tagesfortschritt: {data.summary.day_progress_percent} Prozent")
+    # Die Noten stehen am Ende, damit der Satz sie als Hintergrund sieht und
+    # nicht als Tagesauftrag. Erwaehnt werden darf sie nur, wenn die Frage
+    # lautet - sonst schreibt das Modell "dein Schnitt ist 4,2" in eine
+    # Begruessung, die davon handeln sollte, dass heute etwas ansteht.
+    zeilen.extend(grade_lines)
     return "\n".join(zeilen)
 
 
@@ -190,8 +203,15 @@ def render_greeting(
     now: datetime | None = None,
     user_timezone: str | None = None,
     force: bool = False,
+    grade_lines: Sequence[str] = (),
 ) -> GreetingOutcome:
-    """Liefert den Satz, aus dem Cache oder frisch erzeugt."""
+    """Liefert den Satz, aus dem Cache oder frisch erzeugt.
+
+    ``grade_lines`` wird durchgereicht und nicht selbst erzeugt: der Aufrufer
+    entscheidet ueber die Freigabe, dieser Dienst ueber den Satz. Damit steht die
+    Datenschutzfrage an genau einer Stelle (``grade_context_lines``) und nicht
+    in einer Hilfsfunktion, die irgendwann einmal jemand aufruft.
+    """
     moment = as_utc(now or utc_now())
     zone = zone_or_utc(resolve_timezone_name(user_timezone or settings.timezone, settings.timezone))
 
@@ -218,7 +238,7 @@ def render_greeting(
             base_url=str(configuration.get("base_url", "")),
             model=model,
             system_prompt=_SYSTEM_PROMPT,
-            user_prompt=build_prompt(data, moment, zone),
+            user_prompt=build_prompt(data, moment, zone, grade_lines),
             api_key=credentials.get("api_key", ""),
             timeout_seconds=settings.integration_timeout_seconds,
             max_tokens=120,

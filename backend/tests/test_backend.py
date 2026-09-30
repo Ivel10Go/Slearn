@@ -14,6 +14,7 @@ from app.core.crypto import decrypt_credentials, encrypt_credentials
 from app.core.security import create_session_token, hash_password
 from app.core.time import as_utc
 from app.db.entities import (
+    GreetingCache,
     LearningProgress,
     Lesson,
     Room,
@@ -29,6 +30,7 @@ from app.db.entities import (
 )
 from app.main import create_app
 from app.schemas.auth import UserRead
+from app.services import grades as grades_service
 from app.services import integrations as integrations_service
 from app.services.ai_provider import (
     AiProviderAuthError,
@@ -43,6 +45,12 @@ from app.services.ai_provider import (
 from app.services.dashboard import serialize_dashboard
 from app.services.demo_seed import seed_demo_data
 from app.services.documents import chunk_text, read_document_text
+from app.services.grades import (
+    GradeImportError,
+    WeightedGrade,
+    grade_priority,
+    project_average,
+)
 from app.services.integration_scheduler import (
     IntegrationSyncScheduler,
     ScheduledSyncReport,
@@ -3786,3 +3794,664 @@ def test_geschriebener_fortschritt_steuert_den_klausur_generator(
         "Bundeswehr": 0.9,
         "Industrialisierung": 1.0,
     }
+# --- Noten ------------------------------------------------------------------
+
+
+def _fach(db: Session, user: User, name: str) -> Subject:
+    fach = Subject(user_id=user.id, name=name, color="#3B82F6")
+    db.add(fach)
+    db.commit()
+    db.refresh(fach)
+    return fach
+
+
+def _note(
+    client: TestClient,
+    db: Session,
+    user: User,
+    fach: Subject,
+    wert: float,
+    *,
+    art: str = "written_exam",
+    gewicht: int = 1,
+    vor_tagen: int = 7,
+    kommentar: str | None = None,
+) -> dict[str, object]:
+    """Eine Note von Hand anlegen, mit einem Datum in der Vergangenheit."""
+    tag = (datetime.now(timezone.utc) - timedelta(days=vor_tagen)).date()
+    antwort = client.post(
+        "/api/v1/grades",
+        json={
+            "subject_id": fach.id,
+            "grade_value": wert,
+            "kind": art,
+            "weight": gewicht,
+            "graded_on": tag.isoformat(),
+            "comment": kommentar,
+        },
+    )
+    assert antwort.status_code == 201, antwort.text
+    return antwort.json()
+
+
+def test_grade_routen_sind_registriert(app_client: TestClient) -> None:
+    pfade = {route.path for route in app_client.app.routes}
+    assert "/api/v1/grades" in pfade
+    assert "/api/v1/grades/summary" in pfade
+    assert "/api/v1/grades/sharing" in pfade
+    assert "/api/v1/grades/import" in pfade
+
+
+def test_grade_routen_brauchen_eine_anmeldung(app_client: TestClient) -> None:
+    assert app_client.get("/api/v1/grades").status_code == 401
+    assert app_client.get("/api/v1/grades/summary").status_code == 401
+    assert app_client.get("/api/v1/grades/sharing").status_code == 401
+    assert app_client.put("/api/v1/grades/sharing", json={"enabled": True}).status_code == 401
+
+
+def test_noten_anlegen_aendern_und_loeschen(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    mathe = _fach(db, user, "Mathematik")
+    note = _note(client, db, user, mathe, 1.7, art="test", gewicht=2, vor_tagen=10, kommentar="Nur mit viel Uebung")
+
+    assert note["subject_name"] == "Mathematik"
+    assert note["kind"] == "test"
+    assert note["weight"] == 2
+    assert note["comment"] == "Nur mit viel Uebung"
+    assert note["source"] == "manual"
+
+    # PATCH aendert nur die gesetzten Felder; der Kommentar bleibt, wenn er
+    # nicht mitgeschickt wird.
+    geaendert = client.patch(f"/api/v1/grades/{note['id']}", json={"grade_value": 2.1})
+    assert geaendert.status_code == 200, geaendert.text
+    assert geaendert.json()["grade_value"] == 2.1
+    assert geaendert.json()["comment"] == "Nur mit viel Uebung"
+
+    # Ein PATCH mit `null` bei der Note selbst ist ein 422: eine Note ohne Wert
+    # waere keine Note mehr.
+    assert client.patch(f"/api/v1/grades/{note['id']}", json={"grade_value": None}).status_code == 422
+    # Der Kommentar laesst sich dagegen leeren.
+    geleert = client.patch(f"/api/v1/grades/{note['id']}", json={"comment": None})
+    assert geleert.status_code == 200
+    assert geleert.json()["comment"] is None
+
+    assert client.delete(f"/api/v1/grades/{note['id']}").status_code == 200
+    assert client.get("/api/v1/grades").json() == []
+
+
+def test_noten_pruefen_die_skala_und_das_gewicht(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    mathe = _fach(db, user, "Mathematik")
+    grundlage = {
+        "subject_id": mathe.id,
+        "kind": "written_exam",
+        "weight": 1,
+        "graded_on": "2026-09-01",
+    }
+
+    # 0,0 und 7,0 liegen ausserhalb der deutschen Skala: 422 mit Klartext,
+    # nicht 409 aus einer Check-Constraint.
+    assert client.post("/api/v1/grades", json={**grundlage, "grade_value": 0}).status_code == 422
+    assert client.post("/api/v1/grades", json={**grundlage, "grade_value": 7}).status_code == 422
+    # Das Gewicht 0 waere eine Division durch null in der Hochrechnung.
+    assert client.post("/api/v1/grades", json={**grundlage, "grade_value": 2, "weight": 0}).status_code == 422
+    # Eine unbekannte Art ist kein Wert, den man per POST nachschiebt.
+    assert client.post("/api/v1/grades", json={**grundlage, "grade_value": 2, "kind": "referat"}).status_code == 422
+    # Die Grenzen selbst sind erlaubt.
+    assert client.post("/api/v1/grades", json={**grundlage, "grade_value": 1}).status_code == 201
+    assert client.post("/api/v1/grades", json={**grundlage, "grade_value": 6}).status_code == 201
+
+
+def test_noten_sind_je_nutzer_getrennt(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    mathe = _fach(db, user, "Mathematik")
+    note = _note(client, db, user, mathe, 1.3)
+
+    # Ein zweiter Nutzer sieht die Note nicht, kann sie nicht aendern und nicht loeschen.
+    zweiter = User(
+        username="zweite",
+        password_hash=hash_password("anderes-passwort"),
+        is_active=True,
+        timezone="UTC",
+    )
+    db.add(zweiter)
+    db.commit()
+    db.expire_all()
+    antwort = client.post("/api/v1/auth/login", json={"username": "zweite", "password": "anderes-passwort"})
+    assert antwort.status_code == 200
+
+    assert client.get("/api/v1/grades").json() == []
+    assert client.get("/api/v1/grades/summary").json()["total_count"] == 0
+    assert client.get(f"/api/v1/grades/{note['id']}").status_code == 404
+    assert client.patch(f"/api/v1/grades/{note['id']}", json={"grade_value": 6}).status_code == 404
+    assert client.delete(f"/api/v1/grades/{note['id']}").status_code == 404
+    # Auch kein Import aus dem Dokument des anderen.
+    assert client.get("/api/v1/grades/import?document_id=1").status_code == 404
+    assert client.post("/api/v1/grades/import", json={"document_id": 1, "keys": ["egal"]}).status_code == 404
+
+
+def test_schnitt_ist_gewichtet_und_gilt_ab_vier(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    mathe = _fach(db, user, "Mathematik")
+    # 2,0 und 4,0 mit gleichem Gewicht waeren 3,0 - der Mittelwert.
+    _note(client, db, user, mathe, 2.0, vor_tagen=10)
+    _note(client, db, user, mathe, 4.0, vor_tagen=5)
+    # Derselbe Test mit doppeltem Gewicht: (2,0 + 4,0 + 2 * 4,0) / 4 = 3,5.
+    _note(client, db, user, mathe, 4.0, art="test", gewicht=2, vor_tagen=2)
+
+    zusammenfassung = client.get("/api/v1/grades/summary").json()
+    assert zusammenfassung["passing_grade"] == 4.0
+    assert zusammenfassung["total_count"] == 3
+    assert zusammenfassung["overall"]["average"] == 3.5
+    # 3,5 ist unter 4,0: bestanden. Die Grenze ist "bis 4,0", nicht "unter 4,0".
+    assert zusammenfassung["overall"]["passed"] is True
+    assert zusammenfassung["by_subject"][0]["subject_name"] == "Mathematik"
+    assert zusammenfassung["by_subject"][0]["weight"] == 4
+
+
+def test_verlauf_ist_der_kumulierte_schnitt_je_tag(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    mathe = _fach(db, user, "Mathematik")
+    _note(client, db, user, mathe, 3.0, vor_tagen=9)
+    _note(client, db, user, mathe, 1.0, vor_tagen=6)
+    # Zwei Noten an einem Tag ergeben **einen** Punkt, sonst zittert die Linie
+    # nur an derselben Stelle.
+    _note(client, db, user, mathe, 1.0, vor_tagen=3)
+    _note(client, db, user, mathe, 1.0, vor_tagen=3)
+
+    verlauf = client.get("/api/v1/grades/summary").json()["trend"]
+    # `count` und `weight` sind kumuliert: dieselbe Linie sieht bei einer Note
+    # und bei vier gleich aus, und ohne die Zahl waere sie eine Behauptung.
+    assert [(punkt["graded_on"], punkt["average"], punkt["count"]) for punkt in verlauf] == [
+        ((datetime.now(timezone.utc) - timedelta(days=9)).date().isoformat(), 3.0, 1),
+        ((datetime.now(timezone.utc) - timedelta(days=6)).date().isoformat(), 2.0, 2),
+        ((datetime.now(timezone.utc) - timedelta(days=3)).date().isoformat(), 1.5, 4),
+    ]
+
+
+def test_verlauf_kann_auf_ein_fach_eingeschraenkt_werden(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    mathe = _fach(db, user, "Mathematik")
+    geschichte = _fach(db, user, "Geschichte")
+    _note(client, db, user, mathe, 1.0, vor_tagen=4)
+    _note(client, db, user, geschichte, 5.0, vor_tagen=4)
+
+    beides = client.get("/api/v1/grades/summary").json()
+    assert beides["overall"]["average"] == 3.0
+    assert beides["by_subject"][0]["average"] == 5.0
+    assert beides["by_subject"][1]["average"] == 1.0
+
+    # Ein Verlauf, der zwischen zwei Faechern springt, beantwortet keine Frage.
+    nur_mathe = client.get(f"/api/v1/grades/summary?subject_id={mathe.id}").json()
+    assert nur_mathe["overall"]["subject_name"] == "Mathematik"
+    assert nur_mathe["overall"]["average"] == 1.0
+    assert nur_mathe["overall"]["passed"] is True
+    assert len(nur_mathe["trend"]) == 1
+    # Ein fremdes Fach ist ein 404, nicht ein leerer Schnitt.
+    assert client.get("/api/v1/grades/summary?subject_id=9999").status_code == 404
+
+
+def test_hochrechnung_sagt_was_noch_kommen_muss(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    mathe = _fach(db, user, "Mathematik")
+    # 2,0 und 3,0 mit Gewicht 1: Schnitt 2,5, offen sind 2 Gewicht.
+    _note(client, db, user, mathe, 2.0, vor_tagen=10)
+    _note(client, db, user, mathe, 3.0, vor_tagen=5)
+
+    zurueckblick = client.get("/api/v1/grades/summary").json()["projection"]
+    # Ohne offene Gewichtung gibt es nichts zu rechnen.
+    assert zurueckblick["needed_average"] is None
+    assert zurueckblick["current_average"] == 2.5
+
+    vorausblick = client.get("/api/v1/grades/summary?projected_weight=2").json()["projection"]
+    # (4,0 * 4 - 5,0) / 2 = 5,5 noetig.
+    assert vorausblick["needed_average"] == 5.5
+    # Mit lauter Bestnoten waere der Gesamtschnitt (5 + 2) / 4 = 1,75.
+    assert vorausblick["best_possible_average"] == 1.75
+    assert vorausblick["still_possible"] is True
+    assert vorausblick["projected_weight"] == 2
+
+
+def test_hochrechnung_erkennt_eine_nicht_mehr_erreichbare_bestehensgrenze() -> None:
+    """Die reine Rechnung, ohne Datenbank: sie ist der Kern der Karte."""
+    # Aus 4,0 und 4,0 mit offenem Gewicht 1 braucht man (4,0 * 3 - 8,0) / 1 = 4,0.
+    assert project_average([WeightedGrade(4.0, 1), WeightedGrade(4.0, 1)], 1) == (4.0, 3.0, True)
+    # Aus 5,5 und 5,5 mit offenem Gewicht 1: noetig waere (4 * 3 - 11) = 1,0 -
+    # gerade noch die beste Note.
+    assert project_average([WeightedGrade(5.5, 1), WeightedGrade(5.5, 1)], 1) == (1.0, 4.0, True)
+    # Aus 6,0 und 6,0 mit offenem Gewicht 1 waere noetig 0,0 - eine Note, die es
+    # nicht gibt. Deshalb ist `needed` dann `None` und nicht eine erfundene Zahl.
+    assert project_average([WeightedGrade(6.0, 1), WeightedGrade(6.0, 1)], 1) == (None, 4.33, False)
+    # Ohne jede Note gibt es nichts zu rechnen.
+    assert project_average([], 0) == (None, None, False)
+    # Ohne offene Gewichtung nur der Rueckblick.
+    assert project_average([WeightedGrade(2.0, 1)], 0) == (None, 2.0, True)
+    # Ein negatives Gewicht ist ein Programmierfehler, kein leerer Schnitt.
+    with pytest.raises(GradeImportError):
+        project_average([WeightedGrade(2.0, 1)], -1)
+
+
+def test_notenstand_erhebt_die_prioritaet_aber_nicht_die_reihenfolge(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """Konfidenz und Note im Klausur-Generator - die Aufloesung im Test.
+
+    Geschichte hat den Schnitt 4,4 und ist damit nicht bestanden. Die beiden
+    Themen bleiben in der **Konfidenzreihenfolge** (das unsichere zuerst), aber
+    das sichere Thema, das sich selbst einschaetzt, sinkt nicht auf Prioritaet 0
+    zurueck: der Schnitt hebt es auf 4. Das ist die dokumentierte Aufloesung - die
+    Reihenfolge sortiert nach dem, was man selbst einschaetzt, die Prioritaet
+    nimmt den groesseren der beiden Signale.
+    """
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+    geschichte = _fach(db, user, "Geschichte")
+    sicher = create_topic(db, user, "Bundeswehr", geschichte)
+    unsicher = create_topic(db, user, "Industrialisierung", geschichte)
+    db.add(LearningProgress(user_id=user.id, topic_id=sicher.id, confidence=1.0))
+    db.add(LearningProgress(user_id=user.id, topic_id=unsicher.id, confidence=0.0))
+    db.commit()
+
+    _note(client, db, user, geschichte, 4.4, vor_tagen=30)
+    _note(client, db, user, geschichte, 4.4, vor_tagen=20)
+
+    exam = client.post(
+        "/api/v1/exams",
+        json={
+            "subject_id": geschichte.id,
+            "title": "Epochen",
+            "date": (datetime.now(timezone.utc) + timedelta(days=5)).isoformat(),
+        },
+    )
+    assert exam.status_code == 201
+    erzeugt = client.post(
+        f"/api/v1/exams/{exam.json()['id']}/tasks",
+        json={"study_plan_id": plan["id"], "chain_dependencies": False},
+    )
+    assert erzeugt.status_code == 201, erzeugt.text
+    aufgaben = erzeugt.json()["created_tasks"]
+    # Die Reihenfolge bleibt die Konfidenzreihenfolge - eine Note kann sie nicht
+    # unterscheiden, weil sie ein Fachschnitt ist.
+    assert [aufgabe["topic_name"] for aufgabe in aufgaben] == ["Industrialisierung", "Bundeswehr"]
+    # Ohne Noten waeren es 4 und 0 gewesen. Der Schnitt 4,4 hebt auch das
+    # sichere Thema auf die hoechste Stufe.
+    assert [aufgabe["priority"] for aufgabe in aufgaben] == [4, 4]
+    # Und die Aufgaben sagen, woher die Prioritaet kommt.
+    assert [aufgabe["subject_average"] for aufgabe in aufgaben] == [4.4, 4.4]
+    assert [aufgabe["subject_passed"] for aufgabe in aufgaben] == [False, False]
+    # Der frueheste Termin gehoert weiter dem unsicheren Thema: die Note aendert
+    # die Reihenfolge nicht, nur die Prioritaet.
+    assert aufgaben[0]["scheduled_for"] < aufgaben[1]["scheduled_for"]
+
+
+def test_ein_gutes_fach_erhebt_die_prioritaet_nicht(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """1,3 heisst sehr gut - da gibt es nichts vorzuziehen.
+
+    Die Gegenprobe zu ``test_notenstand_erhebt_die_prioritaet``: die Note ist
+    kein Zuschlag auf jede Aufgabe, sondern nur dann eine Hebung, wenn das Fach
+    auch wirklich Anlass zum Nacharbeiten gibt.
+    """
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+    mathe = _fach(db, user, "Mathematik")
+    sicher = create_topic(db, user, "Integralrechnung", mathe)
+    unsicher = create_topic(db, user, "Ableitungen", mathe)
+    db.add(LearningProgress(user_id=user.id, topic_id=sicher.id, confidence=1.0))
+    db.add(LearningProgress(user_id=user.id, topic_id=unsicher.id, confidence=0.0))
+    db.commit()
+    _note(client, db, user, mathe, 1.3, vor_tagen=10)
+    _note(client, db, user, mathe, 1.3, art="test", vor_tagen=4)
+
+    exam = client.post(
+        "/api/v1/exams",
+        json={
+            "subject_id": mathe.id,
+            "title": "Analysis",
+            "date": (datetime.now(timezone.utc) + timedelta(days=6)).isoformat(),
+        },
+    )
+    erzeugt = client.post(
+        f"/api/v1/exams/{exam.json()['id']}/tasks",
+        json={"study_plan_id": plan["id"], "chain_dependencies": False},
+    )
+    assert erzeugt.status_code == 201, erzeugt.text
+    aufgaben = erzeugt.json()["created_tasks"]
+    # Genau die Werte, die auch ohne Noten herauskamen.
+    assert [aufgabe["priority"] for aufgabe in aufgaben] == [4, 0]
+    assert aufgaben[0]["subject_passed"] is True
+
+
+def test_prioritaetsstufen_aus_dem_fachschnitt_sind_erklart() -> None:
+    """Die Tabelle als Text: wer sie aendert, faellt hier auf.
+
+    Die Stufe ist die **Dringlichkeit**, und die steigt mit der Note: auf der
+    deutschen Skala ist 1,0 sehr gut. Wer das umdreht, macht aus jedem guten
+    Fach ein dringendes.
+
+    Ohne Schnitt ist die Stufe **0**, nicht 4 - anders als bei der Konfidenz,
+    wo ein fehlender Wert "unsicher" heisst. Ein fehlender Lernstand ist eine
+    Aussage der Lernenden, ein fehlender Notenspiegel nicht.
+    """
+    assert grade_priority(None) == 0
+    assert grade_priority(1.0) == 0
+    assert grade_priority(2.0) == 0
+    assert grade_priority(2.5) == 1
+    assert grade_priority(3.0) == 1
+    assert grade_priority(3.4) == 2
+    assert grade_priority(3.5) == 2
+    assert grade_priority(3.9) == 3
+    # Genau die Grenze ist noch bestanden und bekommt deshalb Stufe 3.
+    assert grade_priority(4.0) == 3
+    # Alles darueber ist die hoechste Stufe: eine Note schlimmer als
+    # "nicht genuegend" gibt es nicht, eine feinere Teilung waere erfunden.
+    assert grade_priority(4.4) == 4
+    assert grade_priority(6.0) == 4
+
+
+def test_prioritaet_der_aufgabe_bleibt_ohne_noten_genau_wie_vorher(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """Ohne Noten darf sich am Generator nichts aendern.
+
+    Ein Feature, das nur bei gesetzten Daten wirkt, ist sonst unsichtbar
+    kaputt: niemand prueft den Zweig, in dem es nichts zu tun gibt.
+    """
+    client, db, user = app_context
+    login(client)
+    plan = create_plan(client, db, user)
+    mathe = _fach(db, user, "Mathematik")
+    sicher = create_topic(db, user, "Integralrechnung", mathe)
+    unsicher = create_topic(db, user, "Ableitungen", mathe)
+    db.add(LearningProgress(user_id=user.id, topic_id=sicher.id, confidence=0.9))
+    db.add(LearningProgress(user_id=user.id, topic_id=unsicher.id, confidence=0.1))
+    db.commit()
+    exam = client.post(
+        "/api/v1/exams",
+        json={
+            "subject_id": mathe.id,
+            "title": "Analysis",
+            "date": (datetime.now(timezone.utc) + timedelta(days=6)).isoformat(),
+        },
+    )
+    erzeugt = client.post(
+        f"/api/v1/exams/{exam.json()['id']}/tasks",
+        json={"study_plan_id": plan["id"], "chain_dependencies": False},
+    )
+    assert erzeugt.status_code == 201, erzeugt.text
+    aufgaben = erzeugt.json()["created_tasks"]
+    assert [aufgabe["priority"] for aufgabe in aufgaben] == [4, 0]
+    # Und die Aufgabe weist aus, dass es keine Noten gibt - nicht 0,0.
+    assert [aufgabe["subject_average"] for aufgabe in aufgaben] == [None, None]
+    assert [aufgabe["subject_passed"] for aufgabe in aufgaben] == [None, None]
+
+
+def _notenspiegel(client: TestClient, text: str) -> int:
+    """Ein Notenspiegel als Dokument ablegen und seine Id zurueckgeben."""
+    antwort = client.post("/api/v1/files", files={"file": ("noten.txt", text.encode("utf-8"), "text/plain")})
+    assert antwort.status_code == 201, antwort.text
+    return int(antwort.json()["id"])
+
+
+def test_import_liest_einen_notenspiegel_zeilenweise(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    mathe = _fach(db, user, "Mathematik")
+    _fach(db, user, "Geschichte")
+    dokument = _notenspiegel(
+        client,
+        "\n".join(
+            [
+                "Noten Klasse 8b, Schuljahr 2025/2026",
+                "Mathematik            1,7   Klassenarbeit vom 14.09.2026",
+                "Mathematik            2,0   Test vom 21.09.2026",
+                "Geschichte            3,8   mündlich",
+                "Sport                 1,3",
+                "Diese Zeile enthaelt keine Note.",
+            ]
+        ),
+    )
+
+    vorschau = client.get(f"/api/v1/grades/import?document_id={dokument}&subject_id={mathe.id}").json()
+    assert vorschau["filename"] == "noten.txt"
+    zeilen = [eintrag for eintrag in vorschau["entries"]]
+    # Fuenf Zeilen mit einer Note; der Kopf und der Satz ohne Zahl fallen weg.
+    assert len(zeilen) == 4
+    assert [(zeile["subject_name"], zeile["value"]) for zeile in zeilen] == [
+        ("Mathematik", 1.7),
+        ("Mathematik", 2.0),
+        ("Geschichte", 3.8),
+        (None, 1.3),
+    ]
+    # Die Art kommt aus der Zeile, sonst aus der Vorgabe.
+    assert [zeile["kind"] for zeile in zeilen] == ["written_exam", "test", "oral", "written_exam"]
+    assert zeilen[0]["graded_on"] == "2026-09-14"
+    assert zeilen[1]["graded_on"] == "2026-09-21"
+    # Ohne Datum in der Zeile greift die Vorgabe aus dem Request.
+    assert zeilen[2]["graded_on"] == client.get("/api/v1/grades/summary").json()["generated_at"][:10]
+    # Eine Zeile ohne Fachnamen wird als nicht erkannt markiert und faellt auf
+    # das Vorgabefach zurueck.
+    assert zeilen[3]["subject_recognized"] is False
+    assert zeilen[3]["subject_id"] == mathe.id
+    assert zeilen[0]["already_imported"] is False
+    # Noch ist nichts angelegt - die Vorschau ist eine Vorschau.
+    assert client.get("/api/v1/grades").json() == []
+
+    uebernommen = client.post(
+        "/api/v1/grades/import",
+        json={"document_id": dokument, "keys": [zeile["key"] for zeile in zeilen[:2]], "subject_id": mathe.id},
+    )
+    assert uebernommen.status_code == 201, uebernommen.text
+    assert uebernommen.json()["created"] == 2
+    assert uebernommen.json()["skipped"] == 0
+
+    noten = client.get(f"/api/v1/grades?subject_id={mathe.id}").json()
+    assert sorted(note["grade_value"] for note in noten) == [1.7, 2.0]
+    assert {note["source"] for note in noten} == {"document"}
+    # Die Art kam aus dem Dokument, nicht aus dem Request.
+    assert {note["kind"] for note in noten} == {"written_exam", "test"}
+    # Der Verweis auf das Dokument bleibt stehen.
+    assert {note["document_id"] for note in noten} == {dokument}
+
+
+def test_import_legt_denselben_spiegel_nicht_zweimal_an(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    _fach(db, user, "Mathematik")
+    dokument = _notenspiegel(client, "Mathematik 1,7 Klassenarbeit\nMathematik 2,0 Test")
+    vorschau = client.get(f"/api/v1/grades/import?document_id={dokument}").json()
+    schluessel = [eintrag["key"] for eintrag in vorschau["entries"]]
+
+    erstes = client.post("/api/v1/grades/import", json={"document_id": dokument, "keys": schluessel})
+    assert erstes.status_code == 201
+    assert erstes.json()["created"] == 2
+    zweites = client.post("/api/v1/grades/import", json={"document_id": dokument, "keys": schluessel})
+    assert zweites.status_code == 201
+    assert zweites.json() == {"document_id": dokument, "created": 0, "skipped": 2, "created_ids": []}
+    assert len(client.get("/api/v1/grades").json()) == 2
+
+    # Und die Vorschau sagt jetzt, dass diese Zeilen schon drin sind.
+    erneut = client.get(f"/api/v1/grades/import?document_id={dokument}").json()
+    assert [eintrag["already_imported"] for eintrag in erneut["entries"]] == [True, True]
+
+
+def test_import_braucht_eine_bestaetigte_zeile(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    dokument = _notenspiegel(client, "Nur ein Satz ohne Note im Text.")
+    # Ohne Zeile bestaetigt wird nichts angelegt.
+    ohne = client.post("/api/v1/grades/import", json={"document_id": dokument, "keys": []})
+    assert ohne.status_code == 422
+    # Und ein Schluessel, den es im Dokument nicht gibt, auch nicht.
+    fremd = client.post("/api/v1/grades/import", json={"document_id": dokument, "keys": ["gibt-es-nicht"]})
+    assert fremd.status_code == 422
+    assert client.get("/api/v1/grades").json() == []
+
+
+def test_import_liest_kein_fremdes_dokument(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    _fach(db, user, "Mathematik")
+    dokument = _notenspiegel(client, "Mathematik 1,7")
+
+    # Ein zweiter Nutzer sieht das Dokument des ersten nicht, also auch keine
+    # Noten darin. Sonst koennte eine fremde Datei den Schnitt verfaelschen.
+    fremder = User(username="fremder", password_hash=hash_password("fremdes-passwort"), is_active=True, timezone="UTC")
+    db.add(fremder)
+    db.commit()
+    assert client.post("/api/v1/auth/login", json={"username": "fremder", "password": "fremdes-passwort"}).status_code == 200
+    # 404 statt 422: eine fremde Id soll nicht verraten, dass es sie gibt.
+    assert client.get(f"/api/v1/grades/import?document_id={dokument}").status_code == 404
+    assert client.post("/api/v1/grades/import", json={"document_id": dokument, "keys": ["egal"]}).status_code == 404
+    assert client.get("/api/v1/grades").json() == []
+
+
+def test_noten_bleiben_ohne_freigabe_bei_sich(app_context: tuple[TestClient, Session, User]) -> None:
+    """Punkt sieben: die Freigabe ist der einzige Weg zum Provider.
+
+    Ohne Provider entsteht kein Modellaufruf, deshalb wird hier an der
+    Schnittstelle geprueft, **was** dem Prompt uebergeben wird - und dass die
+    Freigabe das einzige ist, was sich zwischen beiden unterscheidet.
+    """
+    client, db, user = app_context
+    login(client)
+    mathe = _fach(db, user, "Mathematik")
+    _note(client, db, user, mathe, 4.4, vor_tagen=20)
+    _note(client, db, user, mathe, 4.4, vor_tagen=10)
+
+    # Standard ist aus, und aus heisst: leere Zeilen.
+    zustand = client.get("/api/v1/grades/sharing").json()
+    assert zustand["share_grades_with_ai"] is False
+    assert zustand["preference_key"] == "share_grades_with_ai"
+    assert len(client.get("/api/v1/grades/sharing").json()["uses"]) == 2
+    assert grades_service.grade_context_lines(db, user.id) == []
+
+    eingeschaltet = client.put("/api/v1/grades/sharing", json={"enabled": True})
+    assert eingeschaltet.status_code == 200, eingeschaltet.text
+    assert eingeschaltet.json()["share_grades_with_ai"] is True
+    zeilen = grades_service.grade_context_lines(db, user.id)
+    assert any("4,4" in zeile for zeile in zeilen)
+    assert any("nicht bestanden" in zeile for zeile in zeilen)
+
+    # Und zurueckgenommen heisst wieder: nichts.
+    assert client.put("/api/v1/grades/sharing", json={"enabled": False}).json()["share_grades_with_ai"] is False
+    assert grades_service.grade_context_lines(db, user.id) == []
+
+
+def test_freigabe_ist_je_nutzer_und_liegt_in_den_einstellungen(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    login(client)
+    assert client.put("/api/v1/grades/sharing", json={"enabled": True}).status_code == 200
+    # Die Einstellung liegt in `preferences` und laesst die anderen Schluessel
+    # unberuehrt - dieselbe Regel wie beim Wochenziel.
+    db.expire_all()
+    einstellungen = db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+    assert einstellungen is not None
+    assert einstellungen.preferences == {"share_grades_with_ai": True}
+    assert client.put("/api/v1/grades/sharing", json={"enabled": False}).status_code == 200
+    db.expire_all()
+    einstellungen = db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+    assert einstellungen is not None and einstellungen.preferences == {"share_grades_with_ai": False}
+
+    # Ein zweiter Nutzer ist unberuehrt.
+    zweiter = User(username="dritte", password_hash=hash_password("pw"), is_active=True, timezone="UTC")
+    db.add(zweiter)
+    db.commit()
+    assert client.post("/api/v1/auth/login", json={"username": "dritte", "password": "pw"}).status_code == 200
+    assert client.get("/api/v1/grades/sharing").json()["share_grades_with_ai"] is False
+
+
+def test_kaputte_einstellung_schaltet_die_freigabe_nicht_von_selbst_ein(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    login(client)
+    einstellungen = UserSettings(user_id=user.id, preferences={"share_grades_with_ai": "ja, bitte"})
+    db.add(einstellungen)
+    db.commit()
+    db.expire_all()
+    # Kein Schalter, der durch einen falsch gespeicherten Wert von selbst
+    # aufginge. Ein Fehler heisst hier aus, nicht raten.
+    assert client.get("/api/v1/grades/sharing").json()["share_grades_with_ai"] is False
+    assert grades_service.grade_context_lines(db, user.id) == []
+
+
+def test_widerruf_der_freigabe_loescht_den_heutigen_willkommenssatz(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """Der Satz ist zwischengespeichert und kann eine Note genannt haben.
+
+    Nach dem Widerruf darf er nicht weiter stehen. Neu erzeugt wird er beim
+    naechsten Abruf - die Freigabe steht dann aus, also entsteht ein Satz ohne
+    Noten.
+    """
+    client, db, user = app_context
+    login(client)
+    mathe = _fach(db, user, "Mathematik")
+    _note(client, db, user, mathe, 2.2)
+    client.put("/api/v1/grades/sharing", json={"enabled": True})
+    assert client.get("/api/v1/greeting").status_code == 200
+    db.expire_all()
+    assert db.query(GreetingCache).filter(GreetingCache.user_id == user.id).count() == 1
+
+    assert client.put("/api/v1/grades/sharing", json={"enabled": False}).status_code == 200
+    db.expire_all()
+    assert db.query(GreetingCache).filter(GreetingCache.user_id == user.id).count() == 0
+
+
+def test_ask_sagt_ob_noten_mitgeschickt_wurden(app_context: tuple[TestClient, Session, User]) -> None:
+    """`source` bleibt dreiwertig, die Notenfrage bekommt ein eigenes Feld.
+
+    Die beiden Fragen sind verschiedene: woher die Antwort kommt und ob der
+    Notenstand im Prompt stand. Deshalb ist `grades_shared` kein vierter Wert
+    von `source`, sondern ein zusaetzliches Feld - die bestehende Dreiwertigkeit
+    bleibt unangetastet.
+    """
+    client, db, user = app_context
+    login(client)
+    mathe = _fach(db, user, "Mathematik")
+    _note(client, db, user, mathe, 3.0)
+    _notenspiegel(client, "Notenspiegel: Mathematik 3,0 Klassenarbeit")
+
+    ohne = client.post("/api/v1/documents/ask", json={"question": "Wie stehe ich in Mathematik?"}).json()
+    assert ohne["grades_shared"] is False
+    assert ohne["source"] in {"ai", "fallback", "none"}
+    assert client.put("/api/v1/grades/sharing", json={"enabled": True}).status_code == 200
+    mit = client.post("/api/v1/documents/ask", json={"question": "Wie stehe ich in Mathematik?"}).json()
+    assert mit["grades_shared"] is True
+    assert mit["source"] in {"ai", "fallback", "none"}
+
+
+def test_noten_sind_echte_daten_und_kein_zustand_im_frontend(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """Der Demo-Seed legt Noten an - und bleibt dabei idempotent."""
+    client, db, user = app_context
+    login(client)
+    erstes = seed_demo_data(db, user.id)
+    db.commit()
+    zweites = seed_demo_data(db, user.id)
+    db.commit()
+    assert erstes.created > 0
+    assert erstes.updated == 0
+    assert zweites.created == 0
+    assert zweites.updated == erstes.total
+
+    zusammenfassung = client.get("/api/v1/grades/summary").json()
+    assert zusammenfassung["total_count"] == 5
+    assert len(zusammenfassung["by_subject"]) == 2
+    assert len(zusammenfassung["trend"]) == 5
+    # Die Demo hat absichtlich ein bestandenes und ein durchgefallenes Fach.
+    assert sorted(eintrag["passed"] for eintrag in zusammenfassung["by_subject"]) == [False, True]

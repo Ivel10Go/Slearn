@@ -7,7 +7,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api import auth, calendar, dashboard, exams, greeting, health, homework, lessons, progress, study, subjects
+from app.api import (
+    auth,
+    calendar,
+    dashboard,
+    exams,
+    grades,
+    greeting,
+    health,
+    homework,
+    lessons,
+    progress,
+    study,
+    subjects,
+)
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, log_event
 from app.db.entities import User
@@ -106,6 +119,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Fortschrittskarte und der erste Ort, an dem `LearningProgress`
     # geschrieben wird, nicht erreichbar.
     application.include_router(progress.router)
+    # Noten. Ohne diese Zeile waeren Schnitt, Verlauf, Hochrechnung und die
+    # Freigabe fuer den KI-Dienst nicht erreichbar.
+    application.include_router(grades.router)
     from app.api import documents, files, integrations
     application.include_router(integrations.router)
     application.include_router(files.router)

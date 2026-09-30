@@ -229,6 +229,15 @@ export interface DocumentAnswer {
   source: DocumentAnswerSource;
   model: string | null;
   sources: DocumentSource[];
+  /**
+   * Ob der Notenstand im Prompt stand.
+   *
+   * Ein eigenes Feld und **kein** Wert von `source`: `source` sagt, woher die
+   * Antwort kommt (`ai`/`fallback`/`none`), und diese drei Werte bleiben so.
+   * Die Frage einer Lernenden ist aber eine andere - namely ob ihre Noten
+   * rausgegangen sind. Ohne dieses Feld muesste die Oberflaeche raten.
+   */
+  grades_shared: boolean;
 }
 
 /**
@@ -334,6 +343,15 @@ export interface StudyTask {
   completed_at: string | null;
   blocked_by: StudyTaskPrerequisite[];
   blocking_task_ids: number[];
+  /**
+   * Der Schnitt des Faches, an dem die Aufgabe haengt.
+   *
+   * `null`, wenn es zu diesem Fach keine Noten gibt - nicht `0`, und nicht
+   * ausgelassen. Der Generator nimmt diesen Wert als Mindestprioritaet, und
+   * damit sichtbar ist, dass eine Prioritaet nicht nur aus der Konfidenz kam.
+   */
+  subject_average: number | null;
+  subject_passed: boolean | null;
 }
 
 export interface StudyPlan {
@@ -549,6 +567,124 @@ export interface FileUploadResult {
 export interface SubjectOption {
   id: number;
   name: string;
+}
+
+/**
+ * Die drei Arten einer Note, wie `GradeKind` im Backend.
+ *
+ * Eine geschlossene Liste: die Migration traegt dieselben drei Werte als
+ * Check-Constraint. Der deutsche Name steht in `lib/grades.ts`, nicht hier -
+ * ein Enum-Wert ist ein Vertrag, sein Anzeigename ist Darstellung.
+ */
+export type GradeKind = "written_exam" | "test" | "oral";
+
+/** Eine einzelne Note, wie `GET /v1/grades` sie liefert. */
+export interface Grade {
+  id: number;
+  subject_id: number | null;
+  subject_name: string | null;
+  grade_value: number;
+  kind: GradeKind;
+  /** Wie oft die Note in den Schnitt eingeht. 1 ist die Norm. */
+  weight: number;
+  /** Ein Kalendertag (`YYYY-MM-DD`), kein Zeitstempel. */
+  graded_on: string;
+  comment: string | null;
+  source: string;
+  document_id: number | null;
+}
+
+/**
+ * Ein Schnitt, gewichtet.
+ *
+ * `passed` kommt als Wahrheitswert aus dem Backend und wird hier zu einem Wort
+ * uebersetzt - "bestanden" allein waere bei 3,9 eine harte Aussage, die
+ * Oberflaeche darf dazusagen, wie knapp es ist.
+ */
+export interface GradeAverage {
+  subject_id: number | null;
+  subject_name: string;
+  average: number;
+  count: number;
+  weight: number;
+  passed: boolean;
+}
+
+/** Ein Punkt der Verlaufslinie. `count` und `weight` sind kumuliert. */
+export interface GradeTrendPoint {
+  graded_on: string;
+  average: number;
+  count: number;
+  weight: number;
+}
+
+/**
+ * Die Hochrechnung: was ab jetzt noch kommen muss.
+ *
+ * `needed_average` ist `null`, wenn die noetige Note ausserhalb der Skale
+ * liegt - dann gibt es keine Zahl, die man zeigen koennte, und `still_possible`
+ * sagt, warum nicht.
+ */
+export interface GradeProjection {
+  current_average: number | null;
+  passing_grade: number;
+  projected_weight: number;
+  needed_average: number | null;
+  best_possible_average: number | null;
+  still_possible: boolean;
+}
+
+export interface GradeSummary {
+  passing_grade: number;
+  generated_at: string;
+  overall: GradeAverage;
+  by_subject: GradeAverage[];
+  trend: GradeTrendPoint[];
+  total_count: number;
+  projection: GradeProjection;
+}
+
+/** Die Freigabe, ob Noten den KI-Dienst erreichen duerfen. Standard ist `false`. */
+export interface GradeSharing {
+  share_grades_with_ai: boolean;
+  /** Wo die Entscheidung liegt - im Klartext, damit die Karte es zeigen kann. */
+  preference_key: string;
+  /** Wo sie ausgewertet wird. Die Liste kommt vom Backend, sie kann waachsen. */
+  uses: string[];
+}
+
+/** Eine Zeile aus einem Dokument, wie der Server sie liest. */
+export interface GradeImportCandidate {
+  key: string;
+  line_number: number;
+  line: string;
+  value: number;
+  kind: GradeKind;
+  graded_on: string;
+  weight: number;
+  comment: string | null;
+  subject_id: number | null;
+  subject_name: string | null;
+  /** `false` heisst: das Fach stand nicht in der Zeile, es kam aus der Vorgabe. */
+  subject_recognized: boolean;
+  already_imported: boolean;
+}
+
+export interface GradeImportPreview {
+  document_id: number;
+  filename: string;
+  subject_id: number | null;
+  default_kind: GradeKind;
+  default_weight: number;
+  default_date: string | null;
+  entries: GradeImportCandidate[];
+}
+
+export interface GradeImportResult {
+  document_id: number;
+  created: number;
+  skipped: number;
+  created_ids: number[];
 }
 
 // Helper functions

@@ -277,6 +277,13 @@ class StudyTaskRead(UTCResponseModel):
     # Aufgaben, die auf diese warten. Die Oberflaeche loescht damit die
     # Abhaengigkeit, wenn sie eine Aufgabe selbst entfernt.
     blocking_task_ids: list[int] = Field(default_factory=list)
+    # Der Schnitt des Faches, an dem die Aufgabe haengt, und ob er bestanden
+    # ist. Beides `None`, wenn es zu diesem Fach keine Noten gibt - nicht 0,0.
+    # Diese beiden Felder sind der Grund, warum die Prioritaet einer erzeugten
+    # Aufgabe ueberhaupt am Notenstand haengen kann: sie machen sichtbar, dass
+    # eine Prioritaet nicht nur aus der Konfidenz kam.
+    subject_average: float | None = None
+    subject_passed: bool | None = None
 
 
 class ExamTaskPlanRequest(BaseModel):

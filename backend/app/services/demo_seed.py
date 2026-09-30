@@ -9,6 +9,7 @@ from app.core.time import as_utc, utc_now
 from app.db.entities import (
     CalendarEvent,
     Exam,
+    Grade,
     Homework,
     LearningProgress,
     Lesson,
@@ -80,6 +81,11 @@ def demo_external_ids() -> tuple[str, ...]:
         "demo-plan",
         "demo-task-0",
         "demo-task-1",
+        "demo-grade-0",
+        "demo-grade-1",
+        "demo-grade-2",
+        "demo-grade-3",
+        "demo-grade-4",
     )
 
 
@@ -294,6 +300,33 @@ def seed_demo_data(db: Session, user_id: int, now: datetime | None = None) -> De
         {"confidence": 0.2, "last_reviewed_at": current, "notes": "Demo"},
         counts,
     )
+    # Fuenf Noten ueber die letzten fuenf Wochen: zwei im guten, zwei im mittleren
+    # und eines im schlechten Fach. Sie geben der Karte eine Linie und eine
+    # Hochrechnung, die etwas zu sagen haben - ohne sie waere der Demo-Stand eine
+    # leere Karte, und eine leere Karte erklaert nichts.
+    grade_specs = [
+        ("demo-grade-0", math, 1.7, "written_exam", 1, -28),
+        ("demo-grade-1", math, 2.3, "test", 2, -21),
+        ("demo-grade-2", math, 2.0, "written_exam", 1, -7),
+        ("demo-grade-3", history, 3.8, "test", 1, -14),
+        ("demo-grade-4", history, 4.3, "oral", 1, -4),
+    ]
+    for external_id, subject, value, kind, weight, day_offset in grade_specs:
+        _upsert(
+            db,
+            Grade,
+            {"user_id": user_id, "source": DEMO_SOURCE, "external_id": external_id},
+            {
+                "subject_id": subject.id,
+                "document_id": None,
+                "grade_value": value,
+                "kind": kind,
+                "weight": weight,
+                "graded_on": _day_at(current, day_offset, 0).date(),
+                "comment": "Demo",
+            },
+            counts,
+        )
     return DemoSeedResult(created=counts["created"], updated=counts["updated"])
 
 

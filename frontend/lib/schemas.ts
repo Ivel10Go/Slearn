@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 
 export const integrationReadSchema = z.object({
   id: z.number().int(),
@@ -101,6 +101,10 @@ export const documentAskResponseSchema = z.object({
   source: z.string(),
   model: z.string().nullable().optional(),
   sources: z.array(documentSourceSchema),
+  // Neu gegenueber aelteren Backends. `.default(false)` haelt die Karte
+  // lauffaehig, wenn ein Server ohne Noten antwortet - und "aus" ist der
+  // sichere Fall, nicht der bemerkenswerte.
+  grades_shared: z.boolean().default(false),
 });
 
 export function parseDocumentArray(payload: unknown) {
@@ -139,6 +143,8 @@ export function parseDocumentAnswer(payload: unknown) {
     source: (parsed.source === "ai" || parsed.source === "none" ? parsed.source : "fallback") as "ai" | "fallback" | "none",
     model: parsed.model ?? null,
     sources: parsed.sources,
+    // Kommt als eigenes Feld aus dem Backend: `source` bleibt dreiwertig.
+    grades_shared: parsed.grades_shared,
   };
 }
 
@@ -247,6 +253,11 @@ export const studyTaskReadSchema = z.object({
   completed_at: optionalText,
   blocked_by: z.array(studyTaskPrerequisiteSchema),
   blocking_task_ids: z.array(z.number().int()),
+  // Der Fachschnitt, an dem die Prioritaet dieser Aufgabe haengt. Bewusst
+  // nullable: ein Fach ohne Noten hat keinen Schnitt, und `0` waere eine
+  // schlechte Note.
+  subject_average: z.number().nullable().optional(),
+  subject_passed: z.boolean().nullable().optional(),
 });
 
 export const studyPlanReadSchema = z.object({
@@ -409,6 +420,204 @@ export const learningInsightsSchema = z.object({
   weekday_window_days: z.number().int(),
 });
 
+/*
+ * Noten (`/v1/grades`).
+ *
+ * Auch das sind echte Schemata. Der Grund ist derselbe wie beim Lernfortschritt:
+ * die Karte zeigt einen Schnitt und eine Linie an, und eine Zahl, die
+ * stillschweigend fehlt, waere dort eine erfundene. `subject_average` ist
+ * bewusst `number | null` und nicht `number`: eine Note ohne Fachschnitt gibt es
+ * nicht, und eine `0` waere eine schlechte Note.
+ */
+
+export const gradeKindSchema = z.enum(["written_exam", "test", "oral"]);
+
+export const gradeReadSchema = z.object({
+  id: z.number().int(),
+  subject_id: optionalId,
+  subject_name: optionalText,
+  grade_value: z.number().positive().max(6),
+  kind: gradeKindSchema,
+  weight: z.number().int().min(1),
+  graded_on: isoDate,
+  comment: optionalText,
+  source: z.string(),
+  document_id: optionalId,
+});
+
+export const gradeAverageSchema = z.object({
+  subject_id: optionalId,
+  subject_name: z.string(),
+  average: z.number().min(0),
+  count: z.number().int().min(0),
+  weight: z.number().int().min(0),
+  passed: z.boolean(),
+});
+
+export const gradeTrendPointSchema = z.object({
+  graded_on: isoDate,
+  average: z.number().min(0),
+  count: z.number().int().min(1),
+  weight: z.number().int().min(1),
+});
+
+export const gradeProjectionSchema = z.object({
+  current_average: z.number().nullable(),
+  passing_grade: z.number(),
+  projected_weight: z.number().int().min(0),
+  needed_average: z.number().nullable(),
+  best_possible_average: z.number().nullable(),
+  still_possible: z.boolean(),
+});
+
+export const gradeSummarySchema = z.object({
+  passing_grade: z.number(),
+  generated_at: z.string(),
+  overall: gradeAverageSchema,
+  by_subject: z.array(gradeAverageSchema),
+  trend: z.array(gradeTrendPointSchema),
+  total_count: z.number().int().min(0),
+  projection: gradeProjectionSchema,
+});
+
+export const gradeSharingSchema = z.object({
+  share_grades_with_ai: z.boolean(),
+  preference_key: z.string(),
+  uses: z.array(z.string()),
+});
+
+export const gradeImportCandidateSchema = z.object({
+  key: z.string().min(1),
+  line_number: z.number().int().min(1),
+  line: z.string(),
+  value: z.number().positive().max(6),
+  kind: gradeKindSchema,
+  graded_on: isoDate,
+  weight: z.number().int().min(1),
+  comment: optionalText,
+  subject_id: optionalId,
+  subject_name: optionalText,
+  subject_recognized: z.boolean(),
+  already_imported: z.boolean(),
+});
+
+export const gradeImportPreviewSchema = z.object({
+  document_id: z.number().int(),
+  filename: z.string(),
+  subject_id: optionalId,
+  default_kind: gradeKindSchema,
+  default_weight: z.number().int().min(1),
+  default_date: z.string().nullable().optional(),
+  entries: z.array(gradeImportCandidateSchema),
+});
+
+export const gradeImportResultSchema = z.object({
+  document_id: z.number().int(),
+  created: z.number().int().min(0),
+  skipped: z.number().int().min(0),
+  created_ids: z.array(z.number().int()),
+});
+
+export function parseGradeArray(payload: unknown) {
+  return z.array(gradeReadSchema).parse(payload).map((entry) => ({
+    id: entry.id,
+    subject_id: entry.subject_id ?? null,
+    subject_name: entry.subject_name ?? null,
+    grade_value: entry.grade_value,
+    kind: entry.kind,
+    weight: entry.weight,
+    graded_on: entry.graded_on,
+    comment: entry.comment ?? null,
+    source: entry.source,
+    document_id: entry.document_id ?? null,
+  }));
+}
+
+export function parseGradeRead(payload: unknown) {
+  return parseGradeArray([payload])[0];
+}
+
+export function parseGradeSummary(payload: unknown) {
+  const parsed = gradeSummarySchema.parse(payload);
+  return {
+    passing_grade: parsed.passing_grade,
+    generated_at: parsed.generated_at,
+    overall: parseGradeAverage(parsed.overall),
+    by_subject: parsed.by_subject.map(parseGradeAverage),
+    trend: parsed.trend.map((punkt) => ({
+      graded_on: punkt.graded_on,
+      average: punkt.average,
+      count: punkt.count,
+      weight: punkt.weight,
+    })),
+    total_count: parsed.total_count,
+    projection: {
+      current_average: parsed.projection.current_average ?? null,
+      passing_grade: parsed.projection.passing_grade,
+      projected_weight: parsed.projection.projected_weight,
+      needed_average: parsed.projection.needed_average ?? null,
+      best_possible_average: parsed.projection.best_possible_average ?? null,
+      still_possible: parsed.projection.still_possible,
+    },
+  };
+}
+
+function parseGradeAverage(entry: z.infer<typeof gradeAverageSchema>) {
+  return {
+    subject_id: entry.subject_id ?? null,
+    subject_name: entry.subject_name,
+    average: entry.average,
+    count: entry.count,
+    weight: entry.weight,
+    passed: entry.passed,
+  };
+}
+
+export function parseGradeSharing(payload: unknown) {
+  const parsed = gradeSharingSchema.parse(payload);
+  return {
+    share_grades_with_ai: parsed.share_grades_with_ai,
+    preference_key: parsed.preference_key,
+    uses: parsed.uses,
+  };
+}
+
+export function parseGradeImportPreview(payload: unknown) {
+  const parsed = gradeImportPreviewSchema.parse(payload);
+  return {
+    document_id: parsed.document_id,
+    filename: parsed.filename,
+    subject_id: parsed.subject_id ?? null,
+    default_kind: parsed.default_kind,
+    default_weight: parsed.default_weight,
+    default_date: parsed.default_date ?? null,
+    entries: parsed.entries.map((eintrag) => ({
+      key: eintrag.key,
+      line_number: eintrag.line_number,
+      line: eintrag.line,
+      value: eintrag.value,
+      kind: eintrag.kind,
+      graded_on: eintrag.graded_on,
+      weight: eintrag.weight,
+      comment: eintrag.comment ?? null,
+      subject_id: eintrag.subject_id ?? null,
+      subject_name: eintrag.subject_name ?? null,
+      subject_recognized: eintrag.subject_recognized,
+      already_imported: eintrag.already_imported,
+    })),
+  };
+}
+
+export function parseGradeImportResult(payload: unknown) {
+  const parsed = gradeImportResultSchema.parse(payload);
+  return {
+    document_id: parsed.document_id,
+    created: parsed.created,
+    skipped: parsed.skipped,
+    created_ids: parsed.created_ids,
+  };
+}
+
 export const fileUploadResponseSchema = z.object({
   id: z.number().int(),
   filename: z.string(),
@@ -523,6 +732,10 @@ export function parseStudyTaskArray(payload: unknown) {
       due_date: prerequisite.due_date ?? null,
     })),
     blocking_task_ids: entry.blocking_task_ids,
+    // Der Generator nimmt den Fachschnitt als Mindestprioritaet; die Karte
+    // zeigt, dass eine Prioritaet nicht nur aus der Konfidenz kam.
+    subject_average: entry.subject_average ?? null,
+    subject_passed: entry.subject_passed ?? null,
   }));
 }
 
