@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import dataclasses
 import hashlib
+import io
 import json
 import threading
+import wave
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -42,9 +46,18 @@ from app.db.entities import (
 )
 from app.main import create_app
 from app.schemas.auth import UserRead
-from app.services import calendar_consent, calendar_feed, calendar_sync, google_calendar, model_catalog, web_push
+from app.services import (
+    calendar_consent,
+    calendar_feed,
+    calendar_sync,
+    google_calendar,
+    model_catalog,
+    piper_voices,
+    web_push,
+)
 from app.services import grades as grades_service
 from app.services import integrations as integrations_service
+from app.services import speech as speech_service
 from app.services.ai_provider import (
     AiProviderAuthError,
     AiProviderClient,
@@ -95,6 +108,7 @@ from app.services.integrations import (
 )
 from app.services.lessons import MAX_RANGE_DAYS, LessonRangeError, validate_range
 from app.services.model_catalog import (
+    MODEL_ID_PATTERN,
     MODEL_TASKS,
     ModelCatalogError,
     ModelFile,
@@ -133,6 +147,7 @@ from app.services.notifications import (
     with_quiet,
     write_preferences,
 )
+from app.services.piper_voices import PiperVoice, VoiceConfigError, read_voice_config
 from app.services.progress import (
     DEFAULT_WEEKLY_GOAL_MINUTES,
     confidence_label,
@@ -140,6 +155,12 @@ from app.services.progress import (
     longest_streak,
     review_interval_days,
     week_bounds,
+)
+from app.services.speech import (
+    PiperSynthesizer,
+    SpeechRuntimeError,
+    SpeechService,
+    WhisperTranscriber,
 )
 from app.services.webuntis import (
     WebUntisAuthError,
@@ -8465,3 +8486,1283 @@ def test_ein_download_landet_ausschliesslich_unter_der_modellablage(
 
     assert (tmp_path / "modelle" / spec.id).is_dir()
     assert sorted(p.name for p in (tmp_path / "modelle" / spec.id).iterdir()) == [MANIFEST_NAME, "probe.gguf"]
+
+
+# --------------------------------------------------------------------------
+# Sprach-Assistent: Stimmenkatalog, Laufzeiten, Faehigkeiten, Textmodus
+# --------------------------------------------------------------------------
+#
+# Was hier **nicht** getestet werden kann, und warum es trotzdem nicht
+# fehlt:
+#
+# * **Die ONNX-Inferenz von Piper.** Sie laeuft im Prozess ``piper``, nicht in
+#   diesem Code. Geprueft wird der ganze Weg drumherum - Argumentbau, WAV-Kopf,
+#   Fehlermeldung des Programms, Grenzen, Sprache der Stimme - mit einer
+#   Attrappe, die eine echte WAV-Datei zurueckgibt. Die Inferenz selbst wurde
+#   hier nie ausgefuehrt.
+# * **Der Download der echten Piper-Dateien.** Groessen und Pruefsummen im
+#   Katalog sind echt (von Hugging Face geholt, nicht geraten), die Bytes kommen
+#   im Test aus einem ``httpx.MockTransport``. Geprueft ist der Weg, nicht die
+#   Quelle. Der Weg laeuft ueber denselben, **unveraenderten** Manager wie die
+#   GGUF-Modelle - genau darum geht es bei der Formatfrage.
+# * **whisper.cpp.** Ebenso durch einen ``httpx.MockTransport`` ersetzt; geprueft
+#   werden Anfrage und Antwort, nicht die Erkennung.
+#
+# Was hier **doch** geprueft wird und der eigentliche Gegenstand der Aufgabe:
+# der Textmodus als Normalzustand, die Trennung von „Modell geladen" und
+# „Laufzeit vorhanden", und die Tatsache, dass eine halbe Ausstattung
+# funktioniert.
+
+
+def _leerer_transport() -> httpx.MockTransport:
+    """Ein Server, der nichts ausliefert - fuer Tests, die nicht herunterladen."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, request=request)
+
+    return httpx.MockTransport(handler)
+
+
+def _wav(sekunden: float = 0.5, *, kanaele: int = 1, rate: int = 16000, breite: int = 2) -> bytes:
+    """Eine echte WAV-Datei mit Stille, im Speicher gebaut.
+
+    Echtes ``wave``-Modul und keine geratene Kopfzeile: der Produktionscode liest
+    sie mit demselben Modul, und ein Test, der eine erfundene Kopfzeile prueft,
+    prueft nicht den Weg, den der Betrieb nimmt.
+    """
+    puffer = io.BytesIO()
+    with wave.open(puffer, "wb") as schreiber:
+        schreiber.setnchannels(kanaele)
+        schreiber.setsampwidth(breite)
+        schreiber.setframerate(rate)
+        schreiber.writeframes(b"\x00" * (int(sekunden * rate) * kanaele * breite))
+    return puffer.getvalue()
+
+
+def _voice_config_bytes(language: str = "de_DE", *, rate: int = 22050, quality: str = "medium") -> bytes:
+    """Eine Piper-Konfigurationsdatei mit denselben Feldern wie das Original."""
+    return json.dumps(
+        {
+            "audio": {"sample_rate": rate, "quality": quality},
+            "language": {"code": language, "family": language[:2], "name_native": language, "name_english": language},
+            "num_speakers": 1,
+            "phoneme_type": "espeak",
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+
+def _kleine_stimme(voice_id: str = "de-de-probe-stimme") -> PiperVoice:
+    """Eine Stimme mit winzigen Dateien und passenden Pruefsummen.
+
+    Nur damit laesst sich der **Downloadweg** pruefen: der Manager verwirft eine
+    Datei, deren SHA256 nicht stimmt, und die echten Stimmen sind zusammen rund
+    290 MB. Der Test beweist damit, dass der Manager zwei Einzeldateien einer
+    Stimme korrekt laedt, prueft und umbenennt - mit dem Code, der auch die
+    echten Stimmen herunterlaedt.
+    """
+    modelle = b"onnx-gewichte-fuer-den-test"
+    konfiguration = _voice_config_bytes("de_DE", rate=22050)
+    return PiperVoice(
+        id=voice_id,
+        label="Probe-Stimme",
+        language="de_DE",
+        language_label="Deutsch",
+        speaker="probe",
+        speaker_label="Probe",
+        quality="medium",
+        sample_rate=22050,
+        description="Eine Stimme fuer den Test.",
+        license="CC0",
+        dataset_url="https://example.org/daten",
+        source_page="https://huggingface.co/rhasspy/piper-voices",
+        files=(
+            ModelFile(
+                name=f"{voice_id}.onnx",
+                url=f"https://huggingface.co/rhasspy/piper-voices/resolve/main/de/probe/{voice_id}.onnx",
+                sha256=hashlib.sha256(modelle).hexdigest(),
+                size_bytes=len(modelle),
+            ),
+            ModelFile(
+                name=f"{voice_id}.onnx.json",
+                url=f"https://huggingface.co/rhasspy/piper-voices/resolve/main/de/probe/{voice_id}.onnx.json",
+                sha256=hashlib.sha256(konfiguration).hexdigest(),
+                size_bytes=len(konfiguration),
+            ),
+        ),
+    )
+
+
+def _voice_server(stimme: PiperVoice) -> httpx.MockTransport:
+    """Ein Hugging-Face-Server fuer genau eine Stimme, mit den echten Pruefsummen."""
+    inhalt = {
+        stimme.onnx_name: b"onnx-gewichte-fuer-den-test",
+        stimme.config_name: _voice_config_bytes(stimme.language),
+    }
+    anfragen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        anfragen.append(request)
+        name = request.url.path.rsplit("/", 1)[-1]
+        daten = inhalt.get(name)
+        if daten is None:
+            return httpx.Response(404, request=request)
+        return httpx.Response(200, headers={"content-length": str(len(daten))}, content=daten, request=request)
+
+    server = httpx.MockTransport(handler)
+    server.anfragen = anfragen  # type: ignore[attr-defined]
+    return server
+
+
+class _WhisperServer(httpx.MockTransport):
+    """Ein ``whisper-server`` aus whisper.cpp im Test.
+
+    Antwortet auf ``GET /`` (Erreichbarkeit) und auf ``POST /inference`` mit
+    ``{"text": ...}``. Die Anfragen werden aufgezeichnet, damit der Test sieht,
+    dass wirklich eine **Datei** ankommt und nicht nur ein Formularfeld.
+    """
+
+    def __init__(self, *, text: str = "Wann kommt die Klausur?", erreichbar: bool = True) -> None:
+        self._text = text
+        self._erreichbar = erreichbar
+        self.anfragen: list[httpx.Request] = []
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        self.anfragen.append(request)
+        if not self._erreichbar:
+            raise httpx.ConnectError("Verbindung abgelehnt")
+        if request.method == "GET":
+            # whisper.cpp antwortet auf der Wurzel mit einer Indexseite. Fuer die
+            # Erreichbarkeit zaehlt nur, dass ueberhaupt etwas antwortet.
+            return httpx.Response(404, text="not found", request=request)
+        if not self._text.strip():
+            return httpx.Response(200, json={"text": self._text}, request=request)
+        return httpx.Response(200, json={"text": self._text}, request=request)
+
+
+class _Aufrufe:
+    """Ein Aufzeichner fuer ``run_command``: merkt sich jeden Aufruf.
+
+    ``schreibe_datei=False`` bildet einen Aufruf ab, der zwar Erfolg meldet, aber
+    keine Datei hinterlaesst - der Fall, in dem eine stille Leerschleife entstehen
+    wuerde, wenn man ihn nicht prueft.
+    """
+
+    def __init__(self, *, returncode: int = 0, stdout: bytes = b"", stderr: bytes = b"", schreibe_datei: bool = True) -> None:
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+        self.schreibe_datei = schreibe_datei
+        self.aufrufe: list[tuple[list[str], bytes]] = []
+
+    def __call__(self, argv: Sequence[str], *, stdin: bytes, timeout_seconds: float) -> speech_service.CommandResult:
+        self.aufrufe.append((list(argv), stdin))
+        if self.schreibe_datei:
+            for index, wert in enumerate(list(argv)):
+                if wert == "--output_file" and index + 1 < len(argv):
+                    Path(argv[index + 1]).write_bytes(self.stdout)
+        return speech_service.CommandResult(returncode=self.returncode, stdout=self.stdout, stderr=self.stderr)
+
+
+def _transkribierer(transport: httpx.BaseTransport | None = None, *, sprache: str | None = None) -> WhisperTranscriber:
+    """Ein Transkribierer mit echtem Anfrageweg und ohne Netzzugriff.
+
+    ``transport`` gilt fuer **beide** Verbindungen, auch fuer die
+    Erreichbarkeitspruefung. Eine Pruefung, die im Test ins Netz ginge, waere
+    keine.
+    """
+    return WhisperTranscriber(
+        "http://whisper.test:8080",
+        language=sprache,
+        timeout_seconds=5.0,
+        client_factory=lambda: httpx.Client(transport=transport, timeout=5.0, follow_redirects=False),
+        transport=transport,
+    )
+
+
+def _synthese(aufrufe: _Aufrufe, *, vorhanden: bool = True) -> PiperSynthesizer:
+    """Ein Piper, der die Attrappe aufruft und **vorhanden** meldet.
+
+    ``piper`` wird nicht gesucht: der Test sagt dem Synthesizer, dass es das
+    Programm gibt. So ist der ganze Weg pruefbar, ohne dass Piper auf diesem
+    Rechner installiert sein muss - und genau darum geht es: getestet wird, was
+    sich testen laesst.
+    """
+    synthese = PiperSynthesizer("piper", runner=aufrufe, timeout_seconds=5.0)
+    if vorhanden:
+        synthese.is_available = lambda: (True, "Piper ist vorhanden.")  # type: ignore[method-assign]
+    return synthese
+
+
+def _stimmt_installieren(
+    manager: ModelDownloadManager,
+    stimme: PiperVoice,
+    *,
+    konfiguration: bytes | None = None,
+) -> Path:
+    """Legt eine Stimme so ab, wie der Download-Manager es tun wuerde.
+
+    Manifest und beide Dateien, mit den Groessen aus dem Katalog. Danach ist
+    ``manager.is_installed(spec)`` wahr - und nur dann. Genau diese Bedingung
+    entscheidet in :class:`SpeechService`, ob gesprochen werden darf.
+
+    Die Dateien werden mit ``truncate`` angelegt, nicht geschrieben: die echten
+    Stimmen sind 63 MB gross, und ein Test soll daran nicht scheitern.
+    """
+    verzeichnis = manager.model_directory(stimme.as_model_spec())
+    verzeichnis.mkdir(parents=True, exist_ok=True)
+    eintraege = []
+    for datei in stimme.files:
+        with (verzeichnis / datei.name).open("wb") as datei_handle:
+            datei_handle.truncate(datei.size_bytes)
+        eintraege.append({"name": datei.name, "sha256": datei.sha256, "size_bytes": datei.size_bytes})
+    # Die Konfiguration wird **echt** geschrieben, auf die Kataloggroesse
+    # aufgefuellt. Nullbytes waeren zwar vorhanden, aber nicht lesbar - und der
+    # Dienst soll sie lesen, genau wie im Betrieb. Nachgefuellt wird mit
+    # Leerzeichen, weil `json.loads` damit genauso gut zurechtkommt wie mit
+    # einer echten, laengeren Konfiguration.
+    inhalt = konfiguration if konfiguration is not None else _voice_config_bytes(stimme.language)
+    groesse = stimme.files[1].size_bytes
+    (verzeichnis / stimme.config_name).write_bytes(inhalt[:groesse].ljust(groesse, b" "))
+    (verzeichnis / MANIFEST_NAME).write_text(
+        json.dumps({"model_id": stimme.id, "verified_at": "2026-09-30T00:00:00+00:00", "files": eintraege}),
+        encoding="utf-8",
+    )
+    return verzeichnis
+
+
+def _whisper_installieren(manager: ModelDownloadManager, model_id: str = "whisper-tiny-ggml") -> ModelSpec:
+    """Legt ein Whisper-Modell ab, ohne Netz - Manifest und Datei genuegen."""
+    spec = model_catalog.model_spec(model_id)
+    verzeichnis = manager.model_directory(spec)
+    verzeichnis.mkdir(parents=True, exist_ok=True)
+    eintraege = []
+    for datei in spec.files:
+        with (verzeichnis / datei.name).open("wb") as datei_handle:
+            datei_handle.truncate(datei.size_bytes)
+        eintraege.append({"name": datei.name, "sha256": datei.sha256, "size_bytes": datei.size_bytes})
+    (verzeichnis / MANIFEST_NAME).write_text(
+        json.dumps({"model_id": spec.id, "verified_at": "2026-09-30T00:00:00+00:00", "files": eintraege}),
+        encoding="utf-8",
+    )
+    return spec
+
+
+def _bereit(app_client: TestClient, *, transcriber: object = None, synthesizer: object = None, **kwargs: object) -> SpeechService:
+    """Setzt einen Sprachdienst auf ``app.state`` und liefert ihn zurueck."""
+    manager: ModelDownloadManager = app_client.app.state.model_downloads
+    dienst = SpeechService(downloads=manager, transcriber=transcriber, synthesizer=synthesizer, **kwargs)  # type: ignore[arg-type]
+    app_client.app.state.speech = dienst
+    return dienst
+
+
+def _manager_fuer(app_client: TestClient, tmp_path: Path, transport: httpx.BaseTransport | None = None) -> ModelDownloadManager:
+    """Ein Download-Manager auf dem Testablageort, gesetzt auf ``app.state``."""
+    manager = _manager(tmp_path / "modelle", transport or _leerer_transport())
+    app_client.app.state.model_downloads = manager
+    return manager
+
+
+# --- Der Stimmenkatalog -----------------------------------------------------
+
+
+def test_der_katalog_erlaubt_keine_grossbuchstaben_in_der_kennung() -> None:
+    """Warum die Ids hier klein sind - ``de_DE-thorsten-medium`` kann nicht.
+
+    ``MODEL_ID_PATTERN`` ist die zweite Verteidigungslinie gegen ``..`` und
+    Trennzeichen im Verzeichnisnamen. Es erlaubt keine Grossbuchstaben und keinen
+    Unterstrich, also waere die Piper-Kennung im Originalformat ein Download, der
+    an der eigenen Sicherheitspruefung scheitert.
+    """
+    assert MODEL_ID_PATTERN.match("de-de-thorsten-medium")
+    assert not MODEL_ID_PATTERN.match("de_DE-thorsten-medium")
+    for stimme in piper_voices.PIPER_VOICES.values():
+        assert MODEL_ID_PATTERN.match(stimme.id)
+
+
+def test_jede_stimme_hat_modell_und_konfiguration() -> None:
+    """Zwei Dateien, echte Pruefsummen, erlaubte Quelle."""
+    assert piper_voices.PIPER_VOICES
+    for stimme in piper_voices.PIPER_VOICES.values():
+        assert len(stimme.files) == 2
+        assert stimme.files[0].name.endswith(".onnx")
+        assert stimme.files[1].name == f"{stimme.files[0].name}.json"
+        assert stimme.onnx_name == stimme.files[0].name
+        assert stimme.config_name == stimme.files[1].name
+        assert stimme.size_bytes == sum(datei.size_bytes for datei in stimme.files)
+        for datei in stimme.files:
+            assert len(datei.sha256) == 64
+            assert set(datei.sha256) <= set("0123456789abcdef")
+            assert datei.size_bytes > 0
+            validate_download_url(datei.url)
+
+
+def test_sprache_und_stimme_sind_zwei_entscheidungen() -> None:
+    """Der Katalog muss beides hergeben - sonst waere die Auswahl eine Attrappe."""
+    sprecher = {stimme.speaker for stimme in piper_voices.deutsche_voices()}
+    # Zwei deutsche Sprecher: „deutsche Stimme" und „diese Stimme" muessen sich
+    # unterscheiden lassen, sonst waere die zweite Haelfte der Sprachauswahl nicht
+    # bedienbar.
+    assert len(sprecher) >= 2
+    assert {stimme.language for stimme in piper_voices.deutsche_voices()} == {"de_DE"}
+    # Und eine fremde Sprache ist bewusst dabei, damit die Sprachentscheidung
+    # sichtbar bleibt und nicht nur behauptet werden kann.
+    assert any(stimme.language != "de_DE" for stimme in piper_voices.PIPER_VOICES.values())
+
+
+def test_die_stimmen_stehen_nicht_in_fremden_katalogen() -> None:
+    """Der Katalog schreibt nicht in ``MODEL_CATALOG`` - das gehoert woanders hin.
+
+    Ein Test, der diese Grenze haelt: ohne ihn wuerde jemand die Stimmen
+    "einfach" eintragen und dabei eine fremde Datei anfassen. Der **Merge-Bedarf**
+    ist aber klein, weil ``as_model_spec`` vollstaendige ``ModelSpec`` liefert.
+    """
+    from app.services.model_catalog import MODEL_CATALOG
+
+    for stimme in piper_voices.PIPER_VOICES.values():
+        assert stimme.id not in MODEL_CATALOG
+        assert stimme.id not in catalog_models_ids()
+    # Aber sie sind vollstaendige ModelSpecs - der Merge waere eine Zeile.
+    specs = piper_voices.as_model_specs()
+    assert {spec.id for spec in specs} == set(piper_voices.PIPER_VOICES)
+    assert all(spec.task == "text_to_speech" for spec in specs)
+    assert all(len(spec.files) == 2 for spec in specs)
+
+
+def catalog_models_ids() -> set[str]:
+    """Die Kennungen des allgemeinen Modellkatalogs - als eigene kleine Helferin."""
+    return {spec.id for spec in catalog_models()}
+
+
+def test_eine_unbekannte_stemme_ist_ein_deutscher_fehler() -> None:
+    with pytest.raises(ModelCatalogError):
+        piper_voices.voice_by_id("de-de-niemand")
+
+
+def test_die_englische_stemme_steht_nicht_vorne() -> None:
+    """Anzeigereihenfolge: Deutsch zuerst, Auslandssprachen hinten."""
+    ids = piper_voices.voice_ids()
+    erster_fremder = next(index for index, kennung in enumerate(ids) if piper_voices.PIPER_VOICES[kennung].language != "de_DE")
+    letzter_deutscher = max(index for index, kennung in enumerate(ids) if piper_voices.PIPER_VOICES[kennung].language == "de_DE")
+    assert letzter_deutscher < erster_fremder
+    assert piper_voices.DEFAULT_VOICE_ID in ids
+    assert piper_voices.DEFAULT_VOICE_ID.startswith("de-de-")
+
+
+def test_die_konfiguration_einer_stemme_wird_gelesen(tmp_path: Path) -> None:
+    datei = tmp_path / "stimme.onnx.json"
+    datei.write_bytes(_voice_config_bytes("de_DE", rate=16000, quality="low"))
+    config = read_voice_config(datei)
+    assert config.language == "de_DE"
+    assert config.sample_rate == 16000
+    assert config.quality == "low"
+    assert config.num_speakers == 1
+
+
+@pytest.mark.parametrize(
+    "roh",
+    [
+        pytest.param(b"kein json", id="kein-json"),
+        pytest.param(b"[]", id="liste"),
+        pytest.param(json.dumps({"language": {"code": "de_DE"}}).encode("utf-8"), id="ohne-audio"),
+        pytest.param(json.dumps({"audio": {"sample_rate": 0}, "language": {"code": "de_DE"}}).encode("utf-8"), id="rate-null"),
+        pytest.param(json.dumps({"audio": {"sample_rate": 22050}}).encode("utf-8"), id="ohne-sprache"),
+    ],
+)
+def test_eine_kaputte_stimmenkonfiguration_ist_ein_deutscher_fehler(tmp_path: Path, roh: bytes) -> None:
+    datei = tmp_path / "stimme.onnx.json"
+    datei.write_bytes(roh)
+    with pytest.raises(VoiceConfigError):
+        read_voice_config(datei)
+
+
+def test_eine_fehlende_konfigurationsdatei_ist_ein_deutscher_fehler(tmp_path: Path) -> None:
+    with pytest.raises(VoiceConfigError):
+        read_voice_config(tmp_path / "gibt-es-nicht.json")
+
+
+# --- Zwei Einzeldateien durch den vorhandenen Manager -----------------------
+
+
+def test_eine_stimme_ist_ein_zweiteiliger_download_des_managers(
+    app_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Die eigentliche Formatfrage: **zwei Einzeldateien, kein Archiv.**
+
+    Der Beweis laeuft ueber den *unveraenderten* Manager aus
+    ``app.services.model_downloads``: Beide Dateien werden einzeln geladen,
+    einzeln geprueft und einzeln umbenannt, und das Modell gilt erst als geladen,
+    wenn **beide** da sind. Genau das ist der Unterschied zu einem Archiv mit
+    Entpack-Schritt - und es kommt ohne jede Aenderung an diesem Manager
+    zustande, weil ``files`` schon ein Tupel ist.
+    """
+    stimme = _kleine_stimme()
+    monkeypatch.setitem(piper_voices.PIPER_VOICES, stimme.id, stimme)
+    server = _voice_server(stimme)
+    manager = _manager(tmp_path / "modelle", server)
+
+    manager.start(stimme.as_model_spec())
+    assert manager.wait_until_idle(stimme.id, timeout_seconds=10)
+
+    stand = manager.status(stimme.as_model_spec())
+    assert stand.status == "installed"
+    assert stand.verified is True
+    assert manager.is_installed(stimme.as_model_spec())
+    verzeichnis = tmp_path / "modelle" / stimme.id
+    assert sorted(datei.name for datei in verzeichnis.iterdir()) == sorted(
+        [stimme.onnx_name, stimme.config_name, MANIFEST_NAME]
+    )
+    # Zwei Anfragen, eine je Datei, beide gegen die erlaubte Quelle.
+    assert len(server.anfragen) == 2  # type: ignore[attr-defined]
+    for anfrage in server.anfragen:  # type: ignore[attr-defined]
+        assert str(anfrage.url).startswith("https://huggingface.co/rhasspy/piper-voices/")
+
+
+def test_eine_falsche_pruefsumme_behindert_die_ganze_stimme(
+    app_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Faellt eine der beiden Dateien durch, ist die Stimme **nicht** geladen.
+
+    Genau der Unterschied zu einem Archiv, das man im Ganzen pruefen wuerde: hier
+    weiss der Manager nach jedem Schritt, welche Datei fehlt - und die Meldung
+    nennt sie.
+    """
+    stimme = _kleine_stimme()
+    kaputt = ModelSpec(
+        id=stimme.id,
+        label=stimme.label,
+        task=stimme.as_model_spec().task,
+        family=stimme.as_model_spec().family,
+        description=stimme.description,
+        license=stimme.license,
+        source_repository=stimme.as_model_spec().source_repository,
+        source_page=stimme.source_page,
+        parameter_count=None,
+        quantization=None,
+        context_length=None,
+        files=(
+            stimme.files[0],
+            ModelFile(
+                name=stimme.files[1].name,
+                url=stimme.files[1].url,
+                sha256="0" * 64,
+                size_bytes=stimme.files[1].size_bytes,
+            ),
+        ),
+    )
+    monkeypatch.setitem(piper_voices.PIPER_VOICES, stimme.id, dataclasses.replace(stimme, files=kaputt.files))
+    manager = _manager(tmp_path / "modelle", _voice_server(stimme))
+
+    manager.start(kaputt)
+    assert manager.wait_until_idle(kaputt.id, timeout_seconds=10)
+
+    stand = manager.status(kaputt)
+    assert stand.status == "failed"
+    assert stimme.config_name in stand.message
+    assert manager.is_installed(kaputt) is False
+
+
+def test_eine_stimme_gilt_erst_bei_beiden_dateien_als_geladen(tmp_path: Path) -> None:
+    """Nur das ONNX da, die Konfiguration fehlt: **nicht** geladen.
+
+    Piper laedt die Konfiguration mit ``--config``; ohne sie kennt das Programm
+    weder Abtastrate noch Phoneme. Ein „fast vollstaendig" waere hier eine
+    stille Fehlfunktion an der Laufzeit.
+    """
+    stimme = piper_voices.voice_by_id("de-de-thorsten-medium")
+    manager = _manager(tmp_path / "modelle", _leerer_transport())
+    verzeichnis = tmp_path / "modelle" / stimme.id
+    verzeichnis.mkdir(parents=True)
+    with (verzeichnis / stimme.onnx_name).open("wb") as datei:
+        datei.truncate(stimme.files[0].size_bytes)
+
+    assert manager.is_installed(stimme.as_model_spec()) is False
+    # Der Manager nennt eine vorhandene, aber ungeprueefte Datei "interrupted" -
+    # unabhaengig davon gilt: **nicht geladen**, und damit nicht sprechbar.
+    assert manager.status(stimme.as_model_spec()).verified is False
+
+
+# --- Faehigkeiten: der Textmodus zuerst -------------------------------------
+
+
+def test_ohne_modell_und_ohne_laufzeit_antwortet_die_faehigkeitsabfrage(app_client: TestClient) -> None:
+    """**Immer 200.** Auch ohne ein einziges Modell.
+
+    Der Textmodus ist der Zustand, in dem sich die meisten Lernenden befinden
+    werden. Ein Endpunkt, der dort mit einem Fehler antwortet, produziert genau
+    das, was vermieden werden soll: einen roten Kasten auf einer Seite, die
+    vollstaendig bedienbar ist.
+    """
+    login(app_client)
+    antwort = app_client.get("/api/v1/speech/capabilities")
+    assert antwort.status_code == 200
+    payload = antwort.json()
+    assert payload["text_mode_available"] is True
+    assert payload["text_mode_note"]
+    assert payload["speech_to_text"]["available"] is False
+    assert payload["text_to_speech"]["available"] is False
+    assert payload["speech_to_text"]["reason"]
+    assert payload["text_to_speech"]["reason"]
+    assert payload["runtime"]["transcriber_reachable"] is False
+    assert payload["runtime"]["synthesizer_available"] is False
+    # Ohne Modell eingetragen gibt es auch keine Voreinstellung - erfunden wird
+    # hier nichts.
+    assert payload["default_voice_id"] is None
+
+
+def test_die_sprachrouten_brauchen_eine_sitzung(app_client: TestClient) -> None:
+    assert app_client.get("/api/v1/speech/capabilities").status_code == 401
+    assert app_client.get("/api/v1/speech/voices").status_code == 401
+    assert app_client.post("/api/v1/speech/transcribe", files={"file": ("a.wav", _wav(), "audio/wav")}).status_code == 401
+    assert app_client.post("/api/v1/speech/speak", json={"text": "Hallo"}).status_code == 401
+    assert app_client.post("/api/v1/speech/voices/de-de-thorsten-medium/download").status_code == 401
+
+
+def test_der_stimmkatalog_zeigt_beide_entscheidungen(app_client: TestClient) -> None:
+    login(app_client)
+    antwort = app_client.get("/api/v1/speech/voices")
+    payload = antwort.json()
+    assert payload["shared_installation"] is True
+    eintraege = {stimme["id"]: stimme for stimme in payload["voices"]}
+    thorsten = eintraege["de-de-thorsten-medium"]
+    assert thorsten["language"] == "de_DE"
+    assert thorsten["language_label"] == "Deutsch"
+    assert thorsten["speaker"] == "thorsten"
+    assert thorsten["speaker_label"] == "Thorsten"
+    assert thorsten["quality"] == "medium"
+    assert thorsten["sample_rate"] == 22050
+    assert {datei["name"] for datei in thorsten["files"]} == {
+        "de_DE-thorsten-medium.onnx",
+        "de_DE-thorsten-medium.onnx.json",
+    }
+    # Genau eine als Modell, genau eine als Konfiguration markiert.
+    assert sum(1 for datei in thorsten["files"] if datei["is_model"]) == 1
+    assert sum(1 for datei in thorsten["files"] if datei["is_config"]) == 1
+    # Die Quellseite steht drin, die interne Ablage nicht.
+    assert thorsten["source_page"].startswith("https://huggingface.co/")
+    assert "/var/lib/school-assistant" not in antwort.text
+
+
+def test_eine_unbekannte_stemme_ist_404(app_client: TestClient) -> None:
+    login(app_client)
+    assert app_client.post("/api/v1/speech/voices/de-de-niemand/download").status_code == 404
+    assert app_client.post("/api/v1/speech/voices/de-de-niemand/cancel").status_code == 404
+    assert app_client.delete("/api/v1/speech/voices/de-de-niemand").status_code == 404
+
+
+def test_der_stimmdownload_laeuft_ueber_denselben_manager(
+    app_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ein Manager, eine Ablage, eine Sperre - fuer Modelle **und** Stimmen."""
+    stimme = _kleine_stimme()
+    monkeypatch.setitem(piper_voices.PIPER_VOICES, stimme.id, stimme)
+    manager = _manager_fuer(app_client, tmp_path, _voice_server(stimme))
+    _bereit(app_client, transcriber=None, synthesizer=None)
+    login(app_client)
+
+    assert app_client.post(f"/api/v1/speech/voices/{stimme.id}/download").status_code == 200
+    assert manager.wait_until_idle(stimme.id, timeout_seconds=10)
+
+    detail = app_client.get("/api/v1/speech/voices").json()["voices"]
+    geladen = [eintrag for eintrag in detail if eintrag["id"] == stimme.id][0]
+    assert geladen["status"]["status"] == "installed"
+    assert geladen["status"]["verified"] is True
+
+    geloescht = app_client.delete(f"/api/v1/speech/voices/{stimme.id}")
+    assert geloescht.status_code == 200
+    assert "entfernt" in geloescht.json()["message"]
+    # Idempotent: nochmal loeschen ist kein 404, weil der Katalogeintrag bleibt.
+    assert "lag nichts" in app_client.delete(f"/api/v1/speech/voices/{stimme.id}").json()["message"]
+
+
+def test_abgeschaltete_sprachfunktionen_lassen_den_textmodus(app_client: TestClient, tmp_path: Path) -> None:
+    """``SPEECH_ENABLED=false`` nimmt beide Richtungen, nicht den Lernraum."""
+    manager = _manager_fuer(app_client, tmp_path)
+    _whisper_installieren(manager)
+    _stimmt_installieren(manager, piper_voices.voice_by_id("de-de-thorsten-medium"))
+    _bereit(
+        app_client,
+        transcriber=_transkribierer(_WhisperServer()),
+        synthesizer=_synthese(_Aufrufe(stdout=_wav())),
+        enabled=False,
+    )
+    login(app_client)
+
+    payload = app_client.get("/api/v1/speech/capabilities").json()
+    assert payload["text_mode_available"] is True
+    assert payload["speech_to_text"]["available"] is False
+    assert payload["text_to_speech"]["available"] is False
+    assert "abgeschaltet" in payload["speech_to_text"]["reason"]
+    # Und der Endpunkt sagt es auch: 503 mit demselben Grund, kein 500.
+    transkript = app_client.post("/api/v1/speech/transcribe", files={"file": ("a.wav", _wav(), "audio/wav")})
+    assert transkript.status_code == 503
+    assert "abgeschaltet" in transkript.json()["detail"]
+
+
+# --- Halbe Ausstattung -----------------------------------------------------
+
+
+def test_geladenes_modell_ohne_laufzeit_sagt_beides_getrennt(app_client: TestClient, tmp_path: Path) -> None:
+    """Modell da, Dienst weg: der Grund nennt **beide** Tatsachen.
+
+    Das ist der Fall, in dem eine einzige Zahl ``false`` zwei verschiedene
+    Ursachen verdeckt. Wer danach reparieren will, muss wissen, ob er das Modell
+    noch laden oder den Dienst starten muss.
+    """
+    manager = _manager_fuer(app_client, tmp_path)
+    spec = _whisper_installieren(manager)
+    _bereit(
+        app_client,
+        transcriber=_transkribierer(_WhisperServer(erreichbar=False)),
+        synthesizer=None,
+    )
+    login(app_client)
+
+    aufgabe = app_client.get("/api/v1/speech/capabilities").json()["speech_to_text"]
+    assert aufgabe["available"] is False
+    # Das Modell ist da - das steht im Feld, damit man es nicht nachsehen muss.
+    assert aufgabe["model_id"] == spec.id
+    assert "geladen" in aufgabe["reason"]
+    assert "antwortet nicht" in aufgabe["reason"]
+
+
+def test_laufzeit_da_aber_ohne_modell_sagt_es_fuer_sich(app_client: TestClient, tmp_path: Path) -> None:
+    """Dienst laeuft, Modell fehlt: eine andere Ursache, derselbe Status."""
+    _manager_fuer(app_client, tmp_path)
+    dienst = _bereit(app_client, transcriber=_transkribierer(_WhisperServer()), synthesizer=None)
+    login(app_client)
+
+    aufgabe = app_client.get("/api/v1/speech/capabilities").json()["speech_to_text"]
+    assert aufgabe["available"] is False
+    assert aufgabe["model_id"] is None
+    assert "kein Spracherkennungsmodell geladen" in aufgabe["reason"]
+    # Die Laufzeit steht trotzdem als „bereit" daneben - die beiden Bedingungen
+    # sind getrennt und werden getrennt gemeldet.
+    assert dienst.capabilities().runtime.transcriber_reachable is True
+
+
+def test_eine_deutsche_stimme_macht_die_ausgabe_bereit(app_client: TestClient, tmp_path: Path) -> None:
+    manager = _manager_fuer(app_client, tmp_path)
+    stimme = piper_voices.voice_by_id("de-de-thorsten-medium")
+    _stimmt_installieren(manager, stimme)
+    _bereit(app_client, transcriber=None, synthesizer=_synthese(_Aufrufe(stdout=_wav())))
+    login(app_client)
+
+    payload = app_client.get("/api/v1/speech/capabilities").json()
+    ausgabe = payload["text_to_speech"]
+    assert ausgabe["available"] is True
+    assert ausgabe["model_id"] == stimme.id
+    assert ausgabe["language"] == "de_DE"
+    assert payload["default_voice_id"] == stimme.id
+    # Und das Spracherkennen ist weiterhin aus - **halb**, nicht nichts.
+    assert payload["speech_to_text"]["available"] is False
+
+
+def test_ohne_stemme_laeuft_alles_ausser_dem_vorlesen(app_client: TestClient, tmp_path: Path) -> None:
+    """Piper laeuft, keine Stimme geladen: der Fall ist „keine" und nicht „kaputt"."""
+    _manager_fuer(app_client, tmp_path)
+    _bereit(app_client, transcriber=None, synthesizer=_synthese(_Aufrufe(stdout=_wav())))
+    login(app_client)
+
+    antwort = app_client.get("/api/v1/speech/capabilities")
+    assert antwort.status_code == 200
+    ausgabe = antwort.json()["text_to_speech"]
+    assert ausgabe["available"] is False
+    assert "keine Stimme geladen" in ausgabe["reason"]
+    assert antwort.json()["text_mode_available"] is True
+    # Und der Endpunkt sagt 503 statt 500: nicht verfuegbar, nicht kaputt.
+    rede = app_client.post("/api/v1/speech/speak", json={"text": "Hallo"})
+    assert rede.status_code == 503
+    assert "keine Stimme geladen" in rede.json()["detail"]
+
+
+def test_eine_englische_stemme_wird_nicht_stillschweigend_gesprochen(app_client: TestClient, tmp_path: Path) -> None:
+    """Die zweite Haelfte der Sprachauswahl, als Verhalten.
+
+    Eine geladene englische Stimme ist in einer deutschen Oberflaeche **keine**
+    Alternative. Sie wird nicht stillschweigend eingesetzt, und sie wird nicht als
+    verfuegbar gemeldet.
+    """
+    manager = _manager_fuer(app_client, tmp_path)
+    _stimmt_installieren(manager, piper_voices.voice_by_id("en-us-amy-medium"))
+    _bereit(app_client, transcriber=None, synthesizer=_synthese(_Aufrufe(stdout=_wav())))
+    login(app_client)
+
+    ausgabe = app_client.get("/api/v1/speech/capabilities").json()["text_to_speech"]
+    assert ausgabe["available"] is False
+    assert "Englisch" in ausgabe["reason"]
+    assert "deutsche" in ausgabe["reason"].lower()
+
+    rede = app_client.post("/api/v1/speech/speak", json={"text": "Hallo"})
+    assert rede.status_code == 503
+    assert "Englisch" in rede.json()["detail"]
+
+
+def test_eine_stimme_mit_falscher_konfiguration_wird_nicht_gesprochen(app_client: TestClient, tmp_path: Path) -> None:
+    """Katalog sagt deutsch, die Datei sagt englisch: nicht benutzen.
+
+    Die Gegenprobe zwischen Katalogeintrag und mitgeladener Konfiguration. Ohne
+    sie wuerde eine vertauschte Datei eine falsche Zusage machen - und zwar eine,
+    die man erst hoeren wuerde.
+    """
+    stimme = piper_voices.voice_by_id("de-de-thorsten-medium")
+    manager = _manager_fuer(app_client, tmp_path)
+    _stimmt_installieren(manager, stimme, konfiguration=_voice_config_bytes("en_US"))
+    _bereit(app_client, transcriber=None, synthesizer=_synthese(_Aufrufe(stdout=_wav())))
+    login(app_client)
+
+    ausgabe = app_client.get("/api/v1/speech/capabilities").json()["text_to_speech"]
+    assert ausgabe["available"] is False
+    assert "en_US" in ausgabe["reason"]
+    assert app_client.post("/api/v1/speech/speak", json={"text": "Hallo"}).status_code == 503
+
+
+def test_eingetragene_kennungen_werden_eingehalten(app_client: TestClient, tmp_path: Path) -> None:
+    """Whisper und Stimme lassen sich fest verdrahten - und werden dann benutzt."""
+    manager = _manager_fuer(app_client, tmp_path)
+    _whisper_installieren(manager, "whisper-base-ggml")
+    _whisper_installieren(manager, "whisper-tiny-ggml")
+    kerstin = piper_voices.voice_by_id("de-de-kerstin-low")
+    _stimmt_installieren(manager, kerstin)
+    _stimmt_installieren(manager, piper_voices.voice_by_id("de-de-thorsten-medium"))
+    _bereit(
+        app_client,
+        transcriber=_transkribierer(_WhisperServer()),
+        synthesizer=_synthese(_Aufrufe(stdout=_wav())),
+        stt_model_id="whisper-base-ggml",
+        voice_id=kerstin.id,
+    )
+    login(app_client)
+
+    payload = app_client.get("/api/v1/speech/capabilities").json()
+    assert payload["speech_to_text"]["model_id"] == "whisper-base-ggml"
+    assert payload["text_to_speech"]["model_id"] == kerstin.id
+
+
+def test_ohne_eintrag_wird_das_kleinste_geladene_modell_genommen(app_client: TestClient, tmp_path: Path) -> None:
+    """tiny vor base: ein knapper Server klebt sonst an der groesseren Variante."""
+    manager = _manager_fuer(app_client, tmp_path)
+    _whisper_installieren(manager, "whisper-base-ggml")
+    _whisper_installieren(manager, "whisper-tiny-ggml")
+    _bereit(app_client, transcriber=_transkribierer(_WhisperServer()), synthesizer=None)
+    login(app_client)
+
+    assert app_client.get("/api/v1/speech/capabilities").json()["speech_to_text"]["model_id"] == "whisper-tiny-ggml"
+
+
+def test_ein_eingetragenes_modell_ohne_datei_wird_nicht_stillschweigend_ersetzt(
+    app_client: TestClient, tmp_path: Path
+) -> None:
+    """Steht eine Kennung drin, die nicht geladen ist, wird **nicht** umgefallen.
+
+    Sonst wuerde die Oberflaeche ein Modell anzeigen, das nicht das ist, was der
+    Betreiber eingestellt hat - und niemand koennte es mehr nachvollziehen.
+    """
+    manager = _manager_fuer(app_client, tmp_path)
+    # Nur tiny ist geladen - base steht als Wunsch im Eintrag, nicht auf der
+    # Platte. Genau diese Lage soll nicht stillschweigend auf tiny zurueckfallen.
+    _whisper_installieren(manager, "whisper-tiny-ggml")
+    _bereit(
+        app_client,
+        transcriber=_transkribierer(_WhisperServer()),
+        synthesizer=None,
+        stt_model_id="whisper-base-ggml",
+    )
+    login(app_client)
+
+    aufgabe = app_client.get("/api/v1/speech/capabilities").json()["speech_to_text"]
+    assert aufgabe["available"] is False
+    assert "whisper-base-ggml" in aufgabe["reason"]
+
+
+# --- Aufnehmen --------------------------------------------------------------
+
+
+def test_ohne_laufzeit_antwortet_die_transkription_mit_503(app_client: TestClient) -> None:
+    """Kein eingetragener Dienst: 503 mit deutschem Klartext, kein 500."""
+    login(app_client)
+    antwort = app_client.post("/api/v1/speech/transcribe", files={"file": ("a.wav", _wav(), "audio/wav")})
+    assert antwort.status_code == 503
+    assert "kein Spracherkennungsdienst eingetragen" in antwort.json()["detail"]
+
+
+def test_ohne_modell_antwortt_die_transkription_mit_503(app_client: TestClient, tmp_path: Path) -> None:
+    """Dienst da, Modell nicht geladen: 503 - und der Grund sagt welches fehlt.
+
+    Der Endpoint bleibt ehrlich (503, weil es gerade nicht geht), aber die
+    Oberflaeche behandelt das als erwarteten Zustand und nicht als Fehlermeldung.
+    Diese Arbeitsteilung ist Absicht.
+    """
+    _manager_fuer(app_client, tmp_path)
+    _bereit(app_client, transcriber=_transkribierer(_WhisperServer()), synthesizer=None)
+    login(app_client)
+    antwort = app_client.post("/api/v1/speech/transcribe", files={"file": ("a.wav", _wav(), "audio/wav")})
+    assert antwort.status_code == 503
+    assert "kein Spracherkennungsmodell geladen" in antwort.json()["detail"]
+
+
+def test_ein_fremder_container_wird_mit_der_liste_abgewiesen(app_client: TestClient) -> None:
+    login(app_client)
+    antwort = app_client.post("/api/v1/speech/transcribe", files={"file": ("a.txt", b"kein ton", "text/plain")})
+    assert antwort.status_code == 422
+    detail = antwort.json()["detail"]
+    assert "text/plain" in detail
+    # Die Liste nennt beide Browserfaelle - das ist der Unterschied zwischen
+    # "geht nicht" und "so geht es".
+    assert "audio/webm" in detail
+    assert "audio/mp4" in detail
+
+
+def test_eine_riesige_aufnahme_wird_abgewiesen_bevor_sie_gelesen_ist(app_client: TestClient, tmp_path: Path) -> None:
+    """Das Limit greift **im Strom**, nicht nach dem Lesen.
+
+    Eine unbegrenzte Datei auf einem ``/transcribe``-Endpunkt ist ein
+    Speicherproblem; eins, das erst nach dem Lesen merkt, ist es auch.
+    """
+    manager = _manager_fuer(app_client, tmp_path)
+    _whisper_installieren(manager)
+    dienst = _bereit(
+        app_client,
+        transcriber=_transkribierer(_WhisperServer()),
+        synthesizer=None,
+        max_upload_bytes=64 * 1024,
+    )
+    login(app_client)
+
+    gross = _wav(3.0)
+    assert len(gross) > 64 * 1024
+    antwort = app_client.post("/api/v1/speech/transcribe", files={"file": ("a.wav", gross, "audio/wav")})
+    assert antwort.status_code == 413
+    assert "65536" in antwort.json()["detail"]
+    assert dienst.max_upload_bytes == 64 * 1024
+
+
+def test_eine_leere_aufnahme_wird_abgewiesen(app_client: TestClient, tmp_path: Path) -> None:
+    manager = _manager_fuer(app_client, tmp_path)
+    _whisper_installieren(manager)
+    _bereit(app_client, transcriber=_transkribierer(_WhisperServer()), synthesizer=None)
+    login(app_client)
+
+    antwort = app_client.post("/api/v1/speech/transcribe", files={"file": ("a.wav", b"", "audio/wav")})
+    assert antwort.status_code == 422
+    assert "leer" in antwort.json()["detail"]
+
+
+def test_eine_zu_lange_aufnahme_wird_abgewiesen(app_client: TestClient, tmp_path: Path) -> None:
+    """Zwei Minuten sind fuer eine Frage reichlich; darueber ist es ein Fehler."""
+    manager = _manager_fuer(app_client, tmp_path)
+    _whisper_installieren(manager)
+    _bereit(app_client, transcriber=_transkribierer(_WhisperServer()), synthesizer=None, max_seconds=1)
+    login(app_client)
+
+    antwort = app_client.post("/api/v1/speech/transcribe", files={"file": ("a.wav", _wav(2.0), "audio/wav")})
+    assert antwort.status_code == 413
+    assert "Sekunden" in antwort.json()["detail"]
+
+
+def test_eine_wav_datei_geht_ohne_umweg_zum_dienst(app_client: TestClient, tmp_path: Path) -> None:
+    """Der Normalfall: 16-kHz-Mono-WAV wird **unveraendert** geschickt.
+
+    Und der Weg davor wird mitgeprueft: die Datei kommt als Upload-Feld an, nicht
+    als normales Feld - sonst wuerde der Dienst sie nicht finden.
+    """
+    manager = _manager_fuer(app_client, tmp_path)
+    spec = _whisper_installieren(manager)
+    server = _WhisperServer(text="Was kommt am Dienstag?")
+    _bereit(app_client, transcriber=_transkribierer(server), synthesizer=None)
+    login(app_client)
+
+    aufnahme = _wav(1.0)
+    antwort = app_client.post("/api/v1/speech/transcribe", files={"file": ("aufnahme.wav", aufnahme, "audio/wav")})
+    assert antwort.status_code == 200
+    payload = antwort.json()
+    assert payload["text"] == "Was kommt am Dienstag?"
+    assert payload["transcoded"] is False
+    assert payload["model_id"] == spec.id
+    assert payload["duration_seconds"] == 1.0
+
+    # Genau eine POST-Anfrage an /inference, und sie trug eine Datei.
+    aufrufe = [anfrage for anfrage in server.anfragen if anfrage.method == "POST"]
+    assert len(aufrufe) == 1
+    assert aufrufe[0].url.path == "/inference"
+    inhalt = aufrufe[0].read().decode("latin-1")
+    assert "aufnahme.wav" in inhalt
+    assert "audio/wav" in inhalt
+
+
+def test_ein_fremdes_wav_format_geht_durch_die_umwandlung(app_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stereo oder 44,1 kHz: brauchbar, aber nicht das Format, das whisper liest.
+
+    Deshalb wird es umgewandelt statt abgelehnt - der Grund fuer ``transcoded``.
+    """
+    import sys
+
+    manager = _manager_fuer(app_client, tmp_path)
+    _whisper_installieren(manager)
+    server = _WhisperServer(text="Aufgenommen in Stereo")
+    _bereit(app_client, transcriber=_transkribierer(server), synthesizer=None, ffmpeg_path=sys.executable)
+    monkeypatch.setattr(speech_service, "run_command", _Aufrufe(stdout=_wav(0.5)))
+    login(app_client)
+
+    stereo = _wav(0.5, kanaele=2, rate=44100)
+    antwort = app_client.post("/api/v1/speech/transcribe", files={"file": ("a.wav", stereo, "audio/wav")})
+    assert antwort.status_code == 200
+    assert antwort.json()["transcoded"] is True
+    assert speech_service.looks_like_wav(stereo)
+
+
+def test_ein_webm_wird_zuerst_umgewandelt(app_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Chrome liefert WebM/Opus - der Weg ueber ffmpeg, gegen eine Attrappe.
+
+    ``ffmpeg_path`` zeigt auf den laufenden Python-Interpreter: es geht nur darum,
+    dass ``program_exists`` zustimmt, denn der Aufruf selbst wird abgefangen. So
+    ist der ganze Pfad pruefbar, ohne dass ffmpeg hier installiert sein muss.
+    """
+    import sys
+
+    manager = _manager_fuer(app_client, tmp_path)
+    _whisper_installieren(manager)
+    server = _WhisperServer(text="Der Satz des Pythagoras")
+    _bereit(app_client, transcriber=_transkribierer(server), synthesizer=None, ffmpeg_path=sys.executable)
+    aufrufe = _Aufrufe(stdout=_wav(0.5))
+    monkeypatch.setattr(speech_service, "run_command", aufrufe)
+    login(app_client)
+
+    # WebM-Magic-Bytes, wie sie ein Browser schickt.
+    webm = b"\x1aE\xdf\xa3\x01\x00\x00\x00\x00\x00\x00\x1fB\x86\x81\x01\x42\xf7\x81\x01"
+    antwort = app_client.post("/api/v1/speech/transcribe", files={"file": ("aufnahme.webm", webm, "audio/webm")})
+    assert antwort.status_code == 200
+    assert antwort.json()["text"] == "Der Satz des Pythagoras"
+    assert antwort.json()["transcoded"] is True
+
+    # Der Aufruf nennt den Container, die Abtastrate und die Kanalzahl.
+    assert len(aufrufe.aufrufe) == 1
+    argv = aufrufe.aufrufe[0][0]
+    assert argv[0] == sys.executable
+    assert "pipe:0.webm" in argv
+    assert argv[argv.index("-ar") + 1] == "16000"
+    assert argv[argv.index("-ac") + 1] == "1"
+
+
+def test_ein_mp4_von_safari_wird_ebenfalls_angenommen(app_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Safari liefert MP4/AAC - derselbe Weg, andere Endung.
+
+    ``audio/mp4;codecs=mp4a.40.2`` schickt der Browser **mit** Parametern. Ohne
+    das Abschneiden der Parameter faelle die Datei als unbekannter Container
+    durch - und der Fehler waere genau die Klasse, die auf einem einzigen Browser
+    passiert.
+    """
+    import sys
+
+    manager = _manager_fuer(app_client, tmp_path)
+    _whisper_installieren(manager)
+    _bereit(app_client, transcriber=_transkribierer(_WhisperServer(text="Morgen um acht")), synthesizer=None, ffmpeg_path=sys.executable)
+    aufrufe = _Aufrufe(stdout=_wav(0.5))
+    monkeypatch.setattr(speech_service, "run_command", aufrufe)
+    login(app_client)
+
+    mp4 = b"\x00\x00\x00\x20ftypM4A \x00\x00\x00\x00"
+    antwort = app_client.post(
+        "/api/v1/speech/transcribe",
+        files={"file": ("aufnahme.m4a", mp4, "audio/mp4;codecs=mp4a.40.2")},
+    )
+    assert antwort.status_code == 200
+    assert antwort.json()["text"] == "Morgen um acht"
+    assert "pipe:0.m4a" in aufrufe.aufrufe[0][0]
+
+
+def test_ohne_ffmpeg_bleibt_es_beim_textmodus(app_client: TestClient, tmp_path: Path) -> None:
+    """Kein ffmpeg, WebM-Datei: 503 mit einem Satz, der weiterhilft.
+
+    Der Fall ist nicht selten - und er darf nicht als „kaputt" erscheinen,
+    sondern als „auf diesem Server fehlt ein Programm".
+    """
+    manager = _manager_fuer(app_client, tmp_path)
+    _whisper_installieren(manager)
+    _bereit(app_client, transcriber=_transkribierer(_WhisperServer()), synthesizer=None, ffmpeg_path="gibt-es-nicht-als-programm")
+    login(app_client)
+
+    webm = b"\x1aE\xdf\xa3\x01\x00\x00\x00\x00\x00\x00\x1fB\x86\x81"
+    antwort = app_client.post("/api/v1/speech/transcribe", files={"file": ("a.webm", webm, "audio/webm")})
+    assert antwort.status_code == 503
+    detail = antwort.json()["detail"]
+    assert "ffmpeg" in detail
+    assert "Alles andere" in detail
+
+    # Die Faehigkeitsabfrage sagt es **vorab**, damit die Oberflaeche es nicht
+    # erst nach dem Fehlversuch herausfinden muss - und damit eine WAV-Datei
+    # weiterhin als moeglich erscheint.
+    laufzeit = app_client.get("/api/v1/speech/capabilities").json()["runtime"]
+    assert laufzeit["ffmpeg_present"] is False
+    assert "WAV" in laufzeit["ffmpeg_note"]
+    assert laufzeit["transcriber_reachable"] is True
+
+
+def test_ein_leeres_transkript_ist_kein_erfolg(app_client: TestClient, tmp_path: Path) -> None:
+    """Der Dienst antwortet mit nichts: 422, nicht 200 mit leerem Feld."""
+    manager = _manager_fuer(app_client, tmp_path)
+    _whisper_installieren(manager)
+    _bereit(app_client, transcriber=_transkribierer(_WhisperServer(text="   ")), synthesizer=None)
+    login(app_client)
+
+    antwort = app_client.post("/api/v1/speech/transcribe", files={"file": ("a.wav", _wav(0.5), "audio/wav")})
+    assert antwort.status_code == 422
+    assert "keinen Text" in antwort.json()["detail"]
+
+
+def test_ein_dienst_der_die_aufnahme_abweist_wird_als_422_gemeldet(app_client: TestClient, tmp_path: Path) -> None:
+    """Der Dienst lehnt ab: das ist ein Eingabeproblem, kein Serverausfall."""
+    manager = _manager_fuer(app_client, tmp_path)
+    _whisper_installieren(manager)
+
+    def _ablehnen(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, request=request)
+        return httpx.Response(500, text="Modell konnte nicht geoeffnet werden", request=request)
+
+    _bereit(app_client, transcriber=_transkribierer(httpx.MockTransport(_ablehnen)), synthesizer=None)
+    login(app_client)
+
+    antwort = app_client.post("/api/v1/speech/transcribe", files={"file": ("a.wav", _wav(0.5), "audio/wav")})
+    assert antwort.status_code == 422
+    assert "abgelehnt" in antwort.json()["detail"]
+    assert "Modell konnte nicht geoeffnet werden" in antwort.json()["detail"]
+
+
+def test_ein_unlesbarer_dienst_wird_als_502_gemeldet(app_client: TestClient, tmp_path: Path) -> None:
+    """Antwort ohne Textfeld: 502 - der Aufruf ging raus, die Antwort nicht."""
+    manager = _manager_fuer(app_client, tmp_path)
+    _whisper_installieren(manager)
+
+    def _muell(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, request=request)
+        return httpx.Response(200, content=b"kein json", headers={"content-type": "text/plain"}, request=request)
+
+    _bereit(app_client, transcriber=_transkribierer(httpx.MockTransport(_muell)), synthesizer=None)
+    login(app_client)
+
+    antwort = app_client.post("/api/v1/speech/transcribe", files={"file": ("a.wav", _wav(0.5), "audio/wav")})
+    assert antwort.status_code == 422
+    assert "unlesbare" in antwort.json()["detail"]
+
+
+# --- Vorlesen ---------------------------------------------------------------
+
+
+def test_eine_leere_oder_riesige_rede_wird_abgewiesen(app_client: TestClient) -> None:
+    login(app_client)
+    assert app_client.post("/api/v1/speech/speak", json={"text": "   "}).status_code == 422
+    # Das Schema begrenzt die Laenge selbst; der Dienst begrenzt sie nochmal.
+    assert app_client.post("/api/v1/speech/speak", json={"text": "a" * 50000}).status_code == 422
+
+
+def test_ohne_piper_antwortet_das_vorlesen_mit_503(app_client: TestClient) -> None:
+    login(app_client)
+    antwort = app_client.post("/api/v1/speech/speak", json={"text": "Hallo"})
+    assert antwort.status_code == 503
+    assert "Piper" in antwort.json()["detail"]
+
+
+def test_ohne_installiertes_piper_programm_wirds_das_gesagt(app_client: TestClient, tmp_path: Path) -> None:
+    """Das Programm fehlt: der Grund nennt es beim Namen."""
+    manager = _manager_fuer(app_client, tmp_path)
+    _stimmt_installieren(manager, piper_voices.voice_by_id("de-de-thorsten-medium"))
+    _bereit(app_client, transcriber=None, synthesizer=PiperSynthesizer("piper-nicht-installiert"))
+    login(app_client)
+
+    reason = app_client.get("/api/v1/speech/capabilities").json()["text_to_speech"]["reason"]
+    assert "piper-nicht-installiert" in reason
+    assert "Spracheingabe und der Textmodus bleiben" in reason
+    assert app_client.post("/api/v1/speech/speak", json={"text": "Hallo"}).status_code == 503
+
+
+def test_die_sprachausgabe_kommt_als_wav_und_nicht_als_base64(app_client: TestClient, tmp_path: Path) -> None:
+    """Rohdaten statt JSON: eine WAV-Datei waere als base64 um ein Drittel groesser."""
+    stimme = piper_voices.voice_by_id("de-de-thorsten-medium")
+    manager = _manager_fuer(app_client, tmp_path)
+    _stimmt_installieren(manager, stimme)
+    ton = _wav(0.75)
+    aufrufe = _Aufrufe(stdout=ton)
+    _bereit(app_client, transcriber=None, synthesizer=_synthese(aufrufe))
+    login(app_client)
+
+    antwort = app_client.post("/api/v1/speech/speak", json={"text": "Dein Lernraum."})
+    assert antwort.status_code == 200
+    assert antwort.headers["content-type"].startswith("audio/wav")
+    assert antwort.content == ton
+    assert "base64" not in antwort.headers["content-type"]
+    # Ohne `nosniff` schweigt der Browser in manchen Faellen, statt den Ton zu
+    # spielen - und der Byte-Oktett-Parameter sagt ihm, dass es beliebige Bytes
+    # sind. WAV ist genau das.
+    assert antwort.headers["x-content-type-options"] == "nosniff"
+
+    # Der Aufruf nennt Modell, Konfiguration und den Text auf stdin.
+    argv, stdin = aufrufe.aufrufe[0]
+    assert argv[argv.index("--model") + 1].endswith(stimme.onnx_name)
+    assert argv[argv.index("--config") + 1].endswith(stimme.config_name)
+    assert stdin.decode("utf-8") == "Dein Lernraum."
+
+
+def test_piper_mit_einer_eigenen_stimme(app_client: TestClient, tmp_path: Path) -> None:
+    """Eine ausdruecklich gewaehlte Stimme wird benutzt - wenn sie deutsch ist."""
+    kerstin = piper_voices.voice_by_id("de-de-kerstin-low")
+    manager = _manager_fuer(app_client, tmp_path)
+    _stimmt_installieren(manager, kerstin)
+    _stimmt_installieren(manager, piper_voices.voice_by_id("de-de-thorsten-medium"))
+    aufrufe = _Aufrufe(stdout=_wav(0.5))
+    _bereit(app_client, transcriber=None, synthesizer=_synthese(aufrufe))
+    login(app_client)
+
+    antwort = app_client.post("/api/v1/speech/speak", json={"text": "Kerstin bitte.", "voice_id": kerstin.id})
+    assert antwort.status_code == 200
+    argv = aufrufe.aufrufe[0][0]
+    assert argv[argv.index("--model") + 1].endswith(kerstin.onnx_name)
+    assert argv[argv.index("--config") + 1].endswith(kerstin.config_name)
+
+
+def test_eine_unbekannte_stimme_zum_vorlesen_ist_404(app_client: TestClient, tmp_path: Path) -> None:
+    _manager_fuer(app_client, tmp_path)
+    _bereit(app_client, transcriber=None, synthesizer=_synthese(_Aufrufe(stdout=_wav())))
+    login(app_client)
+    antwort = app_client.post("/api/v1/speech/speak", json={"text": "Hallo", "voice_id": "de-de-niemand"})
+    assert antwort.status_code == 404
+    assert "Unbekannte Stimme" in antwort.json()["detail"]
+
+
+def test_eine_nicht_geladene_stimme_wird_nicht_gesprochen(app_client: TestClient, tmp_path: Path) -> None:
+    """Im Katalog, aber nicht geladen: 503 mit dem Hinweis auf die Ablage."""
+    _manager_fuer(app_client, tmp_path)
+    _bereit(app_client, transcriber=None, synthesizer=_synthese(_Aufrufe(stdout=_wav())))
+    login(app_client)
+
+    antwort = app_client.post("/api/v1/speech/speak", json={"text": "Hallo", "voice_id": "de-de-thorsten-medium"})
+    assert antwort.status_code == 503
+    assert "nicht vollstaendig geladen" in antwort.json()["detail"]
+
+
+def test_ein_abgestuerztes_piper_wird_als_502_gemeldet(app_client: TestClient, tmp_path: Path) -> None:
+    """Piper bricht ab: die eigene Meldung des Programms geht an den Nutzer.
+
+    Die letzte nichtleere Zeile von stderr ist fast immer die eigentliche Ursache,
+    und die gehoert dem Nutzer - nicht nur dem Log.
+    """
+    stimme = piper_voices.voice_by_id("de-de-thorsten-medium")
+    manager = _manager_fuer(app_client, tmp_path)
+    _stimmt_installieren(manager, stimme)
+    aufrufe = _Aufrufe(returncode=1, stderr=b"espeak-ng fehlt\nFehler: Modell nicht lesbar\n")
+    _bereit(app_client, transcriber=None, synthesizer=_synthese(aufrufe))
+    login(app_client)
+
+    antwort = app_client.post("/api/v1/speech/speak", json={"text": "Hallo"})
+    assert antwort.status_code == 502
+    assert "Modell nicht lesbar" in antwort.json()["detail"]
+
+
+def test_piper_ohne_ausgabedatei_wird_bemerkt(app_client: TestClient, tmp_path: Path) -> None:
+    """Rueckgabewert 0, aber keine Datei: trotzdem ein Fehler.
+
+    Ein stilles Leeres Ergebnis wuerde in der Oberflaeche als „gelesen"
+    erscheinen - und der Nutzer wuerde es nie erfahren.
+    """
+    stimme = piper_voices.voice_by_id("de-de-thorsten-medium")
+    manager = _manager_fuer(app_client, tmp_path)
+    _stimmt_installieren(manager, stimme)
+    aufrufe = _Aufrufe(returncode=0, stdout=b"", schreibe_datei=False)
+    _bereit(app_client, transcriber=None, synthesizer=_synthese(aufrufe))
+    login(app_client)
+
+    antwort = app_client.post("/api/v1/speech/speak", json={"text": "Hallo"})
+    assert antwort.status_code == 502
+    assert "keine Audiodatei" in antwort.json()["detail"]
+
+
+def test_eine_leere_rede_braucht_keinen_lauf(app_client: TestClient, tmp_path: Path) -> None:
+    """Leerer Text: 422 **vor** dem Lauf, damit Piper nicht umsonst startet."""
+    stimme = piper_voices.voice_by_id("de-de-thorsten-medium")
+    manager = _manager_fuer(app_client, tmp_path)
+    _stimmt_installieren(manager, stimme)
+    aufrufe = _Aufrufe(stdout=_wav(0.5))
+    _bereit(app_client, transcriber=None, synthesizer=_synthese(aufrufe))
+    login(app_client)
+
+    assert app_client.post("/api/v1/speech/speak", json={"text": "   "}).status_code == 422
+    assert aufrufe.aufrufe == []
+
+
+# --- Die Laufzeiten direkt --------------------------------------------------
+
+
+def test_eine_fehlende_adresse_ist_kein_stolperstein() -> None:
+    transkribierer = WhisperTranscriber("")
+    erreichbar, notiz = transkribierer.is_reachable()
+    assert erreichbar is False
+    assert "keine Adresse" in notiz
+
+
+def test_ein_antwortender_dienst_gilt_als_erreichbar() -> None:
+    """Auch ein 404: es geht um die Frage, ob sich etwas meldet.
+
+    whisper.cpp hat keine eigene Health-Route. Eine zu erfinden waere eine
+    Zusage, die der Dienst nicht einloest.
+    """
+    transkribierer = _transkribierer(_WhisperServer())
+    erreichbar, notiz = transkribierer.is_reachable()
+    assert erreichbar is True
+    assert notiz
+
+
+def test_ein_fehlendes_programm_nennt_seinen_namen() -> None:
+    laufzeit = PiperSynthesizer("")
+    assert laufzeit.is_available() == (False, "Es ist kein Piper-Programm eingetragen.")
+    laufzeit = PiperSynthesizer("gibt-es-nicht-als-programm")
+    vorhanden, notiz = laufzeit.is_available()
+    assert vorhanden is False
+    assert "gibt-es-nicht-als-programm" in notiz
+
+
+def test_ein_fehlendes_programm_beim_lauf_wird_gemeldet(tmp_path: Path) -> None:
+    """``run_command`` ist die einzige Stelle mit ``subprocess`` - und sie meldet.
+
+    Der Text nennt das Programm, weil das die einzige Information ist, die hier
+    wirklich hilft: ein ``FileNotFoundError`` ohne Namen landet als
+    ``[Errno 2]`` in einer Oberflaeche.
+    """
+    with pytest.raises(SpeechRuntimeError) as fehler:
+        speech_service.run_command([str(tmp_path / "gibt-es-nicht"), "-x"], stdin=b"", timeout_seconds=1.0)
+    assert "gibt-es-nicht" in str(fehler.value)
+
+
+def test_run_command_kann_ein_wirkliches_programm_ausfuehren() -> None:
+    """Der Aufruf funktioniert - mit einer Liste, nicht mit einer Shell.
+
+    Sicherheitshalber festgehalten: ``run_command`` bekommt eine **Liste** und
+    reicht sie an ``subprocess.run`` weiter. Ein ``shell=True`` wuerde den Text
+    der Lernenden zur Befehlszeile machen - und der kommt hier als stdin herein.
+    """
+    import sys
+
+    ergebnis = speech_service.run_command(
+        [sys.executable, "-c", "import sys; sys.stdout.write(sys.stdin.read().upper())"],
+        stdin=b"hallo",
+        timeout_seconds=30.0,
+    )
+    assert ergebnis.returncode == 0
+    assert ergebnis.stdout == b"HALLO"
+    # Ohne stderr hilft stdout - manche Werkzeuge schreiben dorthin. Genau das
+    # wird hier benutzt, um sicher zu sein, dass `run_command` den Ein- und
+    # Ausgabestrom wirklich durchreicht.
+    assert ergebnis.fehlermeldung == "HALLO"
+
+
+def test_der_meldungstext_kommt_aus_der_letzten_zeile() -> None:
+    ergebnis = speech_service.CommandResult(returncode=1, stderr=b"viel Zeug\n\n  Die eigentliche Ursache  \n")
+    assert ergebnis.fehlermeldung == "Die eigentliche Ursache"
+    assert speech_service.CommandResult(returncode=1).fehlermeldung == ""
+    # Ohne stderr hilft stdout - manche Werkzeuge schreiben dorthin.
+    assert speech_service.CommandResult(returncode=1, stdout=b"nur hier\n").fehlermeldung == "nur hier"
+
+
+def test_das_programm_entscheidet_ueber_die_meldung() -> None:
+    assert speech_service.program_exists("") is False
+    assert speech_service.program_exists("gibt-es-nicht-als-programm") is False

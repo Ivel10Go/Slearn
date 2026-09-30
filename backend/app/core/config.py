@@ -172,6 +172,82 @@ class Settings(BaseSettings):
         default="/var/lib/school-assistant/worker-status/worker-status.json",
         validation_alias=AliasChoices("WORKER_STATUS_PATH", "worker_status_path"),
     )
+    # --- Sprach-Assistent -------------------------------------------------
+    # Alles hier ist **optional** und per Default aus. Der Grund ist derselbe
+    # wie beim WebUntis-Abruf: ein nacktes `python -m uvicorn` soll beim Start
+    # keine ungefragten Verbindungen aufbauen, und die Sprachfunktionen sollen
+    # ohne Modelle vollstaendigstaendig lauffaehig sein.
+    speech_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("SPEECH_ENABLED", "speech_enabled"),
+    )
+    # Die Laufzeiten liegen **ausserhalb** des Python-Prozesses: whisper.cpp
+    # bringt seinen eigenen HTTP-Dienst mit, Piper ist ein Kommandozeilenwerk.
+    # Beide Pfade sind deshalb nur ein Name im `PATH` - und `None` heisst
+    # "eingetragen, aber nicht installiert", was die Faehigkeitsabfrage als
+    # deutschen Satz ausgibt statt als Fehler.
+    whisper_server_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("WHISPER_SERVER_URL", "whisper_server_url"),
+    )
+    whisper_server_timeout_seconds: float = Field(
+        default=120.0,
+        gt=0,
+        le=600,
+        validation_alias=AliasChoices("WHISPER_SERVER_TIMEOUT_SECONDS", "whisper_server_timeout_seconds"),
+    )
+    # Leer lassen heisst: die Sprache aus der Aufnahme selbst schaetzen lassen
+    # und keine Sprachangabe mitschicken. Das ist fuer einen deutschen Lernraum
+    # fast immer richtig und haelt den Aufruf portabel.
+    whisper_language: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("WHISPER_LANGUAGE", "whisper_language"),
+    )
+    piper_binary_path: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("PIPER_BINARY_PATH", "piper_binary_path"),
+    )
+    # ffmpeg wird nur fuer alles gebraucht, was **nicht** bereits ein
+    # 16-kHz-Mono-WAV ist - also praktisch immer, weil Chrome WebM und Safari
+    # MP4 aufnehmen. Fehlt es, bleibt der Textmodus und eine WAV-Datei moeglich.
+    ffmpeg_binary_path: str = Field(
+        default="ffmpeg",
+        validation_alias=AliasChoices("FFMPEG_BINARY_PATH", "ffmpeg_binary_path"),
+    )
+    # Obergrenze einer Aufnahme. Ohne sie ist ein `/transcribe`-Endpunkt eine
+    # Einladung, den Arbeitsspeicher des Containers zu fuellen; 12 MiB sind
+    # rund sieben Minuten Ton und damit mehr, als jemand diktiert.
+    speech_max_upload_bytes: int = Field(
+        default=12 * 1024 * 1024,
+        ge=1024,
+        le=64 * 1024 * 1024,
+        validation_alias=AliasChoices("SPEECH_MAX_UPLOAD_BYTES", "speech_max_upload_bytes"),
+    )
+    speech_max_seconds: int = Field(
+        default=120,
+        ge=5,
+        le=600,
+        validation_alias=AliasChoices("SPEECH_MAX_SECONDS", "speech_max_seconds"),
+    )
+    speech_max_text_characters: int = Field(
+        default=4000,
+        ge=100,
+        le=40000,
+        validation_alias=AliasChoices("SPEECH_MAX_TEXT_CHARACTERS", "speech_max_text_characters"),
+    )
+    # Leeres Feld heisst: das kleinste geladene Modell nehmen, tiny vor base.
+    # Ein Eintrag ist nur noetig, wenn jemand eine bestimmte Groesse erzwingen
+    # will - und dann darf die Oberflaeche nicht still etwas anderes nehmen.
+    speech_stt_model_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("SPEECH_STT_MODEL_ID", "speech_stt_model_id"),
+    )
+    # Dasselbe fuer die Stimme. Leer heisst: eine **deutsche** geladene Stimme,
+    # sonst die kleinste - aber nie stillschweigend eine andere Sprache.
+    speech_tts_voice_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("SPEECH_TTS_VOICE_ID", "speech_tts_voice_id"),
+    )
     admin_username: str | None = Field(default=None, validation_alias=AliasChoices("ADMIN_USERNAME", "admin_username"))
     admin_password: SecretStr | None = Field(
         default=None,

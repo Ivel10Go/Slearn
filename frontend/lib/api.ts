@@ -1,11 +1,38 @@
 "use client";
 
 import { getDemoDashboard, getDemoScheduleRange, isDemoFallbackEnabled } from "./demo";
+import { endungFuerFormat, parseSpeechCapabilities, parseVoiceList, type SpeechCapabilitiesPayload, type VoiceListPayload } from "./speech";
 import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type CalendarEvent, type DashboardData, type DocumentAnswer, type DocumentRecord, type DocumentSearchResult, type Exam, type FileUploadResult, type Grade, type GradeImportPreview, type GradeImportResult, type GradeKind, type GradeSharing, type GradeSummary, type Greeting, type Homework, type ScheduleRange, type StudySessionRecord, type StudyTask, type StudyTaskState, type Subject, type SubjectOption } from "./types";
 import { collectSubjectNames, parseCalendarEventArray, parseCalendarEventRead, parseCalendarFeed, parseCalendarWriting, parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseExamArray, parseExamRead, parseExamTaskPlanResult, parseFileUploadResponse, parseGradeArray, parseGradeImportPreview, parseGradeImportResult, parseGradeRead, parseGradeSharing, parseGradeSummary, parseHomeworkArray, parseHomeworkRead, parseIntegrationArray, parseIntegrationAuthorize, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseLearningInsights, parseMarkReadResult, parseNotificationArray, parseNotificationSettings, parsePushSubscription, parsePushSubscriptionArray, parseReminderRun, parseRewardOverview, parseStudyDependencyArray, parseStudyDependencyRead, parseStudyPlanArray, parseStudyPlanRead, parseStudySeriesArray, parseStudySeriesRead, parseStudySessionRead, parseStudyTaskArray, parseStudyTaskRead, parseSubjectArray, parseSubjectRead, parseTopicProgressArray, parseTopicProgressRead, parseUserResponse, parseUserSession, parseVapidKey, parseWeeklyGoalRead } from "./schemas";
 import type { CalendarFeed, CalendarWriting, ExamTaskPlanResult, IntegrationAuthorize, IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult, LearningInsights, RewardOverview, StudyPlan, StudyTaskDependency, StudyTaskOrder, StudyTaskSeries, StudyTaskSeriesInput, TopicProgress, WeeklyGoal } from "./types";
 
 const API_PREFIX = "/api/backend";
+
+/**
+ * Was die Oberflaeche annimmt, wenn der Server gar nicht antwortet.
+ *
+ * Der Textmodus ist hier keine Ausnahme, sondern der eingebaute Zustand: mit
+ * diesen Werten zeigt die Sprachkarte „Tippen geht immer" und bietet die
+ * Sprachknöpfe nicht an - ohne Fehlermeldung und ohne Dialog.
+ */
+const LEERE_FAEHIGKEITEN: SpeechCapabilitiesPayload = {
+  text_mode_available: true,
+  text_mode_note: "Der Lernraum ist gerade nicht erreichbar. Alles hier laeuft ohne Modell.",
+  speech_to_text: { available: false, reason: "Der Lernraum ist gerade nicht erreichbar.", model_id: null, label: "", language: null, language_label: "" },
+  text_to_speech: { available: false, reason: "Der Lernraum ist gerade nicht erreichbar.", model_id: null, label: "", language: null, language_label: "" },
+  input: { max_bytes: 0, max_seconds: 0, accepted_types: [], sample_rate: 16000, needs_transcoding: true, transcoding_note: "" },
+  runtime: {
+    transcriber_reachable: false,
+    transcriber_note: "",
+    synthesizer_available: false,
+    synthesizer_note: "",
+    ffmpeg_present: false,
+    ffmpeg_note: "",
+  },
+  default_voice_id: null,
+  recommended_voice_id: null,
+  installed_voice_ids: [],
+};
 
 export class ApiError extends Error {
   readonly status: number;
@@ -1119,7 +1146,7 @@ export async function runReminders() {
 /* ------------------------------------------------------------------- Dateien */
 
 /**
- * Lädt eine Datei als `multipart/form-data` hoch.
+ * Laedt eine Datei als `multipart/form-data` hoch.
  *
  * Das ist die einzige nicht-JSON-Route des Backends. Deshalb wird hier nicht
  * `apiRequest` mit einem JSON-Body benutzt, sondern `FormData` - und der
@@ -1132,4 +1159,95 @@ export async function uploadFile(file: File): Promise<FileUploadResult> {
   form.append("file", file);
   const payload = await apiRequest("/v1/files", { method: "POST", body: form });
   return parseFileUploadResponse(payload);
+}
+
+/* ---------------------------------------------------------- Sprach-Assistent */
+
+/**
+ * Was der Sprach-Assistent gerade kann.
+ *
+ * Ohne Demo-Fallback, und zwar aus zwei Gruenden: Eine erfundene
+ * Faehigkeitsangabe wuerde der Sprachausgabe eine Stimme andeuten, die es nicht
+ * gibt - und der Textmodus soll genau dann erscheinen, wenn nichts geladen ist.
+ * Der Endpunkt antwortet ohnehin immer mit 200; ein Fehler hier bedeutet
+ * "Server nicht erreichbar", und dann ist Textmodus die richtige Antwort.
+ */
+export async function getSpeechCapabilities(): Promise<SpeechCapabilitiesPayload> {
+  const payload = await apiRequest("/v1/speech/capabilities");
+  return parseSpeechCapabilities(payload) ?? LEERE_FAEHIGKEITEN;
+}
+
+/** Die Piper-Stimmen mit ihrem Stand. */
+export async function getSpeechVoices(): Promise<VoiceListPayload> {
+  return parseVoiceList(await apiRequest("/v1/speech/voices")) ?? { voices: [], default_voice_id: null };
+}
+
+export async function downloadVoice(voiceId: string): Promise<void> {
+  await apiRequest(`/v1/speech/voices/${encodeURIComponent(voiceId)}/download`, { method: "POST" });
+}
+
+export async function cancelVoiceDownload(voiceId: string): Promise<void> {
+  await apiRequest(`/v1/speech/voices/${encodeURIComponent(voiceId)}/cancel`, { method: "POST" });
+}
+
+export async function deleteVoice(voiceId: string): Promise<void> {
+  await apiRequest(`/v1/speech/voices/${encodeURIComponent(voiceId)}`, { method: "DELETE" });
+}
+
+/**
+ * Schickt eine Aufnahme zum Transkribieren.
+ *
+ * `blob` ist der Inhalt aus `MediaRecorder`, `mime` der Typ, den der Browser
+ * fuer genau diese Aufnahme benutzt hat - **nicht** ein selbst gewaehlter Wert.
+ * Der Unterschied ist der ganze Formatunterschied zwischen Chrome (WebM/Opus)
+ * und Safari (MP4/AAC), und der Server riecht den Container nicht.
+ */
+export async function transcribeAudio(blob: Blob, mime: string): Promise<{ text: string; model_id: string; transcoded: boolean; message: string }> {
+  const form = new FormData();
+  form.append("file", blob, `aufnahme${endungFuerFormat(mime)}`);
+  const payload = await apiRequest("/v1/speech/transcribe", { method: "POST", body: form });
+  const row = typeof payload === "object" && payload !== null ? (payload as Record<string, unknown>) : {};
+  return {
+    text: typeof row.text === "string" ? row.text : "",
+    model_id: typeof row.model_id === "string" ? row.model_id : "unbekannt",
+    transcoded: row.transcoded === true,
+    message: typeof row.message === "string" ? row.message : "",
+  };
+}
+
+/**
+ * Holt eine WAV-Datei fuer die Sprachausgabe.
+ *
+ * Bewusst **nicht** ueber `apiRequest`: das dort erwartet JSON, und hier kommt
+ * ein Ton. Als base64 im JSON waere die Datei um ein Drittel groesser - und
+ * muesste im Browser wieder dekodiert werden, ohne dass etwas gewuenne. Der
+ * Pfad laeuft trotzdem ueber denselben Proxy (`/api/backend/v1/...`), bleibt
+ * also same-origin und passt unter `connect-src 'self'`.
+ *
+ * Ein Fehler wird zu `ApiError` mit der deutschen `detail`-Meldung des
+ * Backends - sonst haette die Oberflaeche keine Ahnung, warum es keinen Ton
+ * gab.
+ */
+export async function fetchSpeechAudio(text: string, voiceId?: string): Promise<Blob> {
+  if (typeof window === "undefined") {
+    throw new ApiError("API-Anfragen sind nur im Browser verfügbar.", 0);
+  }
+  let response: Response;
+  try {
+    response = await fetch(endpoint("/v1/speech/speak"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "audio/wav" },
+      body: JSON.stringify(voiceId ? { text, voice_id: voiceId } : { text }),
+      cache: "no-store",
+      credentials: "include",
+      redirect: "manual",
+    });
+  } catch {
+    throw new ApiError("Die Verbindung zum Lernraum konnte nicht hergestellt werden.", 0);
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => undefined);
+    throw new ApiError(responseMessage(payload, `Die Anfrage ist fehlgeschlagen (${response.status}).`), response.status);
+  }
+  return response.blob();
 }

@@ -30,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { CalendarSection } from "@/components/manage/calendar-section";
 import { ExamsSection } from "@/components/manage/exams-section";
 import { HomeworkSection } from "@/components/manage/homework-section";
+import { SpeechControls } from "@/components/speech/speech-controls";
 import { ApiError, askDocuments, completeStudyTask, startStudyTask, stopStudyTask } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -587,6 +588,15 @@ function AssistantCard() {
           </div>
         )}
         <p className="text-xs leading-5 text-muted-foreground">Antworten entstehen aus deinen eigenen Dokumenten; ohne verbundenen KI-Dienst wird aus den Treffern zitiert.</p>
+
+        {/*
+          Die Spracheingabe und die Sprachausgabe hängen an **dieser** Karte und
+          nicht an einer eigenen. Der Grund ist derselbe wie bei den Modellen:
+          das Diktat schreibt in genau dieses Fragefeld, und der Vorleseknopf
+          liest genau diese Antwort. Eine eigene Sprachkarte waere ein zweiter
+          Textweg - und der waere nicht derselbe.
+        */}
+        <SpeechControls onText={setQuestion} antwort={answer?.answer} />
       </CardContent>
     </Card>
   );
