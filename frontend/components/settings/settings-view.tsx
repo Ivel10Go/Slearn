@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { BackupStatusCard } from "@/components/settings/backup-status-card";
+import { NotificationSettingsCard } from "@/components/settings/notification-settings-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +38,7 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { IntegrationWrite } from "@/lib/api";
+import type { NotificationApi, NotificationState } from "@/lib/use-notifications";
 
 type BadgeVariant = "default" | "secondary" | "outline" | "success" | "warning" | "info" | "accent";
 
@@ -653,6 +655,7 @@ export interface SettingsViewProps {
   pendingAction: string | null;
   testResults: Record<number, IntegrationTestResult>;
   syncResults: Record<number, IntegrationSyncResult>;
+  notifications: NotificationApi & NotificationState;
   onRetry: () => void;
   onAdd: (input: IntegrationWrite) => Promise<boolean>;
   onToggle: (integration: IntegrationRead, enabled: boolean) => void;
@@ -673,6 +676,7 @@ export function SettingsView({
   pendingAction,
   testResults,
   syncResults,
+  notifications,
   onRetry,
   onAdd,
   onToggle,
@@ -727,6 +731,25 @@ export function SettingsView({
         />
         <div className="space-y-6">
           <AccountCard user={user} onLogout={onLogout} isLoggingOut={isLoggingOut} />
+          <NotificationSettingsCard
+            settings={notifications.settings}
+            vapid={notifications.vapid}
+            subscriptions={notifications.subscriptions}
+            permission={notifications.permission}
+            pushMoeglich={notifications.pushMoeglich}
+            status={notifications.status}
+            error={notifications.error}
+            actionError={notifications.actionError}
+            pending={notifications.pending}
+            bericht={notifications.pruefbericht}
+            zuletzt={notifications.zuletzt}
+            onSpeichern={notifications.speichern}
+            onErlaubnis={notifications.erlaubnisAnfragen}
+            onPushAnmelden={notifications.pushAnmelden}
+            onPushAbmelden={notifications.pushAbmelden}
+            onPruefen={notifications.pruefen}
+            onQuittieren={notifications.quittieren}
+          />
           <BackupStatusCard />
           <ThemeCard />
         </div>

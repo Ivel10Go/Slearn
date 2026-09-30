@@ -2,6 +2,7 @@ from .academic import CalendarEvent, Exam, Grade, Homework, Lesson
 from .base import Base
 from .content import Document, DocumentChunk, GreetingCache, LearningProgress, Topic, TopicDocument
 from .identity import Room, Subject, SyncSource, Teacher, User, UserSettings
+from .notify import Notification, PushSubscription
 from .planning import StudyPlan, StudyPlanTask, StudySession, StudyTaskDependency, StudyTaskSeries
 from .quiz import Quiz, QuizAnswer, QuizAttempt, QuizQuestion
 
@@ -16,6 +17,8 @@ __all__ = [
     "Homework",
     "LearningProgress",
     "Lesson",
+    "Notification",
+    "PushSubscription",
     "Quiz",
     "QuizAnswer",
     "QuizAttempt",

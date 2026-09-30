@@ -18,6 +18,7 @@ from app.api import (
     health,
     homework,
     lessons,
+    notifications,
     progress,
     study,
     subjects,
@@ -29,6 +30,7 @@ from app.db.session import dispose_engine, session_scope
 from app.services.auth import ensure_bootstrap_user
 from app.services.demo_seed import seed_demo_data_and_commit
 from app.services.integration_scheduler import IntegrationSyncScheduler
+from app.services.notification_scheduler import ReminderScheduler
 
 logger = logging.getLogger("school_assistant")
 
@@ -56,9 +58,12 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     except (SQLAlchemyError, RuntimeError, ValueError):
         log_event(logger, "startup_database_task_failed")
     scheduler = _start_scheduler(application, settings)
+    reminders = _start_reminder_scheduler(application, settings)
     try:
         yield
     finally:
+        if reminders is not None:
+            reminders.stop()
         if scheduler is not None:
             scheduler.stop()
         dispose_engine()
@@ -79,6 +84,29 @@ def _start_scheduler(application: FastAPI, settings: Settings) -> IntegrationSyn
     application.state.integration_scheduler = scheduler
     scheduler.start()
     log_event(logger, "startup_scheduler_enabled", interval_seconds=scheduler.interval_seconds)
+    return scheduler
+
+
+def _start_reminder_scheduler(application: FastAPI, settings: Settings) -> ReminderScheduler | None:
+    """Startet den Erinnerungslauf, falls er eingeschaltet ist.
+
+    Ein **eigener** Thread, nicht der WebUntis-Thread: andere Taktart, andere
+    Fehlergrenze, und der WebUntis-Thread laeuft ueberhaupt nur mit
+    ``WEBUNTIS_SYNC_ENABLED``. Die Begruendung steht im Modul-Docstring von
+    ``app/services/notification_scheduler.py``.
+
+    Das Attribut ``reminder_scheduler`` gibt es wie das andere immer, auch als
+    ``None`` - die Einstellungen zeigen damit an, was auf diesem Server laeuft,
+    ohne dass sie die Einstellung selbst erraten muessen.
+    """
+    if not settings.reminder_scheduler_enabled:
+        application.state.reminder_scheduler = None
+        log_event(logger, "startup_reminder_scheduler_disabled")
+        return None
+    scheduler = ReminderScheduler(settings)
+    application.state.reminder_scheduler = scheduler
+    scheduler.start()
+    log_event(logger, "startup_reminder_scheduler_enabled", interval_seconds=scheduler.interval_seconds)
     return scheduler
 
 
@@ -126,6 +154,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Der Backup-Status. Ohne diese Zeile waere der read-only Endpunkt nicht
     # erreichbar und die Einstellungen zeigten dauerhaft "nicht verfuegbar".
     application.include_router(backups.router)
+    # Benachrichtigungen: die Erinnerungseinstellungen, der oeffentliche
+    # VAPID-Schluessel, die Abonnements und der Weg, ueber den die offene Seite
+    # ihre Erinnerungen abholt. Ohne diese Zeile waere der ganze Abschnitt
+    # unerreichbar - und die Einstellungen zeigten einen leeren Dialog.
+    application.include_router(notifications.router)
     from app.api import documents, files, integrations
     application.include_router(integrations.router)
     application.include_router(files.router)

@@ -68,6 +68,71 @@ class Settings(BaseSettings):
         le=7 * 24 * 60 * 60,
         validation_alias=AliasChoices("WEBUNTIS_SYNC_INTERVAL_SECONDS", "webuntis_sync_interval_seconds"),
     )
+    # Der Erinnerungslauf hat ein anderes Intervall als der WebUntis-Abruf und
+    # eigene Fehlergrenzen. Auch er ist per Default aus: wer ihn nicht
+    # einschaltet, soll beim Start keine Arbeit bekommen, die er nicht
+    # bestellt hat. Der Knopf "Jetzt pruefen" in den Einstellungen geht
+    # unabhaengig davon.
+    reminder_scheduler_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("REMINDER_SCHEDULER_ENABLED", "reminder_scheduler_enabled"),
+    )
+    reminder_interval_seconds: float = Field(
+        default=5 * 60,
+        ge=60,
+        le=24 * 60 * 60,
+        validation_alias=AliasChoices("REMINDER_INTERVAL_SECONDS", "reminder_interval_seconds"),
+    )
+    # Web-Push. Der private Schluessel gehoert hier und **nicht** in den
+    # Service Worker: der Service Worker laeuft im Browser und wuerde ihn an
+    # jeden lesen, der die Datei bekommt. Fehlt der Schluessel, arbeitet der
+    # ganze Erinnerungsweg ueber die geoeffnete Seite - es ist kein Fehler,
+    # Push nicht eingerichtet zu haben.
+    #
+    # Jede `AliasChoices`-Liste fuehrt **drei** Schreibweisen: die
+    # Umgebungsvariable, einen sprechenden Namen und den Feldnamen. Das dritte
+    # entfaellt nicht - ohne es nimmt `Settings(web_push_private_key=...)` den
+    # Wert nicht an, weil Pydantic bei gesetztem Alias den Feldnamen ignoriert.
+    web_push_private_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "WEB_PUSH_VAPID_PRIVATE_KEY",
+            "web_push_vapid_private_key",
+            "web_push_private_key",
+        ),
+    )
+    # Optional. Ohne diesen Wert wird der oeffentliche Schluessel aus dem
+    # privaten berechnet; mit ihm muss er dazu passen, sonst koennte sich die
+    # Seite fuer ein Schluesselpaar anmelden, mit dem der Server nicht
+    # zeichnen kann.
+    web_push_public_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "WEB_PUSH_VAPID_PUBLIC_KEY",
+            "web_push_vapid_public_key",
+            "web_push_public_key",
+        ),
+    )
+    # Pflichtangabe des Push-Protokolls: eine Mailadresse oder eine HTTPS-
+    # Adresse, unter der der Betreiber erreichbar ist. Ohne sie akzeptiert kein
+    # echter Push-Dienst die Anfrage.
+    web_push_subject: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "WEB_PUSH_VAPID_SUBJECT",
+            "web_push_vapid_subject",
+            "web_push_subject",
+        ),
+    )
+    web_push_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        le=120,
+        validation_alias=AliasChoices(
+            "WEB_PUSH_TIMEOUT_SECONDS",
+            "web_push_timeout_seconds",
+        ),
+    )
     document_storage_path: str = Field(
         default="/var/lib/school-assistant/documents",
         validation_alias=AliasChoices("DOCUMENT_STORAGE_PATH", "document_storage_path"),
@@ -239,3 +304,36 @@ def require_integration_encryption_key(settings: Settings) -> str:
     if not value:
         raise RuntimeError("INTEGRATION_ENCRYPTION_KEY must be configured")
     return value
+
+
+def require_web_push_private_key(settings: Settings) -> str:
+    """Der private VAPID-Schluessel - oder ein klarer Grund, warum es ihn nicht gibt.
+
+    Ein ``RuntimeError`` ist hier die *richtige* Sorte Fehler: es ist eine
+    Konfigurationsfrage und kein Datenproblem, und genau so behandelt es der
+    Endpunkt (503) wie der Scheduler.
+    """
+    value = _secret_value(settings.web_push_private_key).strip()
+    if not value:
+        raise RuntimeError("WEB_PUSH_VAPID_PRIVATE_KEY must be configured")
+    return value
+
+
+def require_web_push_subject(settings: Settings) -> str:
+    """Die Kontaktangabe des Push-Protokolls (``mailto:`` oder ``https:``)."""
+    value = (settings.web_push_subject or "").strip()
+    if not value:
+        raise RuntimeError("WEB_PUSH_VAPID_SUBJECT must be configured")
+    if not value.startswith(("mailto:", "https://")):
+        raise RuntimeError("WEB_PUSH_VAPID_SUBJECT must start with mailto: or https://")
+    return value
+
+
+def configured_web_push_public_key(settings: Settings) -> str | None:
+    """Der oeffentliche Schluessel, **falls** einer eingetragen ist.
+
+    Ein gesetzter Wert wird nicht gegengeprueft: das ist Aufgabe von
+    ``app/services/web_push.py``, das Schluesselpaar als solches liest. Hier
+    gibt es nur ``str`` zurueck oder ``None``.
+    """
+    return _secret_value(settings.web_push_public_key).strip() or None

@@ -2,6 +2,7 @@
 
 import { useEffect, type ReactNode } from "react";
 import { ThemeProvider, useTheme } from "next-themes";
+import { NotificationBridge } from "@/components/notification-bridge";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 
 function ThemeColorSync() {
@@ -34,6 +35,12 @@ export function AppProviders({ children }: Readonly<{ children: ReactNode }>) {
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <ThemeColorSync />
       <ServiceWorkerRegister />
+      {/*
+        Die Erinnerungen laufen ueber die **Seite**, nicht ueber das Dashboard:
+        die Bruecke holt sie im Hintergrund ab, und der Worker zeigt sie als
+        Systemmeldung, wenn der Tab gerade nichts anzeigen kann.
+      */}
+      <NotificationBridge />
       {children}
     </ThemeProvider>
   );

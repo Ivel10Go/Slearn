@@ -628,6 +628,119 @@ export const fileUploadResponseSchema = z.object({
   created_at: optionalText,
 });
 
+/*
+ * Die Benachrichtigungen.
+ *
+ * Echte Schemata, keine Stubs: bei diesen Feldern waere ein
+ * `z.object({}).passthrough()` schlimmer als in den uebrigen Faellen, denn ein
+ * `push_status`, den die Oberflaeche nicht kennt, wuerde still als "unbekannt"
+ * behandelt - und eine Erinnerung, die niemand sieht, faellt nicht auf.
+ */
+
+export const notificationKindSchema = z.enum(["study_task_due", "exam_due"]);
+export const pushStatusSchema = z.enum(["skipped", "sent", "failed"]);
+
+export const notificationReadSchema = z.object({
+  id: z.number().int(),
+  kind: notificationKindSchema,
+  title: z.string(),
+  body: z.string(),
+  url: z.string(),
+  target_id: z.number().int(),
+  push_status: pushStatusSchema,
+  created_at: z.string(),
+  read_at: z.string().nullable(),
+});
+
+export const quietHoursSchema = z.object({
+  enabled: z.boolean(),
+  start: z.string(),
+  end: z.string(),
+  spans_midnight: z.boolean(),
+});
+
+export const notificationSettingsSchema = z.object({
+  enabled: z.boolean(),
+  channels: z.record(z.string(), z.boolean()),
+  channel_labels: z.record(z.string(), z.string()),
+  channels_available: z.array(z.string()),
+  reminder_time: z.string(),
+  quiet_hours: quietHoursSchema,
+  exam_lead_days: z.number().int(),
+  timezone: z.string(),
+  preference_key: z.string(),
+  summary: z.string(),
+});
+
+export const vapidKeySchema = z.object({
+  configured: z.boolean(),
+  public_key: z.string().nullable(),
+  subject: z.string().nullable(),
+});
+
+export const pushSubscriptionSchema = z.object({
+  id: z.number().int(),
+  endpoint_hint: z.string(),
+  user_agent: z.string().nullable(),
+  failures: z.number().int(),
+  last_success_at: z.string().nullable(),
+  last_failure_at: z.string().nullable(),
+  last_error: z.string().nullable(),
+  created_at: z.string(),
+});
+
+export const reminderRunSchema = z.object({
+  considered: z.number().int(),
+  created: z.number().int(),
+  delivered: z.number().int(),
+  push_failed: z.number().int(),
+  scheduler_running: z.boolean(),
+  interval_seconds: z.number(),
+  outcomes: z.array(
+    z.object({
+      user_id: z.number().int(),
+      created: z.number().int(),
+      delivered: z.number().int(),
+      push_failed: z.number().int(),
+      push_attempted: z.boolean(),
+      message: z.string(),
+    }),
+  ),
+  message: z.string(),
+});
+
+export function parseNotificationArray(payload: unknown) {
+  return z.array(notificationReadSchema).parse(payload);
+}
+
+export function parseNotificationSettings(payload: unknown) {
+  return notificationSettingsSchema.parse(payload);
+}
+
+export function parseVapidKey(payload: unknown) {
+  return vapidKeySchema.parse(payload);
+}
+
+export function parsePushSubscriptionArray(payload: unknown) {
+  return z.array(pushSubscriptionSchema).parse(payload);
+}
+
+export function parsePushSubscription(payload: unknown) {
+  return pushSubscriptionSchema.parse(payload);
+}
+
+/** `POST /v1/notifications/read` antwortet nur mit der Zahl der quittierten Zeilen. */
+export const markReadResultSchema = z.object({ read: z.number().int() });
+
+export function parseMarkReadResult(payload: unknown) {
+  return markReadResultSchema.parse(payload).read;
+}
+
+export function parseReminderRun(payload: unknown) {
+  return reminderRunSchema.parse(payload);
+}
+
+
 export function parseSubjectArray(payload: unknown) {
   return z.array(subjectReadSchema).parse(payload).map((entry) => ({
     id: entry.id,
