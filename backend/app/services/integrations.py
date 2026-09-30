@@ -1,12 +1,14 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Final, cast
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings
-from app.core.crypto import decrypt_credentials, has_credentials
+from app.core.config import Settings, require_integration_encryption_key
+from app.core.crypto import CredentialDecryptionError, decrypt_credentials, has_credentials
 from app.db.entities import SyncSource
 from app.schemas.integrations import IntegrationKind, IntegrationRead, IntegrationStatus
 from app.services.ai_provider import AiProviderError, probe_ai_provider
@@ -296,3 +298,111 @@ def _sync_webuntis(
     except WebUntisError as exc:
         raise IntegrationConnectionError(str(exc)) from exc
     return import_timetable(db, source, timetable, timezone_name)
+
+
+@dataclass(frozen=True, slots=True)
+class IntegrationSyncRun:
+    """Ergebnis eines Abrufs, gleichgültig ob Button oder Scheduler ihn ausgelöst hat.
+
+    Der planmäßige Lauf und der Knopf in den Einstellungen brauchen dieselben
+    drei Ausgänge: einen deutschen Satz, den Zustand der Integrationszeile und
+    gegebenenfalls die fehlenden Angaben. Deshalb steht der ganze Ablauf hier
+    und nicht im Endpunkt.
+    """
+
+    ok: bool
+    status: IntegrationStatus
+    message: str
+    missing_fields: tuple[str, ...] = ()
+    outcome: SyncOutcome | DocumentSyncOutcome | None = None
+
+
+def record_integration_sync_error(db: Session, source: SyncSource, message: str) -> IntegrationSyncRun:
+    """Schreibt einen Fehler in ``last_error`` und lässt die Zeile sonst unangetastet.
+
+    Zuerst wird zurückgerollt, weil ein fehlgeschlagener Import sonst eine halb
+    geschriebene Sitzung zurückließe. Die Zeile wird danach neu gelesen, damit
+    nicht der Zustand aus dem Identity-Map-Cache zurückgeschrieben wird.
+    """
+    source_id = source.id
+    db.rollback()
+    stored = db.get(SyncSource, source_id)
+    if stored is None:
+        return IntegrationSyncRun(ok=False, status="error", message=message)
+    stored.status = "error"
+    stored.last_error = message
+    db.commit()
+    return IntegrationSyncRun(ok=False, status="error", message=message)
+
+
+def run_integration_sync(
+    *,
+    db: Session,
+    source: SyncSource,
+    config: dict[str, str],
+    credential_keys: Sequence[str],
+    settings: Settings,
+    timezone_name: str,
+    weeks: int = DEFAULT_SYNC_WEEKS,
+    today: date | None = None,
+) -> IntegrationSyncRun:
+    """Holt die Daten einer Integration und hält deren Zustand aktuell.
+
+    Die Reihenfolge ist bewusst dieselbe wie beim Verbindungstest: fehlende
+    Angaben, deaktivierte Integration, dann erst der eigentliche Abruf. Jeder
+    logisch fehlgeschlagene Versuch landet in ``last_error`` und wird als
+    Ergebnis zurückgegeben, damit weder der Endpunkt noch der Scheduler eine
+    Ausnahme nach außen geben muss. Nur ein fehlender
+    ``INTEGRATION_ENCRYPTION_KEY`` wird als ``RuntimeError`` weitergereicht,
+    weil das ein Konfigurations- und kein Datenproblem ist.
+
+    Diese Funktion prüft ``last_sync_at`` bewusst **nicht**. Der planmäßige
+    Lauf entscheidet vorab, ob eine Integration fällig ist
+    (``scheduled_sync_is_due``), der manuelle Knopf nicht - sonst könnte ein
+    Klick am selben Tag nichts mehr auslösen.
+    """
+    label = INTEGRATION_SPECS[source.source_type].label if source.source_type in INTEGRATION_SPECS else source.source_type
+
+    gaps = missing_fields(source.source_type, config, list(credential_keys))
+    if gaps:
+        message = f"Fehlende Angaben: {', '.join(gaps)}"
+        _store_sync_state(db, source, status="error", last_error=message)
+        return IntegrationSyncRun(ok=False, status="error", message=message, missing_fields=tuple(gaps))
+
+    if not source.enabled:
+        message = f"{label} ist deaktiviert, es wurden keine Daten geholt."
+        _store_sync_state(db, source, status="disabled", last_error=None)
+        return IntegrationSyncRun(ok=False, status="disabled", message=message)
+
+    key = require_integration_encryption_key(settings)
+    credentials = decrypt_credentials(source.credentials, key) if source.credentials else {}
+    try:
+        outcome = sync_integration(
+            db=db,
+            source=source,
+            config=config,
+            credentials=credentials,
+            settings=settings,
+            timezone_name=timezone_name,
+            timeout_seconds=settings.integration_timeout_seconds,
+            weeks=weeks,
+            today=today,
+        )
+    except (IntegrationConnectionError, CredentialDecryptionError) as exc:
+        return record_integration_sync_error(db, source, str(exc))
+    except SQLAlchemyError:
+        db.rollback()
+        raise
+
+    return IntegrationSyncRun(
+        ok=True,
+        status="connected",
+        message=outcome.describe(),
+        outcome=outcome,
+    )
+
+
+def _store_sync_state(db: Session, source: SyncSource, *, status: IntegrationStatus, last_error: str | None) -> None:
+    source.status = status
+    source.last_error = last_error
+    db.commit()

@@ -54,6 +54,20 @@ class Settings(BaseSettings):
         le=120,
         validation_alias=AliasChoices("INTEGRATION_TIMEOUT_SECONDS", "integration_timeout_seconds"),
     )
+    # Der planmäßige Abruf ist absichtlich nicht eingeschaltet. Wer ihn nicht
+    # braucht, soll beim Start nicht ungefragt Netzverbindungen zu einem
+    # Schulportal aufbauen; der Compose-Stack schaltet ihn ausdrücklich ein.
+    # Ohne die zwei Werte bleibt der Weg über den Button in den Einstellungen.
+    webuntis_sync_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("WEBUNTIS_SYNC_ENABLED", "webuntis_sync_enabled"),
+    )
+    webuntis_sync_interval_seconds: float = Field(
+        default=24 * 60 * 60,
+        gt=0,
+        le=7 * 24 * 60 * 60,
+        validation_alias=AliasChoices("WEBUNTIS_SYNC_INTERVAL_SECONDS", "webuntis_sync_interval_seconds"),
+    )
     document_storage_path: str = Field(
         default="/var/lib/school-assistant/documents",
         validation_alias=AliasChoices("DOCUMENT_STORAGE_PATH", "document_storage_path"),

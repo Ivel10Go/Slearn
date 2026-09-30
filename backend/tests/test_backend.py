@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -9,7 +10,7 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 from app.core.config import Settings, normalize_database_url
-from app.core.crypto import decrypt_credentials
+from app.core.crypto import decrypt_credentials, encrypt_credentials
 from app.core.security import create_session_token, hash_password
 from app.core.time import as_utc
 from app.db.entities import (
@@ -26,6 +27,7 @@ from app.db.entities import (
     User,
     UserSettings,
 )
+from app.main import create_app
 from app.schemas.auth import UserRead
 from app.services import integrations as integrations_service
 from app.services.ai_provider import (
@@ -41,7 +43,19 @@ from app.services.ai_provider import (
 from app.services.dashboard import serialize_dashboard
 from app.services.demo_seed import seed_demo_data
 from app.services.documents import chunk_text, read_document_text
-from app.services.integrations import IntegrationConnectionError, sync_integration, sync_window
+from app.services.integration_scheduler import (
+    IntegrationSyncScheduler,
+    ScheduledSyncReport,
+    run_scheduled_integration_syncs,
+    scheduled_sync_is_due,
+)
+from app.services.integrations import (
+    IntegrationConnectionError,
+    IntegrationValidationError,
+    run_integration_sync,
+    sync_integration,
+    sync_window,
+)
 from app.services.lessons import MAX_RANGE_DAYS, LessonRangeError, validate_range
 from app.services.progress import (
     DEFAULT_WEEKLY_GOAL_MINUTES,
@@ -63,7 +77,7 @@ from app.services.webuntis import (
 )
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 
 def login(client: TestClient) -> None:
@@ -1887,10 +1901,12 @@ class _StubWebUntisClient:
 
     payload: list[object] = []
     failure: Exception | None = None
+    failing_users: frozenset[str] = frozenset()
     requested: list[tuple[date, date]] = []
 
     def __init__(self, base_url: str, school: str, username: str, password: str, timeout_seconds: float = 10.0) -> None:
         self.base_url = base_url
+        self.username = username
 
     def __enter__(self) -> _StubWebUntisClient:
         return self
@@ -1899,6 +1915,10 @@ class _StubWebUntisClient:
 
     def fetch_timetable(self, start: date, end: date) -> WebUntisTimetable:
         type(self).requested.append((start, end))
+        # Manche Benutzer haben im Portal keine gueltigen Zugangsdaten; so
+        # trifft der Fehler genau eine Zeile und nicht den ganzen Lauf.
+        if self.username in type(self).failing_users:
+            raise WebUntisAuthError(f"WebUntis hat Benutzername oder Passwort von {self.username} abgelehnt.")
         if type(self).failure is not None:
             raise type(self).failure
         return parse_timetable(type(self).payload, start, end)
@@ -1908,6 +1928,7 @@ class _StubWebUntisClient:
 def stub_webuntis(monkeypatch: pytest.MonkeyPatch) -> type[_StubWebUntisClient]:
     _StubWebUntisClient.payload = [_lesson_payload()]
     _StubWebUntisClient.failure = None
+    _StubWebUntisClient.failing_users = frozenset()
     _StubWebUntisClient.requested = []
     monkeypatch.setattr(integrations_service, "WebUntisClient", _StubWebUntisClient)
 
@@ -2319,6 +2340,427 @@ def test_sync_rejects_unknown_integration_type(
 
 def tmp_path_value() -> str:
     return str(Path.cwd())
+
+
+# --- Automatischer WebUntis-Sync --------------------------------------------
+
+
+def _webuntis_source(db: Session, user: User, *, username: str) -> SyncSource:
+    """Legt eine WebUntis-Quelle an, wie es der Endpunkt tun würde."""
+    source = SyncSource(
+        user_id=user.id,
+        source_type="webuntis",
+        name="Schulportal",
+        configuration={"base_url": "https://schule.webuntis.com", "school": "schule"},
+        credentials=encrypt_credentials(
+            {"username": username, "password": "geheim"},
+            "test-integration-encryption-key",
+        ),
+        status="configured",
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+    return source
+
+
+def _fresh_session(db: Session) -> sessionmaker[Session]:
+    """Eigene Sitzungen auf derselben Testdatenbank, wie der Scheduler sie baut."""
+    return sessionmaker(bind=db.get_bind(), class_=Session, autoflush=False, expire_on_commit=False)
+
+
+def _empty_report() -> ScheduledSyncReport:
+    return ScheduledSyncReport(considered=0, synced=0, skipped=0, failed=0)
+
+
+def test_scheduled_sync_is_due_understands_naive_timestamps() -> None:
+    """SQLite liefert ``last_sync_at`` ohne Zeitzone; der Vergleich muss das aushalten."""
+    source = SyncSource(user_id=1, source_type="webuntis", name="Schulportal")
+    now = datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc)
+
+    assert scheduled_sync_is_due(source, now, 86400) is True
+
+    source.last_sync_at = datetime(2026, 9, 30, 6, 0)
+    assert scheduled_sync_is_due(source, now, 86400) is False
+    assert scheduled_sync_is_due(source, datetime(2026, 10, 1, 6, 0, tzinfo=timezone.utc), 86400) is True
+
+
+def test_scheduled_sync_holds_the_four_week_window(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+    stub_webuntis: type[_StubWebUntisClient],
+) -> None:
+    _client, db, user = app_context
+    _webuntis_source(db, user, username="nutzer")
+
+    report = run_scheduled_integration_syncs(db=db, settings=settings)
+
+    assert (report.considered, report.synced, report.skipped, report.failed) == (1, 1, 0, 0)
+    # Dasselbe Fenster wie der Knopf: Montag der laufenden Woche plus vier Wochen.
+    assert stub_webuntis.requested == [(date(2026, 9, 21), date(2026, 10, 18))]
+    assert db.query(Lesson).count() == 1
+    stored = db.scalars(select(SyncSource)).one()
+    assert stored.status == "connected"
+    assert stored.last_error is None
+    assert stored.last_sync_at is not None
+
+
+def test_scheduled_sync_skips_an_integration_that_ran_today(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+    stub_webuntis: type[_StubWebUntisClient],
+) -> None:
+    _client, db, user = app_context
+    source = _webuntis_source(db, user, username="nutzer")
+    source.last_sync_at = datetime(2026, 9, 30, 5, 0, tzinfo=timezone.utc)
+    source.status = "connected"
+    db.commit()
+
+    report = run_scheduled_integration_syncs(
+        db=db,
+        settings=settings,
+        now=datetime(2026, 9, 30, 6, 0, tzinfo=timezone.utc),
+    )
+
+    assert (report.considered, report.synced, report.skipped, report.failed) == (1, 0, 1, 0)
+    assert stub_webuntis.requested == []
+    db.expire_all()
+    stored = db.get(SyncSource, source.id)
+    assert stored is not None
+    assert stored.last_error is None
+    assert stored.status == "connected"
+
+
+def test_manual_sync_button_ignores_a_fresh_last_sync_at(
+    app_context: tuple[TestClient, Session, User],
+    stub_webuntis: type[_StubWebUntisClient],
+) -> None:
+    """Die wichtigste Trennung: der Knopf holt auch nach einem Tageslauf erneut."""
+    client, db, _user = app_context
+    login(client)
+    integration_id = _create_webuntis(client)
+
+    db.expire_all()
+    source = db.get(SyncSource, integration_id)
+    assert source is not None
+    source.last_sync_at = datetime.now(timezone.utc)
+    db.commit()
+
+    body = client.post(f"/api/v1/integrations/{integration_id}/sync").json()
+
+    assert body["ok"] is True
+    assert body["imported_lessons"] == 1
+    assert len(stub_webuntis.requested) == 1
+
+
+def test_scheduled_sync_reports_missing_fields(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+    stub_webuntis: type[_StubWebUntisClient],
+) -> None:
+    client, db, _user = app_context
+    login(client)
+    integration_id = _create_webuntis(client)
+    assert client.patch(f"/api/v1/integrations/{integration_id}", json={"credentials": {}}).status_code == 200
+
+    report = run_scheduled_integration_syncs(db=db, settings=settings)
+
+    assert (report.considered, report.synced, report.failed) == (1, 0, 1)
+    assert stub_webuntis.requested == []
+    db.expire_all()
+    stored = db.get(SyncSource, integration_id)
+    assert stored is not None
+    assert stored.status == "error"
+    assert stored.last_error == "Fehlende Angaben: username, password"
+
+
+def test_scheduled_sync_leaves_disabled_integrations_alone(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+    stub_webuntis: type[_StubWebUntisClient],
+) -> None:
+    client, db, _user = app_context
+    login(client)
+    integration_id = _create_webuntis(client)
+    assert client.patch(f"/api/v1/integrations/{integration_id}", json={"enabled": False}).status_code == 200
+
+    report = run_scheduled_integration_syncs(db=db, settings=settings)
+
+    # Der planmäßige Lauf sieht eine deaktivierte Quelle gar nicht erst an.
+    assert (report.considered, report.synced, report.failed) == (0, 0, 0)
+    db.expire_all()
+    source = db.get(SyncSource, integration_id)
+    assert source is not None
+    run = run_integration_sync(
+        db=db,
+        source=source,
+        config={"base_url": "https://schule.webuntis.com", "school": "schule"},
+        credential_keys=["username", "password"],
+        settings=settings,
+        timezone_name="UTC",
+    )
+    assert (run.ok, run.status) == (False, "disabled")
+    assert "deaktiviert" in run.message
+    assert stub_webuntis.requested == []
+
+
+def test_scheduled_sync_isolates_a_failure_to_one_user(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+    stub_webuntis: type[_StubWebUntisClient],
+) -> None:
+    """Der erste Benutzer scheitert; der zweite muss trotzdem bedient werden."""
+    _client, db, user = app_context
+    kaputt = _webuntis_source(db, user, username="kaputt")
+
+    other = User(
+        username="other",
+        password_hash=hash_password("other-password"),
+        is_admin=False,
+        is_active=True,
+        timezone="Europe/Berlin",
+    )
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+    gut = _webuntis_source(db, other, username="gut")
+    stub_webuntis.failing_users = frozenset({"kaputt"})
+
+    report = run_scheduled_integration_syncs(db=db, settings=settings)
+
+    assert (report.considered, report.synced, report.failed) == (2, 1, 1)
+    assert len(stub_webuntis.requested) == 2
+    db.expire_all()
+    failed = db.get(SyncSource, kaputt.id)
+    assert failed is not None and failed.status == "error"
+    assert "abgelehnt" in (failed.last_error or "")
+    healthy = db.get(SyncSource, gut.id)
+    assert healthy is not None and healthy.status == "connected"
+    assert healthy.last_error is None
+    # Der zweite Benutzer hat eine eigene Zeitzone, und sie wird benutzt.
+    assert as_utc(db.scalars(select(Lesson)).one().start_time) == datetime(2026, 9, 25, 7, 35, tzinfo=timezone.utc)
+
+
+def test_scheduled_sync_ignores_inactive_users(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+    stub_webuntis: type[_StubWebUntisClient],
+) -> None:
+    _client, db, user = app_context
+    user.is_active = False
+    db.commit()
+    _webuntis_source(db, user, username="nutzer")
+
+    report = run_scheduled_integration_syncs(db=db, settings=settings)
+
+    assert report.considered == 0
+    assert stub_webuntis.requested == []
+
+
+def test_scheduled_sync_stores_a_missing_encryption_key_in_last_error(
+    app_context: tuple[TestClient, Session, User],
+    stub_webuntis: type[_StubWebUntisClient],
+) -> None:
+    """Fehlender Schlüssel ist ein Konfigurationsproblem, kein Absturz des Laufs."""
+    _client, db, user = app_context
+    source = _webuntis_source(db, user, username="nutzer")
+    ohne_schluessel = Settings(_env_file=None, integration_encryption_key=None, timezone="UTC")
+
+    report = run_scheduled_integration_syncs(db=db, settings=ohne_schluessel)
+
+    assert (report.considered, report.failed) == (1, 1)
+    assert stub_webuntis.requested == []
+    db.expire_all()
+    stored = db.get(SyncSource, source.id)
+    assert stored is not None
+    assert stored.status == "error"
+    assert "INTEGRATION_ENCRYPTION_KEY" in (stored.last_error or "")
+
+
+def test_webuntis_sync_settings_have_a_daily_default_and_bounds() -> None:
+    defaults = Settings(_env_file=None)
+    assert defaults.webuntis_sync_enabled is False
+    assert defaults.webuntis_sync_interval_seconds == 86400
+
+    configured = Settings(
+        _env_file=None,
+        WEBUNTIS_SYNC_ENABLED="true",
+        WEBUNTIS_SYNC_INTERVAL_SECONDS="3600",
+    )
+    assert configured.webuntis_sync_enabled is True
+    assert configured.webuntis_sync_interval_seconds == 3600
+
+
+@pytest.mark.parametrize("value", ["0", "-60", "604801", "keine-zahl"])
+def test_webuntis_sync_interval_rejects_impossible_values(value: str) -> None:
+    with pytest.raises(ValueError):
+        Settings(_env_file=None, WEBUNTIS_SYNC_INTERVAL_SECONDS=value)
+
+
+def test_run_integration_sync_rejects_an_unknown_kind(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+) -> None:
+    _client, db, user = app_context
+    source = SyncSource(
+        user_id=user.id,
+        source_type="ical",
+        name="Kalender",
+        configuration={"path": tmp_path_value()},
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+
+    with pytest.raises(IntegrationValidationError, match="Unsupported integration kind"):
+        run_integration_sync(
+            db=db,
+            source=source,
+            config={},
+            credential_keys=[],
+            settings=settings,
+            timezone_name="UTC",
+        )
+
+
+def test_scheduler_runs_the_injected_job(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+) -> None:
+    _client, db, _user = app_context
+    seen: list[Session] = []
+
+    def job(*, db: Session, settings: Settings) -> ScheduledSyncReport:
+        seen.append(db)
+        return _empty_report()
+
+    scheduler = IntegrationSyncScheduler(settings, session_factory=_fresh_session(db), job=job)
+    assert scheduler.interval_seconds == 86400
+    try:
+        report = scheduler.try_run_once()
+    finally:
+        scheduler.stop()
+
+    assert report == _empty_report()
+    # Die Arbeit lief in einer eigenen Sitzung, die danach wieder zu ist.
+    assert len(seen) == 1
+    assert seen[0] is not db
+    assert seen[0].in_transaction() is False
+
+
+def test_scheduler_refuses_a_second_run_while_one_is_going(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+) -> None:
+    """Kein Parallel-Lauf: der zweite Versuch bekommt den Lock nicht."""
+    _client, db, _user = app_context
+    inner: list[ScheduledSyncReport | None] = []
+
+    def job(*, db: Session, settings: Settings) -> ScheduledSyncReport:
+        inner.append(scheduler.try_run_once())
+        return _empty_report()
+
+    scheduler = IntegrationSyncScheduler(settings, session_factory=_fresh_session(db), job=job)
+    try:
+        report = scheduler.try_run_once()
+    finally:
+        scheduler.stop()
+
+    assert report == _empty_report()
+    assert inner == [None]
+
+
+def test_scheduler_loop_repeats_and_stops(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+) -> None:
+    _client, db, _user = app_context
+    done = threading.Event()
+    runs: list[int] = []
+
+    def job(*, db: Session, settings: Settings) -> ScheduledSyncReport:
+        runs.append(len(runs) + 1)
+        if len(runs) >= 2:
+            done.set()
+        return _empty_report()
+
+    scheduler = IntegrationSyncScheduler(
+        settings,
+        interval_seconds=0.05,
+        session_factory=_fresh_session(db),
+        job=job,
+    )
+    scheduler.start()
+    try:
+        assert done.wait(timeout=10)
+    finally:
+        scheduler.stop()
+
+    assert len(runs) >= 2
+    assert scheduler.is_running() is False
+
+
+def test_scheduler_loop_survives_a_failing_job(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+) -> None:
+    """Ein kaputter Lauf darf den Thread nicht beenden, sonst ruft nie wieder jemand."""
+    _client, db, _user = app_context
+    attempts: list[int] = []
+    survived = threading.Event()
+
+    def job(*, db: Session, settings: Settings) -> ScheduledSyncReport:
+        attempts.append(len(attempts) + 1)
+        if len(attempts) == 1:
+            raise RuntimeError("Datenbank weg")
+        survived.set()
+        return _empty_report()
+
+    scheduler = IntegrationSyncScheduler(
+        settings,
+        interval_seconds=0.05,
+        session_factory=_fresh_session(db),
+        job=job,
+    )
+    scheduler.start()
+    try:
+        assert survived.wait(timeout=10)
+    finally:
+        scheduler.stop()
+
+    assert len(attempts) >= 2
+
+
+def test_lifespan_starts_and_stops_the_scheduler(
+    app_context: tuple[TestClient, Session, User],
+    settings: Settings,
+) -> None:
+    _client, db, _user = app_context
+    enabled = Settings(
+        _env_file=None,
+        database_url=settings.database_url,
+        secret_key="test-secret-key",
+        integration_encryption_key="test-integration-encryption-key",
+        bootstrap_on_startup=False,
+        demo_mode=False,
+        webuntis_sync_enabled=True,
+        webuntis_sync_interval_seconds=86400,
+    )
+    application = create_app(enabled)
+
+    with TestClient(application) as client:
+        scheduler = client.app.state.integration_scheduler
+        assert isinstance(scheduler, IntegrationSyncScheduler)
+        assert scheduler.is_running()
+
+    assert scheduler.is_running() is False
+
+
+def test_lifespan_without_the_setting_keeps_no_scheduler(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, _db, _user = app_context
+    assert client.app.state.integration_scheduler is None
 
 
 # --- Dokumente durchsuchbar (RAG) -------------------------------------------

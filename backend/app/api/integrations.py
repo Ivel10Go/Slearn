@@ -27,7 +27,7 @@ from app.services.integrations import (
     missing_fields,
     normalize_config,
     normalize_credentials,
-    sync_integration,
+    run_integration_sync,
 )
 
 router = APIRouter(prefix="/api/v1/integrations", tags=["integrations"])
@@ -260,67 +260,51 @@ def sync_integration_endpoint(
 ) -> IntegrationSyncResult:
     """Holt Daten aus der Integration und speichert sie lokal.
 
-    Bewusst kein automatischer Import beim Start: der Abruf dauert mehrere
-    Sekunden und braucht eine bestehende Sitzung beim Schulportal, also muss
-    ihn die Oberfläche anstoßen.
+    Der Abruf dauert mehrere Sekunden und braucht eine bestehende Sitzung beim
+    Schulportal, deshalb holt ihn die Oberfläche über diesen Knopf. Ein
+    planmäßiger Lauf im Hintergrund teilt sich denselben Ablauf in
+    ``run_integration_sync``, beachtet aber zusätzlich ``last_sync_at``.
+    Ein Klick hier bleibt davon unberührt: der Knopf holt immer, auch wenn der
+    planmäßige Lauf heute schon gelaufen ist.
     """
     source = _owned_integration(db, integration_id, current_user.id)
     integration = _read(source, settings)
 
-    if integration.missing_fields:
-        source.status = "error"
-        source.last_error = f"Fehlende Angaben: {', '.join(integration.missing_fields)}"
-        db.commit()
-        return IntegrationSyncResult(
-            ok=False,
-            status="error",
-            message=source.last_error,
-            missing_fields=integration.missing_fields,
-        )
-
-    label = INTEGRATION_SPECS[source.source_type].label
-    if not source.enabled:
-        source.status = "disabled"
-        source.last_error = None
-        db.commit()
-        return IntegrationSyncResult(
-            ok=False,
-            status="disabled",
-            message=f"{label} ist deaktiviert, es wurden keine Daten geholt.",
-        )
-
-    key = _encryption_key(settings)
-    credentials = decrypt_credentials(source.credentials, key) if source.credentials else {}
     try:
-        outcome = sync_integration(
+        run = run_integration_sync(
             db=db,
             source=source,
             config=integration.config,
-            credentials=credentials,
+            credential_keys=integration.credential_keys,
             settings=settings,
             timezone_name=current_user.timezone or settings.timezone,
-            timeout_seconds=settings.integration_timeout_seconds,
         )
-    except IntegrationConnectionError as exc:
-        db.rollback()
-        source = _owned_integration(db, integration_id, current_user.id)
-        source.status = "error"
-        source.last_error = str(exc)
-        db.commit()
-        return IntegrationSyncResult(ok=False, status="error", message=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Integration encryption is not configured",
+        ) from exc
     except SQLAlchemyError:
         db.rollback()
         raise
 
-    message = outcome.describe()
-    lesson_fields = getattr(outcome, "imported_lessons", 0)
-    if lesson_fields:
+    if not run.ok:
+        return IntegrationSyncResult(
+            ok=False,
+            status=run.status,
+            message=run.message,
+            missing_fields=list(run.missing_fields),
+        )
+
+    outcome = run.outcome
+    message = run.message
+    if getattr(outcome, "imported_lessons", 0):
         skipped = getattr(outcome, "skipped_entries", 0)
         if skipped:
             message += f" {skipped} unvollständige Einträge wurden übersprungen."
     return IntegrationSyncResult(
         ok=True,
-        status="connected",
+        status=run.status,
         message=message,
         imported_lessons=getattr(outcome, "imported_lessons", 0),
         subjects=getattr(outcome, "subjects", 0),
