@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from .notify import Notification, PushSubscription
     from .planning import StudyPlan, StudyPlanTask, StudySession, StudyTaskSeries
     from .quiz import Quiz, QuizAnswer, QuizAttempt
+    from .rewards import RewardBadge, RewardEntry
 
 
 JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
@@ -81,6 +82,11 @@ class User(Base):
     push_subscriptions: Mapped[list[PushSubscription]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    # Punkte und Auszeichnungen. Sie haengen mit ``CASCADE`` am Benutzer und
+    # nicht an einer Aufgabe: eine geloeschte Lernaufgabe nimmt die Buchung
+    # nicht mit, denn "an diesem Tag gelernt" bleibt wahr.
+    reward_entries: Mapped[list[RewardEntry]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    reward_badges: Mapped[list[RewardBadge]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class UserSettings(Base):
@@ -190,6 +196,8 @@ class Subject(Base):
     documents: Mapped[list[Document]] = relationship(back_populates="subject")
     topics: Mapped[list[Topic]] = relationship(back_populates="subject")
     quizzes: Mapped[list[Quiz]] = relationship(back_populates="subject")
+    reward_entries: Mapped[list[RewardEntry]] = relationship(back_populates="subject")
+    reward_badges: Mapped[list[RewardBadge]] = relationship(back_populates="subject")
 
 
 class SyncSource(Base):

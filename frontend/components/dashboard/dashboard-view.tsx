@@ -45,6 +45,7 @@ import { isDemoTaskId, type DashboardData, type DashboardLesson, type DashboardS
 import { cn } from "@/lib/utils";
 import { GradesCard } from "./grades-card";
 import { ProgressCard } from "./progress-card";
+import { RewardsCard } from "./rewards-card";
 import { ScheduleCard } from "./schedule-view";
 
 interface DashboardViewProps {
@@ -595,10 +596,17 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
   const now = useNow();
   const reference = useMemo(() => now ?? new Date(), [now]);
   /**
-   * Zaehler, keine Zeitangabe: die Fortschrittskarte laedt neu, wenn sich
-   * dieser Wert aendert. Sie braucht ihn, weil eine abgeschlossene Lernsession
-   * Tageszeit, Serie und Wochenziel verschiebt, ohne dass sich die
-   * Dashboard-Daten selbst aendern.
+   * Zaehler, keine Zeitangabe: die Fortschritts- und die Belohnungskarte laden
+   * neu, wenn sich dieser Wert aendert. Beide brauchen ihn, weil **ein**
+   * Ereignis - eine abgeschlossene Lernsession - beides verschiebt: Tageszeit,
+   * Serie und Wochenziel links, Punkte und Auszeichnungen rechts.
+   *
+   * Bewusst **ein** Zaehler fuer zwei Karten und nicht zwei. Zwei Zaehler
+   * koennten nur etwas anderes beobachten als dasselbe Ereignis - und damit
+   * entweder zu frueh oder zu spaet aktualisieren. Der Zaehler wird genau an der
+   * Stelle hochgezaehlt, an der die Aenderung ausgeloest wird, und die Karten
+   * lesen ihn beide. Das ist derselbe Zaehler, den es schon gibt; es kam kein
+   * zweiter Weg dazu, den Zustand zu aendern.
    */
   const [lernzeitKey, setLernzeitKey] = useState(0);
   const focusLesson = useMemo(() => {
@@ -677,6 +685,15 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
         <div className="space-y-6">
           <StudyTasksCard tasks={data.studyTasks} onLernzeitGeaendert={() => setLernzeitKey((zaehler) => zaehler + 1)} />
           <ProgressCard refreshKey={lernzeitKey} />
+          {/*
+            Die Belohnungskarte haengt am selben Zaehler wie die Fortschrittskarte
+            und steht direkt darunter: beide antworten auf dieselbe Frage ("wie
+            stehe ich heute da?") und beide aendern sich in derselben Sekunde. Sie
+            laedt selbst und teilt sich keinen Zustand mit den Karten daneben - ein
+            Zaehler, der in zwei Karten dupliziert waere, koennte nur eins von
+            beiden zu frueh aktualisieren.
+          */}
+          <RewardsCard refreshKey={lernzeitKey} />
           {/*
             Die Notenkarte steht neben der Fortschrittskarte, nicht unter
             `/lernen`: Schnitt, Verlauf und Hochrechnung beantworten die Frage

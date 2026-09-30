@@ -233,6 +233,31 @@ def _buckets_by_day(slices: list[tuple[datetime, datetime | None, int | None]], 
     return buckets
 
 
+def studied_days(
+    db: Session,
+    user_id: int,
+    zone: ZoneInfo,
+    today: date,
+    window_days: int = STREAK_WINDOW_DAYS,
+) -> set[date]:
+    """Die Kalendertage mit angerechneter Lernzeit, im Fenster zurueck.
+
+    Bewusst oeffentlich: die Auszeichnungen brauchen dieselbe Menge und dieselbe
+    Definition eines Lerntags, und eine eigene Abfrage in
+    ``app/services/rewards.py`` waere eine zweite Wahrheit ueber die Frage, wann
+    ueberhaupt gelernt wurde. Eine eigene Definition koennte davon abweichen,
+    ohne dass ein Test es merkt - die Karte zeigte dann eine Serie und die
+    Auszeichnung einen anderen Wert.
+
+    Dieselbe Regel wie in ``_credited_minutes``: offen zaehlt null, erst eine
+    abgeschlossene Session mit mindestens ``MIN_DAY_MINUTES`` macht einen Tag
+    zum Lerntag.
+    """
+    window_start = as_utc(datetime.combine(today - timedelta(days=window_days - 1), time.min, tzinfo=zone))
+    buckets = _buckets_by_day(_session_slices(db, user_id, window_start), zone)
+    return {day for day, bucket in buckets.items() if bucket.counts_as_studied}
+
+
 def _open_session_minutes(
     slices: list[tuple[datetime, datetime | None, int | None]],
     zone: ZoneInfo,

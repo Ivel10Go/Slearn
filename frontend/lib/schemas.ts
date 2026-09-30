@@ -674,6 +674,170 @@ export function parseGradeImportResult(payload: unknown) {
   };
 }
 
+/*
+ * Belohnungen (`/v1/rewards`).
+ *
+ * Auch das sind echte Schemata. Der Grund ist derselbe wie bei den Noten: die Karte
+ * zeigt eine Zahl **mit Obergrenze** und eine Liste von Bedingungen, und eine
+ * `points`-Angabe, die stillschweigend fehlt, waere dort eine erfundene - die
+ * Punktezahl stuende still bei 0, waehrend das Konto gefuellt ist.
+ *
+ * `points` darf 0 sein und ist deshalb `min(0)`, nicht `positive()`: eine Buchung
+ * mit 0 Punkten bedeutet "heute war das Tageskonto schon leer", und genau die soll
+ * die Karte zeigen.
+ */
+
+export const rewardKindSchema = z.enum(["task_completed", "subject_day"]);
+export const rewardScopeKindSchema = z.enum(["global", "subject", "topic", "week"]);
+
+export const rewardEntryReadSchema = z.object({
+  id: z.number().int(),
+  kind: rewardKindSchema,
+  points: z.number().int().min(0),
+  minutes: z.number().int().min(0),
+  subject_id: optionalId,
+  subject_name: optionalText,
+  topic_id: optionalId,
+  topic_name: optionalText,
+  detail: z.string(),
+  earned_on: isoDate,
+  earned_at: z.string(),
+});
+
+export const rewardBadgeReadSchema = z.object({
+  id: z.number().int(),
+  code: z.string(),
+  title: z.string(),
+  description: z.string(),
+  scope: z.string(),
+  scope_kind: rewardScopeKindSchema,
+  subject_id: optionalId,
+  subject_name: optionalText,
+  topic_id: optionalId,
+  topic_name: optionalText,
+  progress: z.number().int().min(0),
+  target: z.number().int().min(1),
+  awarded: z.boolean(),
+  awarded_at: optionalText,
+  repeatable: z.boolean(),
+  unit: z.string(),
+  unit_plural: z.string(),
+});
+
+export const rewardBadgeDefinitionSchema = z.object({
+  code: z.string(),
+  title: z.string(),
+  description: z.string(),
+  target: z.number().int().min(1),
+  unit: z.string(),
+  unit_plural: z.string(),
+  scope_kind: rewardScopeKindSchema,
+  repeatable: z.boolean(),
+});
+
+export const rewardStepSchema = z.object({
+  minutes: z.number().int().min(1),
+  points: z.number().int().min(1),
+});
+
+export const rewardRulesSchema = z.object({
+  task_points: z.number().int().min(1),
+  day_cap: z.number().int().min(1),
+  subject_day_cap: z.number().int().min(1),
+  min_subject_day_minutes: z.number().int().min(1),
+  subject_day_steps: z.array(rewardStepSchema),
+});
+
+export const rewardSummarySchema = z.object({
+  generated_at: z.string(),
+  timezone: z.string(),
+  today_points: z.number().int().min(0),
+  today_cap: z.number().int().min(1),
+  week_points: z.number().int().min(0),
+  total_points: z.number().int().min(0),
+  today: isoDate,
+  week_starts_on: isoDate,
+  week_ends_on: isoDate,
+  awarded_badges: z.number().int().min(0),
+  pending_badges: z.number().int().min(0),
+});
+
+export const rewardOverviewSchema = z.object({
+  summary: rewardSummarySchema,
+  rules: rewardRulesSchema,
+  catalog: z.array(rewardBadgeDefinitionSchema),
+  badges: z.array(rewardBadgeReadSchema),
+  entries: z.array(rewardEntryReadSchema),
+});
+
+export function parseRewardOverview(payload: unknown) {
+  const parsed = rewardOverviewSchema.parse(payload);
+  return {
+    summary: {
+      generated_at: parsed.summary.generated_at,
+      timezone: parsed.summary.timezone,
+      today_points: parsed.summary.today_points,
+      today_cap: parsed.summary.today_cap,
+      week_points: parsed.summary.week_points,
+      total_points: parsed.summary.total_points,
+      today: parsed.summary.today,
+      week_starts_on: parsed.summary.week_starts_on,
+      week_ends_on: parsed.summary.week_ends_on,
+      awarded_badges: parsed.summary.awarded_badges,
+      pending_badges: parsed.summary.pending_badges,
+    },
+    rules: {
+      task_points: parsed.rules.task_points,
+      day_cap: parsed.rules.day_cap,
+      subject_day_cap: parsed.rules.subject_day_cap,
+      min_subject_day_minutes: parsed.rules.min_subject_day_minutes,
+      subject_day_steps: parsed.rules.subject_day_steps.map((stufe) => ({ minutes: stufe.minutes, points: stufe.points })),
+    },
+    catalog: parsed.catalog.map((definition) => ({
+      code: definition.code,
+      title: definition.title,
+      description: definition.description,
+      target: definition.target,
+      unit: definition.unit,
+      unit_plural: definition.unit_plural,
+      scope_kind: definition.scope_kind,
+      repeatable: definition.repeatable,
+    })),
+    badges: parsed.badges.map((badge) => ({
+      id: badge.id,
+      code: badge.code,
+      title: badge.title,
+      description: badge.description,
+      scope: badge.scope,
+      scope_kind: badge.scope_kind,
+      subject_id: badge.subject_id ?? null,
+      subject_name: badge.subject_name ?? null,
+      topic_id: badge.topic_id ?? null,
+      topic_name: badge.topic_name ?? null,
+      progress: badge.progress,
+      target: badge.target,
+      awarded: badge.awarded,
+      awarded_at: badge.awarded_at ?? null,
+      repeatable: badge.repeatable,
+      unit: badge.unit,
+      unit_plural: badge.unit_plural,
+    })),
+    entries: parsed.entries.map((entry) => ({
+      id: entry.id,
+      kind: entry.kind,
+      points: entry.points,
+      minutes: entry.minutes,
+      subject_id: entry.subject_id ?? null,
+      subject_name: entry.subject_name ?? null,
+      topic_id: entry.topic_id ?? null,
+      topic_name: entry.topic_name ?? null,
+      detail: entry.detail,
+      earned_on: entry.earned_on,
+      earned_at: entry.earned_at,
+    })),
+  };
+}
+
 export const fileUploadResponseSchema = z.object({
   id: z.number().int(),
   filename: z.string(),

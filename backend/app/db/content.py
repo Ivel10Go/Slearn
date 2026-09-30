@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from .academic import Grade
     from .planning import StudyPlanTask, StudyTaskSeries
     from .quiz import Quiz, QuizQuestion
+    from .rewards import RewardBadge, RewardEntry
 
 
 JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
@@ -120,6 +121,8 @@ class Topic(Base):
     study_task_series: Mapped[list[StudyTaskSeries]] = relationship(back_populates="topic")
     quizzes: Mapped[list[Quiz]] = relationship(back_populates="topic")
     quiz_questions: Mapped[list[QuizQuestion]] = relationship(back_populates="topic")
+    reward_entries: Mapped[list[RewardEntry]] = relationship(back_populates="topic")
+    reward_badges: Mapped[list[RewardBadge]] = relationship(back_populates="topic")
     progress: Mapped[LearningProgress | None] = relationship(
         back_populates="topic", uselist=False, cascade="all, delete-orphan"
     )
