@@ -33,7 +33,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    entrypoint: ["/bin/sh", "/opt/school-assistant/backend-entrypoint.sh"]
     environment:
       DATABASE_URL: "${DATABASE_URL:?DATABASE_URL must be set in .env}"
       APP_ENV: "${APP_ENV:-development}"
@@ -74,12 +73,6 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      - type: bind
-        source: ./backend-entrypoint.sh
-        target: /opt/school-assistant/backend-entrypoint.sh
-        read_only: true
-        bind:
-          create_host_path: false
       - type: bind
         source: "${DOCUMENTS_HOST_PATH:-./data/documents}"
         target: /var/lib/school-assistant/documents

@@ -1,0 +1,5 @@
+# Shell-Skripte werden im Image mit sh ausgeführt. CRLF lässt dash an
+# "set -eu" mit "Illegal option" abbrechen, das Backend startet dann nicht.
+# Windows-Checkouts (core.autocrlf=true) dürfen die Zeilenenden nicht umbiegen.
+*.sh text eol=lf
+.gitattributes text eol=lf

@@ -12,4 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic -c alembic.ini upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# entrypoint.sh ist die einzige Quelle für Migration und Serverstart.
+# Über "sh" aufgerufen, weil der Build-Kontext die Ausführungsrechte nicht
+# garantiert (Checkout unter Windows), und weil Compose es genauso tut.
+CMD ["sh", "/app/entrypoint.sh"]
