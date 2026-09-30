@@ -2,8 +2,8 @@
 
 import { getDemoDashboard, getDemoScheduleRange, isDemoFallbackEnabled } from "./demo";
 import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type CalendarEvent, type DashboardData, type DocumentAnswer, type DocumentRecord, type DocumentSearchResult, type Exam, type FileUploadResult, type Grade, type GradeImportPreview, type GradeImportResult, type GradeKind, type GradeSharing, type GradeSummary, type Greeting, type Homework, type ScheduleRange, type StudySessionRecord, type StudyTask, type StudyTaskState, type Subject, type SubjectOption } from "./types";
-import { collectSubjectNames, parseCalendarEventArray, parseCalendarEventRead, parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseExamArray, parseExamRead, parseExamTaskPlanResult, parseFileUploadResponse, parseGradeArray, parseGradeImportPreview, parseGradeImportResult, parseGradeRead, parseGradeSharing, parseGradeSummary, parseHomeworkArray, parseHomeworkRead, parseIntegrationArray, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseLearningInsights, parseStudyDependencyArray, parseStudyDependencyRead, parseStudyPlanArray, parseStudyPlanRead, parseStudySeriesArray, parseStudySeriesRead, parseStudySessionRead, parseStudyTaskArray, parseStudyTaskRead, parseSubjectArray, parseSubjectRead, parseTopicProgressArray, parseTopicProgressRead, parseUserResponse, parseUserSession, parseWeeklyGoalRead } from "./schemas";
-import type { ExamTaskPlanResult, IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult, LearningInsights, StudyPlan, StudyTaskDependency, StudyTaskOrder, StudyTaskSeries, StudyTaskSeriesInput, TopicProgress, WeeklyGoal } from "./types";
+import { collectSubjectNames, parseCalendarEventArray, parseCalendarEventRead, parseCalendarFeed, parseCalendarWriting, parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseExamArray, parseExamRead, parseExamTaskPlanResult, parseFileUploadResponse, parseGradeArray, parseGradeImportPreview, parseGradeImportResult, parseGradeRead, parseGradeSharing, parseGradeSummary, parseHomeworkArray, parseHomeworkRead, parseIntegrationArray, parseIntegrationAuthorize, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseLearningInsights, parseStudyDependencyArray, parseStudyDependencyRead, parseStudyPlanArray, parseStudyPlanRead, parseStudySeriesArray, parseStudySeriesRead, parseStudySessionRead, parseStudyTaskArray, parseStudyTaskRead, parseSubjectArray, parseSubjectRead, parseTopicProgressArray, parseTopicProgressRead, parseUserResponse, parseUserSession, parseWeeklyGoalRead } from "./schemas";
+import type { CalendarFeed, CalendarWriting, ExamTaskPlanResult, IntegrationAuthorize, IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult, LearningInsights, StudyPlan, StudyTaskDependency, StudyTaskOrder, StudyTaskSeries, StudyTaskSeriesInput, TopicProgress, WeeklyGoal } from "./types";
 
 const API_PREFIX = "/api/backend";
 
@@ -225,6 +225,50 @@ export async function syncIntegration(integrationId: number): Promise<Integratio
     body: JSON.stringify({}),
   });
   return parseIntegrationSyncResult(payload);
+}
+
+/**
+ * Startet die Einwilligung von Google.
+ *
+ * **Leitet nicht selbst weiter.** Die Oberfläche muss vorher noch die Freigabe
+ * zum Schreiben anzeigen können, und das ist nur hier möglich. Danach geht der
+ * Browser von Hand an `authorization_url` - dort zeigt Google an, welche
+ * Rechte verlangt werden.
+ */
+export async function authorizeIntegration(integrationId: number): Promise<IntegrationAuthorize> {
+  const payload = await apiRequest(resourcePath("integrations", integrationId, "authorize"), {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return parseIntegrationAuthorize(payload);
+}
+
+/** Ob der Lernraum Termine in verbundene Kalender schreiben darf. Standard ist aus. */
+export async function getCalendarWriting(): Promise<CalendarWriting> {
+  return parseCalendarWriting(await apiRequest("/v1/calendar/writing"));
+}
+
+/**
+ * Die Freigabe erteilen oder zurücknehmen.
+ *
+ * `enabled` ist ein Pflichtfeld ohne Default: ein fehlendes `undefined` würde
+ * hier stillschweigend zurückschalten, und ein Default `false` wäre ein
+ * Schalter, der sich selbst zurücksetzt.
+ */
+export async function setCalendarWriting(enabled: boolean): Promise<CalendarWriting> {
+  return parseCalendarWriting(
+    await apiRequest("/v1/calendar/writing", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  );
+}
+
+/** Die abonnierbare ICS-Adresse, falls eingerichtet. */
+export async function getCalendarFeed(): Promise<CalendarFeed> {
+  return parseCalendarFeed(await apiRequest("/v1/calendar/feed"));
+}
+
+/** Erzeugt einen neuen Abo-Schlüssel. Der alte ist danach ungültig. */
+export async function createCalendarFeed(): Promise<CalendarFeed> {
+  return parseCalendarFeed(await apiRequest("/v1/calendar/feed", { method: "POST" }));
 }
 
 export async function getDocuments(): Promise<DocumentRecord[]> {

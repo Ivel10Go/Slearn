@@ -4,11 +4,14 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useTheme } from "next-themes";
 import {
   AlertTriangle,
+  CalendarDays,
   CheckCircle2,
   Cloud,
+  Copy,
   Download,
   FolderTree,
   KeyRound,
+  Link2,
   LoaderCircle,
   LogOut,
   Monitor,
@@ -28,7 +31,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate, formatDateTime, getInitials } from "@/lib/format";
+import {
+  buildIntegrationWrite,
+  fieldLabel,
+  isReadOnlyCredential,
+  isSecretField,
+  isSyncableKind,
+  isWritingBlocked,
+  needsAuthorization,
+  syncLabelFor,
+  validateIntegrationInput,
+} from "@/lib/calendar-integrations";
 import type {
+  CalendarFeed,
+  CalendarWriting,
   IntegrationCatalog,
   IntegrationRead,
   IntegrationSyncResult,
@@ -40,36 +56,18 @@ import type { IntegrationWrite } from "@/lib/api";
 
 type BadgeVariant = "default" | "secondary" | "outline" | "success" | "warning" | "info" | "accent";
 
-const FIELD_LABELS: Record<string, string> = {
-  base_url: "Basis-URL",
-  school: "Schule",
-  username: "Benutzername",
-  password: "Passwort",
-  model: "Modell",
-  api_key: "API-Schlüssel",
-  path: "Ablageort",
-};
-
-const FIELD_HINTS: Record<string, string> = {
-  base_url: "Zum Beispiel https://schule.example.org",
-  school: "Kürzel oder Name deiner Schule",
-  username: "Deine Zugangsdaten aus dem Schulportal",
-  model: "Zum Beispiel llama3.2",
-  api_key: "Leer lassen, wenn der Dienst keinen Schlüssel braucht",
-  path: "Relativ zum konfigurierten Dokumentordner",
-};
-
-const SECRET_FIELDS = new Set(["password", "api_key"]);
-
 const KIND_ICONS: Record<string, typeof Plug> = {
   webuntis: Cloud,
   ai_provider: Sparkles,
   documents: FolderTree,
+  ical: CalendarDays,
+  google_calendar: CalendarDays,
+  caldav: CalendarDays,
 };
 
 const STATUS_META: Record<string, { label: string; variant: BadgeVariant }> = {
   configured: { label: "Eingerichtet", variant: "success" },
-  pending: { label: "Ausstehend", variant: "info" },
+  pending: { label: "Wartet auf Einwilligung", variant: "info" },
   error: { label: "Fehler", variant: "warning" },
   disabled: { label: "Deaktiviert", variant: "outline" },
 };
@@ -80,9 +78,23 @@ const THEME_OPTIONS = [
   { value: "system", label: "System", icon: Monitor },
 ] as const;
 
-function fieldLabel(field: string) {
-  return FIELD_LABELS[field] ?? field;
-}
+const FIELD_HINTS: Record<string, string> = {
+  base_url: "Zum Beispiel https://schule.example.org",
+  school: "Kürzel oder Name deiner Schule",
+  username: "Deine Zugangsdaten aus dem Schulportal",
+  password: "Bei iCloud das app-spezifische Passwort, nicht dein Apple-ID-Passwort",
+  model: "Zum Beispiel llama3.2",
+  api_key: "Leer lassen, wenn der Dienst keinen Schlüssel braucht",
+  path: "Relativ zum konfigurierten Dokumentordner",
+  url: "Die abonnierte Adresse, zum Beispiel https://schule.example.org/kalender.ics",
+  client_id: "Aus der Google-Konsole unter „Zugangsdaten“",
+  client_secret: "Bleibt verschlüsselt und verlässt den Server nur bei Google",
+  calendar_id: "„primary“ oder die Id aus der Google-Konsole",
+  redirect_uri:
+    "Bei Google hinterlegen und hier genau so eintragen, zum Beispiel https://lernraum.example.org/api/backend/v1/integrations/1/oauth/callback",
+  refresh_token: "Wird nach der Einwilligung automatisch gesetzt",
+  token_scope: "Wird nach der Einwilligung automatisch gesetzt",
+};
 
 function configEntries(integration: IntegrationRead) {
   return Object.entries(integration.config).map(([key, value]) => ({
@@ -235,26 +247,54 @@ interface IntegrationRowProps {
   testResult: IntegrationTestResult | undefined;
   syncResult: IntegrationSyncResult | undefined;
   pendingAction: string | null;
+  /** Läuft gerade die Einwilligung von Google? */
+  canWriteRemotely: boolean;
+  /** Der Katalog - die Quelle der Angabe, ob in dieser Art geschrieben werden kann. */
+  catalog: IntegrationCatalog[];
   onToggle: (enabled: boolean) => void;
   onTest: () => void;
   onSync: () => void;
+  onAuthorize: () => void;
   onDelete: () => void;
 }
 
-function IntegrationRow({ integration, testResult, syncResult, pendingAction, onToggle, onTest, onSync, onDelete }: IntegrationRowProps) {
+function IntegrationRow({
+  integration,
+  testResult,
+  syncResult,
+  pendingAction,
+  canWriteRemotely,
+  catalog,
+  onToggle,
+  onTest,
+  onSync,
+  onAuthorize,
+  onDelete,
+}: IntegrationRowProps) {
   const [confirming, setConfirming] = useState(false);
   const isTesting = pendingAction === `test:${integration.id}`;
   const isSyncing = pendingAction === `sync:${integration.id}`;
+  const isAuthorizing = pendingAction === `authorize:${integration.id}`;
   const isUpdating = pendingAction === `update:${integration.id}`;
   const isDeleting = pendingAction === `delete:${integration.id}`;
-  const isBusy = isTesting || isSyncing || isUpdating || isDeleting;
+  const isBusy = isTesting || isSyncing || isAuthorizing || isUpdating || isDeleting;
   const Icon = KIND_ICONS[integration.kind] ?? Plug;
   const status = STATUS_META[integration.status] ?? { label: integration.status, variant: "secondary" as BadgeVariant };
   const result = testResult ?? syncResult;
   const entries = configEntries(integration);
   const incomplete = integration.missing_fields.length > 0;
-  const canSync = ["webuntis", "documents"].includes(integration.kind) && integration.enabled && !incomplete && !isBusy;
-  const syncLabel = integration.kind === "documents" ? "Dokumente indexieren" : "Stundenplan aktualisieren";
+  const canSync = isSyncableKind(integration.kind) && integration.enabled && !incomplete && !isBusy;
+  const syncLabel = syncLabelFor(integration.kind);
+  /*
+    Google braucht zwei Schritte: die Integration anlegen und sich dann bei
+    Google einwilligen. `refresh_token` in den technischen Angaben ist das
+    Merkmal dafür - er erscheint erst, nachdem der Rückweg durchlaufen ist. Ohne
+    die Freigabe zum Schreiben startet der Server den Lauf gar nicht, deshalb
+    der zweite Hinweis.
+  */
+  const awaitingConsent = needsAuthorization(integration);
+  const writingBlocked = isWritingBlocked(integration.kind, catalog, canWriteRemotely);
+  const conflicts = syncResult?.conflicts ?? 0;
 
   return (
     <li className="rounded-2xl border border-border/70 bg-card/60 p-4 sm:p-5">
@@ -321,6 +361,27 @@ function IntegrationRow({ integration, testResult, syncResult, pendingAction, on
         </p>
       ) : null}
 
+      {/*
+        Ein Konflikt ist der eine Fall, in dem ein Abruf **nichts** entschieden
+        hat: die Lernende und die Gegenseite haben denselben Termin geändert.
+        Er wird hier ausdrücklich benannt, weil ein stillschweigend
+        übergangener Konflikt wie eine verlorene Änderung aussieht.
+      */}
+      {conflicts > 0 ? (
+        <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          {conflicts === 1 ? "Ein Termin wurde" : `${conflicts} Termine wurden`} an beiden Seiten geändert und sind
+          offen geblieben. Deine Fassung steht hier; entscheide sie in deinem Kalender neu.
+        </p>
+      ) : null}
+
+      {writingBlocked && !awaitingConsent ? (
+        <p className="mt-3 flex items-start gap-2 text-xs font-medium text-muted-foreground">
+          <KeyRound className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          Gelesen wird ohne weiteres. Geschrieben wird erst mit der Zustimmung oben im Schalter.
+        </p>
+      ) : null}
+
       {integration.last_error ? (
         <p className="mt-3 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
           {integration.last_error}
@@ -355,10 +416,16 @@ function IntegrationRow({ integration, testResult, syncResult, pendingAction, on
           {isTesting ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
           Verbindung testen
         </Button>
-        {["webuntis", "documents"].includes(integration.kind) ? (
+        {awaitingConsent ? (
+          <Button type="button" size="sm" onClick={onAuthorize} disabled={isBusy || incomplete}>
+            {isAuthorizing ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Link2 aria-hidden="true" />}
+            {isAuthorizing ? "Weiterleitung läuft" : writingBlocked ? "Zustimmung zeigen, dann verbinden" : "Mit Google verbinden"}
+          </Button>
+        ) : null}
+        {isSyncableKind(integration.kind) ? (
           <Button type="button" size="sm" onClick={onSync} disabled={!canSync}>
             {isSyncing ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
-            {isSyncing ? "Wird importiert" : syncLabel}
+            {isSyncing ? "Läuft" : syncLabel}
           </Button>
         ) : null}
         {confirming ? (
@@ -400,6 +467,14 @@ function IntegrationForm({ catalog, isSubmitting, onSubmit, onCancel }: Integrat
 
   const spec = useMemo(() => catalog.find((entry) => entry.kind === kind), [catalog, kind]);
   const credentialFields = spec ? [...spec.required_credentials, ...spec.optional_credentials] : [];
+  /*
+    Aus einer Gruppe wie `{url, path}` wird **ein** alternatives Feld-Set, nicht
+    zwei Pflichtfelder. Zwei bedeutungslose Pflichtfelder, von denen eines
+    reicht, wären eine Frage, die das Formular nicht beantworten kann - und
+    `required_one_of` ist genau dafür da. Die Prüfung selbst liegt in
+    `validateIntegrationInput`, damit sie ohne Browser testbar ist.
+  */
+  const alternativeSets = useMemo(() => (spec?.required_one_of ?? []).map((group) => group.filter(Boolean)), [spec]);
   const requiredFields = spec ? [...spec.required_config, ...spec.required_credentials] : [];
   const formErrorId = "integration-form-error";
 
@@ -413,38 +488,22 @@ function IntegrationForm({ catalog, isSubmitting, onSubmit, onCancel }: Integrat
     setInvalidFields(new Set());
   }
 
-  function collect(values: Record<string, string>, fields: string[]) {
-    return fields.reduce<Record<string, string>>((result, field) => {
-      const value = values[field]?.trim();
-      if (value) {
-        result[field] = value;
-      }
-      return result;
-    }, {});
-  }
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!spec) {
       return;
     }
 
-    const combined = { ...config, ...credentials };
-    const missing = requiredFields.filter((field) => !combined[field]?.trim());
-    if (missing.length > 0) {
-      setInvalidFields(new Set(missing));
-      setFormError(`Diese Angaben fehlen noch: ${missing.map(fieldLabel).join(", ")}.`);
+    const fehler = validateIntegrationInput(spec, config, credentials);
+    if (fehler) {
+      setInvalidFields(new Set(fehler.invalid));
+      setFormError(fehler.message);
       return;
     }
 
     setFormError(null);
     setInvalidFields(new Set());
-    const created = await onSubmit({
-      kind: spec.kind,
-      name: name.trim() || spec.label,
-      config: collect(config, spec.required_config),
-      credentials: collect(credentials, credentialFields),
-    });
+    const created = await onSubmit(buildIntegrationWrite(spec, name, config, credentials));
     if (created) {
       setConfig({});
       setCredentials({});
@@ -454,6 +513,7 @@ function IntegrationForm({ catalog, isSubmitting, onSubmit, onCancel }: Integrat
 
   function renderField(field: string, bucket: "config" | "credentials") {
     const isRequired = requiredFields.includes(field);
+    const isAlternative = alternativeSets.some((gruppe) => gruppe.includes(field));
     const value = bucket === "config" ? config[field] ?? "" : credentials[field] ?? "";
     const setter = bucket === "config" ? setConfig : setCredentials;
     const fieldId = `${bucket}-${kind}-${field}`;
@@ -463,13 +523,19 @@ function IntegrationForm({ catalog, isSubmitting, onSubmit, onCancel }: Integrat
       <div key={field} className="space-y-2">
         <label className="text-sm font-bold" htmlFor={fieldId}>
           {fieldLabel(field)}
-          {isRequired ? <span className="ml-1 text-destructive">*</span> : <span className="ml-1 text-xs font-semibold text-muted-foreground">(optional)</span>}
+          {isRequired ? (
+            <span className="ml-1 text-destructive">*</span>
+          ) : (
+            <span className="ml-1 text-xs font-semibold text-muted-foreground">
+              {isAlternative ? "(alternativ)" : "(optional)"}
+            </span>
+          )}
         </label>
         <Input
           id={fieldId}
           name={field}
-          type={SECRET_FIELDS.has(field) ? "password" : "text"}
-          autoComplete={SECRET_FIELDS.has(field) ? "new-password" : "off"}
+          type={isSecretField(field) ? "password" : "text"}
+          autoComplete={isSecretField(field) ? "new-password" : "off"}
           placeholder={FIELD_HINTS[field] ?? ""}
           value={value}
           onChange={(event) => setter((current) => ({ ...current, [field]: event.target.value }))}
@@ -531,7 +597,13 @@ function IntegrationForm({ catalog, isSubmitting, onSubmit, onCancel }: Integrat
       </div>
 
       {spec.required_config.map((field) => renderField(field, "config"))}
-      {credentialFields.map((field) => renderField(field, "credentials"))}
+      {alternativeSets.map((gruppe) => (
+        <div key={gruppe.join("|")} className="space-y-2 border-l-2 border-border pl-3">
+          <p className="text-xs font-semibold text-muted-foreground">Genau eine Angabe: {gruppe.map(fieldLabel).join(" oder ")}</p>
+          {gruppe.map((field) => renderField(field, "config"))}
+        </div>
+      ))}
+      {credentialFields.filter((field) => !isReadOnlyCredential(field)).map((field) => renderField(field, "credentials"))}
 
       {formError ? (
         <p id={formErrorId} className="rounded-xl border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-sm font-medium text-destructive" role="alert">
@@ -554,11 +626,14 @@ interface IntegrationsCardProps {
   testResults: Record<number, IntegrationTestResult>;
   syncResults: Record<number, IntegrationSyncResult>;
   isRefreshing: boolean;
+  /** Darf in einer Kalenderquelle geschrieben werden? */
+  canWriteRemotely: boolean;
   onRefresh: () => void;
   onAdd: (input: IntegrationWrite) => Promise<boolean>;
   onToggle: (integration: IntegrationRead, enabled: boolean) => void;
   onTest: (integration: IntegrationRead) => void;
   onSync: (integration: IntegrationRead) => void;
+  onAuthorize: (integration: IntegrationRead) => void;
   onDelete: (integration: IntegrationRead) => void;
 }
 
@@ -569,11 +644,13 @@ function IntegrationsCard({
   testResults,
   syncResults,
   isRefreshing,
+  canWriteRemotely,
   onRefresh,
   onAdd,
   onToggle,
   onTest,
   onSync,
+  onAuthorize,
   onDelete,
 }: IntegrationsCardProps) {
   const [formOpen, setFormOpen] = useState(false);
@@ -584,7 +661,9 @@ function IntegrationsCard({
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div>
           <CardTitle>Integrationen</CardTitle>
-          <CardDescription className="mt-1">Verbinde dein Schulportal, einen KI-Dienst oder einen Dokumentordner.</CardDescription>
+          <CardDescription className="mt-1">
+            Verbinde dein Schulportal, einen KI-Dienst, einen Dokumentordner oder einen Kalender.
+          </CardDescription>
         </div>
         <div className="flex items-center gap-2">
           <Button type="button" size="sm" variant="outline" onClick={onRefresh} disabled={isRefreshing}>
@@ -618,7 +697,8 @@ function IntegrationsCard({
             <Plug className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" />
             <p className="mt-3 text-sm font-bold">Noch nichts verbunden</p>
             <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
-              Stundenplan und Aufgaben kannst du auch ohne Integration manuell pflegen. Verbundene Dienste liefern später automatisch deine Lerninhalte.
+              Stundenplan, Aufgaben und Termine kannst du auch ohne Integration manuell pflegen. Verbundene Dienste
+              liefern später automatisch deine Lerninhalte.
             </p>
           </div>
         ) : (
@@ -630,14 +710,171 @@ function IntegrationsCard({
                 testResult={testResults[integration.id]}
                 syncResult={syncResults[integration.id]}
                 pendingAction={pendingAction}
+                canWriteRemotely={canWriteRemotely}
+                catalog={catalog}
                 onToggle={(enabled) => onToggle(integration, enabled)}
                 onTest={() => onTest(integration)}
                 onSync={() => onSync(integration)}
+                onAuthorize={() => onAuthorize(integration)}
                 onDelete={() => onDelete(integration)}
               />
             ))}
           </ul>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Die Zustimmung, Termine in verbundene Kalender zu **schreiben**.
+ *
+ * Sie steht hier und nicht in der Zeile einer Integration, weil sie nicht an
+ * einer hängt, sondern an der Frage, ob der Lernraum das überhaupt darf. Und
+ * sie ist **aus**, bis jemand sie einschaltet: Lesen genügt, sobald eine Quelle
+ * verbunden ist - die hat die Lernende ja selbst angegeben. Schreiben ist der
+ * Fall, der eine ausdrückliche Entscheidung braucht.
+ */
+function CalendarWritingCard({
+  writing,
+  isSaving,
+  onToggle,
+}: {
+  writing: CalendarWriting | null;
+  isSaving: boolean;
+  onToggle: (enabled: boolean) => void;
+}) {
+  const enabled = writing?.share_calendar_for_writing ?? false;
+
+  return (
+    <Card className="border-border/80 bg-card/90">
+      <CardHeader>
+        <CardTitle>Termine in verbundene Kalender schreiben</CardTitle>
+        <CardDescription className="mt-1">
+          Ohne diese Zustimmung werden Kalender nur gelesen. Ein Abgleich in beide Richtungen braucht sie.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 shrink-0 accent-foreground"
+            checked={enabled}
+            disabled={isSaving || writing === null}
+            onChange={(event) => onToggle(event.target.checked)}
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-bold">
+              {enabled ? "Freigegeben" : "Nicht freigegeben"}
+            </span>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              Gespeichert als <code className="font-mono">{writing?.preference_key ?? "share_calendar_for_writing"}</code>.
+              Ein fehlender oder kaputter Eintrag bedeutet immer „aus“.
+            </span>
+          </span>
+        </label>
+
+        {writing && writing.uses.length > 0 ? (
+          <div className="space-y-1.5 border-t border-border/70 pt-4">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Damit wird</p>
+            <ul className="space-y-1">
+              {writing.uses.map((use) => (
+                <li key={use} className="text-xs text-muted-foreground">
+                  {use}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Die abonnierbare ICS-Adresse des Lernraums - der Weg nach draußen.
+ *
+ * Der Schlüssel ist im Klartext ein Vollzugriff auf **diese** Kalenderdatei,
+ * deshalb gibt es hier ausdrücklich einen Knopf zum Erzeugen: Wer ihn drückt,
+ * weiß, dass eine alte Adresse mitgeht. Ein still erneuertes Geheimnis wäre
+ * keines, und der Knopf kostet nur einen Klick.
+ */
+function CalendarFeedCard({
+  feed,
+  isLoading,
+  isRotating,
+  onCreate,
+}: {
+  feed: CalendarFeed | null;
+  isLoading: boolean;
+  isRotating: boolean;
+  onCreate: () => void;
+}) {
+  const [kopiert, setKopiert] = useState(false);
+
+  function adresse() {
+    if (!feed?.url_path || typeof window === "undefined") {
+      return "";
+    }
+    return `${window.location.origin}${feed.url_path}`;
+  }
+
+  function kopieren() {
+    const ziel = adresse();
+    if (!ziel) {
+      return;
+    }
+    void navigator.clipboard?.writeText(ziel).then(() => {
+      setKopiert(true);
+      window.setTimeout(() => setKopiert(false), 2000);
+    });
+  }
+
+  if (isLoading) {
+    return (
+      <Card className="border-border/80 bg-card/90">
+        <CardHeader>
+          <CardTitle>Kalender abonnieren</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-16 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-border/80 bg-card/90">
+      <CardHeader>
+        <CardTitle>Kalender abonnieren</CardTitle>
+        <CardDescription className="mt-1">
+          Trage diese Adresse in Google Kalender, Apple Kalender oder Outlook ein, damit deine Termine dort erscheinen.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {feed?.active && adresse() ? (
+          <>
+            <p className="break-all border border-border bg-muted/40 px-3 py-2 font-mono text-xs">{adresse()}</p>
+            <p className="text-xs text-muted-foreground">
+              {feed.message} Ein neuer Schlüssel macht diese Adresse sofort ungültig.
+            </p>
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground">{feed?.message ?? "Es ist noch keine Adresse eingerichtet."}</p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" size="sm" onClick={onCreate} disabled={isRotating}>
+            {isRotating ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Plus aria-hidden="true" />}
+            {feed?.active ? "Neuen Schlüssel erzeugen" : "Adresse einrichten"}
+          </Button>
+          {feed?.active ? (
+            <Button type="button" size="sm" variant="outline" onClick={kopieren}>
+              {kopiert ? <CheckCircle2 aria-hidden="true" /> : <Copy aria-hidden="true" />}
+              {kopiert ? "Kopiert" : "Adresse kopieren"}
+            </Button>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );
@@ -653,12 +890,19 @@ export interface SettingsViewProps {
   pendingAction: string | null;
   testResults: Record<number, IntegrationTestResult>;
   syncResults: Record<number, IntegrationSyncResult>;
+  /** Die Zustimmung zum Schreiben in verbundene Kalender. `null`, solange nichts geladen ist. */
+  writing: CalendarWriting | null;
+  /** Die abonnierbare ICS-Adresse. `null`, solange nichts geladen ist. */
+  feed: CalendarFeed | null;
   onRetry: () => void;
   onAdd: (input: IntegrationWrite) => Promise<boolean>;
   onToggle: (integration: IntegrationRead, enabled: boolean) => void;
   onTest: (integration: IntegrationRead) => void;
   onSync: (integration: IntegrationRead) => void;
+  onAuthorize: (integration: IntegrationRead) => void;
   onDelete: (integration: IntegrationRead) => void;
+  onToggleWriting: (enabled: boolean) => void;
+  onCreateFeed: () => void;
   onLogout: () => void;
   isLoggingOut: boolean;
 }
@@ -673,18 +917,25 @@ export function SettingsView({
   pendingAction,
   testResults,
   syncResults,
+  writing,
+  feed,
   onRetry,
   onAdd,
   onToggle,
   onTest,
   onSync,
+  onAuthorize,
   onDelete,
+  onToggleWriting,
+  onCreateFeed,
   onLogout,
   isLoggingOut,
 }: SettingsViewProps) {
   if (status === "loading" && integrations.length === 0 && catalog.length === 0) {
     return <SettingsSkeleton />;
   }
+
+  const canWriteRemotely = writing?.share_calendar_for_writing ?? false;
 
   return (
     <div className="space-y-6">
@@ -710,6 +961,13 @@ export function SettingsView({
         </p>
       ) : null}
 
+      {/*
+        Die Zustimmung steht **über** der Integrationsliste und nicht als Zeile
+        darin: sie haengt an keiner einzelnen Verbindung. Wer sie sucht, soll sie
+        finden, ohne erst eine Kalenderzeile auswaehlen zu muessen.
+      */}
+      <CalendarWritingCard writing={writing} isSaving={pendingAction === "writing"} onToggle={onToggleWriting} />
+
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
         <IntegrationsCard
           integrations={integrations}
@@ -718,15 +976,23 @@ export function SettingsView({
           testResults={testResults}
           syncResults={syncResults}
           isRefreshing={status === "loading"}
+          canWriteRemotely={canWriteRemotely}
           onRefresh={onRetry}
           onAdd={onAdd}
           onToggle={onToggle}
           onTest={onTest}
           onSync={onSync}
+          onAuthorize={onAuthorize}
           onDelete={onDelete}
         />
         <div className="space-y-6">
           <AccountCard user={user} onLogout={onLogout} isLoggingOut={isLoggingOut} />
+          <CalendarFeedCard
+            feed={feed}
+            isLoading={feed === null}
+            isRotating={pendingAction === "feed"}
+            onCreate={onCreateFeed}
+          />
           <BackupStatusCard />
           <ThemeCard />
         </div>

@@ -5,7 +5,7 @@ from pydantic import Field, field_validator
 
 from app.schemas.common import UTCResponseModel
 
-IntegrationKind = Literal["webuntis", "ai_provider", "documents"]
+IntegrationKind = Literal["webuntis", "ai_provider", "documents", "ical", "google_calendar", "caldav"]
 IntegrationStatus = Literal["configured", "pending", "connected", "error", "disabled"]
 
 
@@ -82,7 +82,12 @@ class IntegrationTestResult(UTCResponseModel):
 
 
 class IntegrationSyncResult(UTCResponseModel):
-    """Ergebnis eines Datenabrufs, in Zahlen und als deutschen Satz."""
+    """Ergebnis eines Datenabrufs, in Zahlen und als deutschen Satz.
+
+    Die Felder sind bewusst eine flache Liste statt einer Sektion pro Art. Alle
+    Abrufe liefern eine Teilmenge, der Rest bleibt null - dieselbe Form wie bei
+    ``imported_lessons``, das ein Dokumentabruf ebenfalls nicht füllt.
+    """
 
     ok: bool
     status: IntegrationStatus
@@ -98,6 +103,39 @@ class IntegrationSyncResult(UTCResponseModel):
     indexed_chunks: int = 0
     removed_documents: int = 0
     skipped_files: int = 0
+    imported_events: int = 0
+    updated_events: int = 0
+    pushed_events: int = 0
+    deleted_events: int = 0
+    removed_events: int = 0
+    conflicts: int = 0
+    floating_events: int = 0
     window_start: date | None = None
     window_end: date | None = None
     last_sync_at: datetime | None = None
+
+
+class IntegrationAuthorizeRead(UTCResponseModel):
+    """Die Adresse, auf die der Browser für die Einwilligung gehen soll.
+
+    Kein ``RedirectResponse``: die Oberfläche entscheidet, ob sie den Browser
+    wirklich verlässt. Ein Server, der hier umleitet, nimmt der Oberfläche die
+    Möglichkeit, vorher noch zu prüfen, ob die Einwilligung erteilt ist.
+    """
+
+    authorization_url: str
+    state: str
+    scopes: list[str] = Field(default_factory=list)
+    message: str = ""
+
+
+class IntegrationAuthorizedRead(UTCResponseModel):
+    """Was nach der Rückkehr von Google dasteht."""
+
+    ok: bool
+    integration_id: int
+    status: IntegrationStatus
+    message: str
+    #: Wohin die Oberfläche nach der Autorisierung zurückkehrt. Kein Sitzungs-
+    #: geheimnis, nur ein Zustandsschlüssel zum Ablesen der Meldung.
+    return_to: str

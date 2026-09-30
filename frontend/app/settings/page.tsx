@@ -14,6 +14,8 @@ export default function SettingsPage() {
     user,
     integrations,
     catalog,
+    writing,
+    feed,
     error,
     actionError,
     status,
@@ -25,7 +27,10 @@ export default function SettingsPage() {
     changeIntegration,
     checkIntegration,
     runSync,
+    authorizeIntegration,
     removeIntegration,
+    toggleWriting,
+    createFeed,
   } = useIntegrations();
 
   /**
@@ -63,12 +68,17 @@ export default function SettingsPage() {
         pendingAction={pendingAction}
         testResults={testResults}
         syncResults={syncResults}
+        writing={writing}
+        feed={feed}
         onRetry={retry}
         onAdd={addIntegration}
         onToggle={(integration, enabled) => void changeIntegration(integration.id, { enabled })}
         onTest={(integration) => void checkIntegration(integration.id)}
         onSync={(integration) => void runSync(integration.id)}
+        onAuthorize={(integration) => void authorizeIntegration(integration.id)}
         onDelete={(integration) => void removeIntegration(integration.id)}
+        onToggleWriting={(enabled) => void toggleWriting(enabled)}
+        onCreateFeed={() => void createFeed()}
         onLogout={() => void abmelden()}
         isLoggingOut={isLoggingOut}
       />

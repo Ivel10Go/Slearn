@@ -168,8 +168,12 @@ export interface IntegrationCatalog {
   label: string;
   description: string;
   required_config: string[];
+  /** Gruppen, von denen mindestens ein Feld kommen muss, etwa `[["url", "path"]]`. */
+  required_one_of: string[][];
   required_credentials: string[];
   optional_credentials: string[];
+  /** Kann in dieser Quelle geschrieben werden? */
+  supports_writing: boolean;
 }
 
 export interface IntegrationTestResult {
@@ -190,9 +194,54 @@ export interface IntegrationSyncResult extends IntegrationTestResult {
   indexed_chunks: number;
   removed_documents: number;
   skipped_files: number;
+  /** Neu aus einer Kalenderquelle übernommene Termine. */
+  imported_events: number;
+  updated_events: number;
+  /** In der Quelle geschriebene Termine. Ohne Freigabe immer null. */
+  pushed_events: number;
+  deleted_events: number;
+  removed_events: number;
+  /** Termine, die an beiden Seiten geändert wurden und offen geblieben sind. */
+  conflicts: number;
+  floating_events: number;
   window_start: string | null;
   window_end: string | null;
   last_sync_at: string | null;
+}
+
+/** Die Adresse, auf der der Browser für die Einwilligung von Google abbiegt. */
+export interface IntegrationAuthorize {
+  authorization_url: string;
+  state: string;
+  scopes: string[];
+  message: string;
+}
+
+/**
+ * Die ausdrückliche Zustimmung, Termine in einen Kalender zu schreiben.
+ *
+ * `preference_key` nennt den Ort, an dem die Entscheidung gespeichert ist. Das
+ * steht in der Antwort, damit die Oberfläche nicht einen zweiten Namen neben
+ * dem echten führt.
+ */
+export interface CalendarWriting {
+  share_calendar_for_writing: boolean;
+  preference_key: string;
+  /** Wozu die Freigabe benutzt wird - als Liste, nicht als Behauptung. */
+  uses: string[];
+}
+
+/**
+ * Die abonnierbare ICS-Adresse des Lernraums.
+ *
+ * `rotated` ist nach dem Erzeugen eines neuen Schlüssels wahr und weist darauf
+ * hin, dass die alte Adresse nicht mehr funktioniert.
+ */
+export interface CalendarFeed {
+  url_path: string;
+  active: boolean;
+  rotated: boolean;
+  message: string;
 }
 
 export interface DocumentRecord {

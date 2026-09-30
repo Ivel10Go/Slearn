@@ -239,3 +239,45 @@ class CalendarEventRead(UTCResponseModel):
     all_day: bool
     source: str
     external_id: str | None = None
+    #: Steht der Termin noch bei einer Gegenseite, oder wartet er nur darauf,
+    #: dass es dort verschwindet? ``synced`` heißt: beide Seiten sind gleich.
+    sync_state: str = "synced"
+    #: Der Id der Integration, aus der der Termin stammt. ``None`` bei von Hand
+    #: angelegten Terminen - die fasst kein Abruf an.
+    sync_source_id: int | None = None
+
+
+class CalendarWritingWrite(BaseModel):
+    """Die ausdrückliche Zustimmung, Termine in einen Kalender zu schreiben.
+
+    ``enabled`` ist Pflicht und hat **keinen** Default: ein fehlendes Feld darf
+    keine bestehende Entscheidung versehentlich löschen, und ein Default von
+    ``True`` wäre genau die stille Übertragung, die hier nicht stattfinden soll.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+
+
+class CalendarWritingRead(UTCResponseModel):
+    """Der Zustand der Zustimmung, mit dem Ort, an dem sie steht."""
+
+    share_calendar_for_writing: bool
+    preference_key: str
+    uses: list[str] = Field(default_factory=list)
+
+
+class CalendarFeedRead(UTCResponseModel):
+    """Die abonnierbare Adresse des Lernraum-Kalenders.
+
+    Der Schlüssel steht in der Antwort, weil nur die Eigentümerin diese Antwort
+    bekommt und ohne ihn die Adresse nicht in einen Kalender eingetragen werden
+    kann. Für jeden anderen ist er wertlos. ``rotated`` sagt, ob gerade ein neuer
+    erzeugt wurde - der alte ist dann ab sofort ungültig.
+    """
+
+    url_path: str
+    active: bool
+    rotated: bool = False
+    message: str = ""

@@ -1,4 +1,14 @@
-from .academic import CalendarEvent, Exam, Grade, Homework, Lesson
+from .academic import (
+    CALENDAR_SYNC_STATES,
+    SYNC_STATE_DELETED,
+    SYNC_STATE_EDITED,
+    SYNC_STATE_SYNCED,
+    CalendarEvent,
+    Exam,
+    Grade,
+    Homework,
+    Lesson,
+)
 from .base import Base
 from .content import Document, DocumentChunk, GreetingCache, LearningProgress, Topic, TopicDocument
 from .identity import Room, Subject, SyncSource, Teacher, User, UserSettings
@@ -6,6 +16,10 @@ from .planning import StudyPlan, StudyPlanTask, StudySession, StudyTaskDependenc
 from .quiz import Quiz, QuizAnswer, QuizAttempt, QuizQuestion
 
 __all__ = [
+    "CALENDAR_SYNC_STATES",
+    "SYNC_STATE_DELETED",
+    "SYNC_STATE_EDITED",
+    "SYNC_STATE_SYNCED",
     "Base",
     "CalendarEvent",
     "Document",
