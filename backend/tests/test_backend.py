@@ -4455,3 +4455,179 @@ def test_noten_sind_echte_daten_und_kein_zustand_im_frontend(
     assert len(zusammenfassung["trend"]) == 5
     # Die Demo hat absichtlich ein bestandenes und ein durchgefallenes Fach.
     assert sorted(eintrag["passed"] for eintrag in zusammenfassung["by_subject"]) == [False, True]
+
+
+# --- Backup-Status ----------------------------------------------------------
+
+
+def _worker_status_payload(**overrides: object) -> dict[str, object]:
+    """Ein Status-JSON, wie der Worker es schreibt.
+
+    Fest verdrahtet statt zusammengebaut, weil es hier um die Strenge des
+    Formats geht: ein Block mit fehlenden Feldern ist ein anderes Verhalten als
+    ein Block mit falschen Feldern.
+    """
+    payload: dict[str, object] = {
+        "version": 1,
+        "status": "running",
+        "database": "healthy",
+        "pid": 42,
+        "heartbeat_interval_seconds": 30.0,
+        "started_at": "2026-09-30T01:00:00+00:00",
+        "last_heartbeat": "2026-09-30T01:59:00+00:00",
+        "last_database_check": "2026-09-30T01:59:00+00:00",
+        "last_error": None,
+        "backup": {
+            "enabled": True,
+            "schedule": "0 2 * * *",
+            "timezone": "Europe/Berlin",
+            "retention_days": 30,
+            "directory_writable": True,
+            "pg_dump_path": "/usr/bin/pg_dump",
+            "runner_available": True,
+            "last_started_at": "2026-09-30T00:00:01+00:00",
+            "last_finished_at": "2026-09-30T00:00:03+00:00",
+            "last_successful_at": "2026-09-30T00:00:03+00:00",
+            "next_due_at": "2026-10-01T00:00:00+00:00",
+            "last_duration_seconds": 2.25,
+            "last_file": "school-20260930T000001Z.dump",
+            "last_size_bytes": 4096,
+            "kept_files": 30,
+            "removed_files": ["school-20260821T000000Z.dump"],
+            "last_error": None,
+        },
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _point_backend_at(app_client: TestClient, status_path: Path) -> None:
+    """Die Statusdatei des Workers fuer diesen Aufruf umbiegen.
+
+    `get_app_settings` liest `app.state.settings` bei jedem Aufruf, deshalb genuegt
+    ein `model_copy` statt eines zweiten Fixture-Aufbaus.
+    """
+    current = app_client.app.state.settings
+    app_client.app.state.settings = current.model_copy(update={"worker_status_path": status_path.as_posix()})
+
+
+def test_backup_status_requires_a_session(app_client: TestClient, tmp_path: Path) -> None:
+    _point_backend_at(app_client, tmp_path / "worker-status.json")
+    assert app_client.get("/api/v1/backups/status").status_code == 401
+
+
+def test_backup_status_reports_a_missing_worker_volume(app_client: TestClient, tmp_path: Path) -> None:
+    login(app_client)
+    _point_backend_at(app_client, tmp_path / "gibt-es-nicht.json")
+    response = app_client.get("/api/v1/backups/status")
+    # Kein 503: eine fehlende Datei ist eine Konfigurationsfrage, kein Fehler des
+    # Aufrufs. 200 mit Klartext, damit die Oberflaeche etwas anzeigen kann.
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["available"] is False
+    assert payload["backup"] is None
+    assert "worker-status" in payload["message"]
+
+
+def test_backup_status_reads_the_worker_block(app_client: TestClient, tmp_path: Path) -> None:
+    status_path = tmp_path / "worker-status.json"
+    status_path.write_text(json.dumps(_worker_status_payload()), encoding="utf-8")
+    login(app_client)
+    _point_backend_at(app_client, status_path)
+
+    response = app_client.get("/api/v1/backups/status")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["available"] is True
+    assert payload["worker_status"] == "running"
+    assert payload["worker_database"] == "healthy"
+    assert payload["last_heartbeat"] == "2026-09-30T01:59:00Z"
+
+    backup = payload["backup"]
+    assert backup["enabled"] is True
+    assert backup["schedule"] == "0 2 * * *"
+    assert backup["timezone"] == "Europe/Berlin"
+    assert backup["retention_days"] == 30
+    assert backup["directory_writable"] is True
+    assert backup["last_file"] == "school-20260930T000001Z.dump"
+    assert backup["last_size_bytes"] == 4096
+    assert backup["kept_files"] == 30
+    assert backup["removed_files"] == ["school-20260821T000000Z.dump"]
+    assert backup["last_error"] is None
+    # Aus einem UTC-Zeitpunkt mit Plus-Hinweis wird durchgaengig Z.
+    assert backup["last_successful_at"] == "2026-09-30T00:00:03Z"
+    assert backup["next_due_at"] == "2026-10-01T00:00:00Z"
+    # Nur der Programmname, nie ein Pfad aus dem Container.
+    assert backup["pg_dump"] == "pg_dump"
+    assert "/" not in backup["pg_dump"]
+
+
+def test_backup_status_never_invents_a_missing_value(app_client: TestClient, tmp_path: Path) -> None:
+    status_path = tmp_path / "worker-status.json"
+    status_path.write_text(json.dumps(_worker_status_payload(backup={"enabled": False, "runner_available": False})), encoding="utf-8")
+    login(app_client)
+    _point_backend_at(app_client, status_path)
+
+    backup = app_client.get("/api/v1/backups/status").json()["backup"]
+    assert backup["enabled"] is False
+    assert backup["last_successful_at"] is None
+    assert backup["next_due_at"] is None
+    assert backup["last_file"] is None
+    assert backup["kept_files"] is None
+    assert backup["removed_files"] == []
+
+
+def test_backup_status_drops_timestamps_without_a_timezone(app_client: TestClient, tmp_path: Path) -> None:
+    payload = _worker_status_payload()
+    backup_block = dict(payload["backup"])  # type: ignore[arg-type]
+    backup_block["last_successful_at"] = "2026-09-30T02:00:03"
+    status_path = tmp_path / "worker-status.json"
+    status_path.write_text(json.dumps(_worker_status_payload(backup=backup_block)), encoding="utf-8")
+    login(app_client)
+    _point_backend_at(app_client, status_path)
+
+    response = app_client.get("/api/v1/backups/status")
+    assert response.json()["backup"]["last_successful_at"] is None
+    assert "ohne Zeitzone" in response.json()["message"]
+
+
+def test_backup_status_survives_a_worker_without_a_backup_block(app_client: TestClient, tmp_path: Path) -> None:
+    payload = _worker_status_payload()
+    payload.pop("backup")
+    status_path = tmp_path / "worker-status.json"
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+    login(app_client)
+    _point_backend_at(app_client, status_path)
+
+    result = app_client.get("/api/v1/backups/status").json()
+    assert result["available"] is False
+    assert result["backup"] is None
+    assert "ohne Backup-Runner" in result["message"]
+
+
+def test_backup_status_survives_a_broken_status_file(app_client: TestClient, tmp_path: Path) -> None:
+    status_path = tmp_path / "worker-status.json"
+    status_path.write_text("{kein JSON", encoding="utf-8")
+    login(app_client)
+    _point_backend_at(app_client, status_path)
+
+    result = app_client.get("/api/v1/backups/status").json()
+    assert result["available"] is False
+    assert "JSON" in result["message"]
+
+
+def test_backup_status_of_a_disabled_runner_stays_read_only(app_client: TestClient, tmp_path: Path) -> None:
+    """Es gibt keinen Weg, ein Backup von aussen anzustoessen."""
+    backup_block = dict(_worker_status_payload()["backup"])  # type: ignore[arg-type]
+    backup_block["enabled"] = False
+    backup_block["last_error"] = "pg_dump endete mit Code 1: connection refused"
+    status_path = tmp_path / "worker-status.json"
+    status_path.write_text(json.dumps(_worker_status_payload(backup=backup_block)), encoding="utf-8")
+    login(app_client)
+    _point_backend_at(app_client, status_path)
+
+    result = app_client.get("/api/v1/backups/status").json()
+    assert result["backup"]["enabled"] is False
+    assert "connection refused" in result["backup"]["last_error"]
+    for method in ("post", "put", "patch", "delete"):
+        assert getattr(app_client, method)("/api/v1/backups/status").status_code == 405

@@ -21,6 +21,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { BackupStatusCard } from "@/components/settings/backup-status-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -101,10 +102,11 @@ function SettingsSkeleton() {
       </div>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
         <Skeleton className="h-[28rem] rounded-2xl" />
-        <div className="space-y-6">
-          <Skeleton className="h-56 rounded-2xl" />
-          <Skeleton className="h-40 rounded-2xl" />
-        </div>
+<div className="space-y-6">
+            <Skeleton className="h-56 w-full rounded-2xl" />
+            <Skeleton className="h-64 w-full rounded-2xl" />
+            <Skeleton className="h-40 w-full rounded-2xl" />
+          </div>
       </div>
     </div>
   );
@@ -689,7 +691,7 @@ export function SettingsView({
       <header>
         <p className="mb-2 text-sm font-bold uppercase tracking-[0.18em] text-primary">Dein Lernraum</p>
         <h1 className="text-3xl font-extrabold tracking-[-0.035em] sm:text-4xl">Einstellungen</h1>
-        <p className="mt-2 text-sm font-semibold text-muted-foreground">Konto, Erscheinungsbild und deine verbundenen Dienste an einem Ort.</p>
+        <p className="mt-2 text-sm font-semibold text-muted-foreground">Konto, Erscheinungsbild, Sicherung und deine verbundenen Dienste an einem Ort.</p>
       </header>
 
       {error ? (
@@ -725,6 +727,7 @@ export function SettingsView({
         />
         <div className="space-y-6">
           <AccountCard user={user} onLogout={onLogout} isLoggingOut={isLoggingOut} />
+          <BackupStatusCard />
           <ThemeCard />
         </div>
       </div>

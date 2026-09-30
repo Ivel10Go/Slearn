@@ -2,7 +2,7 @@
 
 School Assistant ist eine lokal betreibbare Docker-Compose-Anwendung mit Next.js-Frontend, FastAPI-Backend, PostgreSQL 15 mit pgvector und einem schlanken Python-Worker. Der Backend-Stand umfasst serverseitige Session-Authentifizierung, ein Dashboard, Benutzerisolation und API-Routen für Fächer, Hausaufgaben, Klausuren, Kalendereinträge und Lernaufgaben.
 
-WebUntis, KI-Provider und Dokumente sind als echte Integrationen umgesetzt: Der Verbindungstest spricht das JSON-RPC-Portal der Schule bzw. die OpenAI-kompatible Modellliste des KI-Anbieters an und meldet `connected`, `error` oder `disabled`. iCalendar-Abgleich, Dokumentauswertung und automatische Backups sind reserviert, aber noch nicht als ausführbare Integrationen enthalten.
+WebUntis, KI-Provider und Dokumente sind als echte Integrationen umgesetzt: Der Verbindungstest spricht das JSON-RPC-Portal der Schule bzw. die OpenAI-kompatible Modellliste des KI-Anbieters an und meldet `connected`, `error` oder `disabled`. Der Worker sichert die Datenbank nach einem Zeitplan mit `pg_dump` und rotiert die Ablage nach Tagen. iCalendar-Abgleich und Dokumentauswertung sind reserviert, aber noch nicht als ausführbare Integrationen enthalten.
 
 ## Architektur
 
@@ -22,14 +22,14 @@ FastAPI Backend
 PostgreSQL 15 + pgvector
   ^
   |
-  | schlanker DB-Health-/Heartbeat-Worker
+  | schlanker DB-Health-/Heartbeat-Worker, sichert per pg_dump
 ```
 
 - `frontend` läuft als Next.js-Standalone-Image mit Node.js 22.
 - Browseranfragen verwenden den same-origin-Pfad `/api/backend/*`.
 - Der Next.js-Route-Handler unter `app/api/backend/[...path]/route.ts` leitet diese Anfragen serverseitig an `BACKEND_INTERNAL_URL` weiter. Im Compose-Stack ist das Ziel fest `http://backend:8000`; der Browser erhält diese interne URL nicht.
 - `backend` startet ausschließlich `app.main:app` auf Port 8000.
-- `worker` enthält nur Worker-Code und die Abhängigkeit `psycopg[binary]`. Er führt ausschließlich Datenbank-Healthchecks und Status-Heartbeats aus.
+- `worker` enthält nur Worker-Code und die Abhängigkeit `psycopg[binary]`; `pg_dump` kommt als Systembinary `postgresql-client-15` aus demselben Debian, aus dem das Image ohnehin besteht. Der Worker führt Datenbank-Healthchecks, Status-Heartbeats und den Backup-Runner aus. Es gibt keinen `from app...`-Import: die beiden Python-Bereiche teilen keinen Code.
 - `postgres` verwendet das Multi-Arch-Image `pgvector/pgvector:0.8.1-pg15-bookworm` mit Linux-AMD64- und Linux-ARM64-Manifest.
 - Alle Compose-Portbindungen sind auf `127.0.0.1` begrenzt.
 
@@ -162,6 +162,7 @@ Die nichtöffentliche Backend-Basis lautet `http://backend:8000`. Über das Fron
 | Integrationstest | `GET /api/v1/integrations/{integration_id}/test` | Letztes Testergebnis lesen, ohne erneut zu testen |
 | Integrationskatalog | `GET /api/v1/integrations/catalog` | Kinds, Pflichtfelder und Feldbeschreibungen; ohne Session und ohne Schlüssel lesbar |
 | Datensync | `POST /api/v1/integrations/{integration_id}/sync` | Daten importieren; aktuell `webuntis`, siehe unten |
+| Backup | `GET /api/v1/backups/status` | Stand des Backup-Runners aus der Worker-Statusdatei; rein lesend, ohne Auslöser. HTTP 200 auch dann, wenn die Datei fehlt - `available: false` und ein deutscher Klartext sagen dann, woran es liegt |
 
 
 Alle `/api/v1`-Routen außer Health erfordern standardmäßig eine gültige Session und isolieren Daten nach Benutzer. Die interaktive OpenAPI-Oberfläche ist unter `/docs`, die ReDoc-Oberfläche unter `/redoc` verfügbar.
@@ -216,12 +217,12 @@ Die Antwort ist ein Objekt mit `id` auf School-Ebene, `klasse`/`teachers`/`rooms
 
 Fächer und Lehrer übernehmen `longname`, Räume bevorzugt `name`, weil `longname` dort teils Klassen- oder Gebäudenamen enthält. Existiert eine Stammdateneintragung schon manuell, wird sie anhand des Namens wiederverwendet, damit Fächer nicht doppelt auftauchen. Der Import ersetzt ausschließlich Lessons derselben `sync_source_id` innerhalb des Vier-Wochen-Fensters; manuell angelegte Stunden und Daten außerhalb des Fensters bleiben erhalten. `code` und `lsnumber` werden bewusst nicht gespeichert, weil die Modelle keine Felder dafür vorsehen.
 
-Automatisch ausgelöst wird der Import nicht: Es gibt noch keinen Scheduler-Job. Neu deployte Container starten ohne Import, die Daten bleiben also bestehen, bis der Button in den Einstellungen gedrückt wird.
+Automatisch ausgelöst wird der Import über `app/services/integration_scheduler.py`: Der Scheduler läuft als Thread im Backend-Lifespan, ist über `WEBUNTIS_SYNC_ENABLED` einschaltbar und beachtet `last_sync_at`. Der Knopf in den Einstellungen bleibt der manuelle Weg und läuft auch dann, wenn der geplante Abruf heute schon stattgefunden hat.
 
 
 ## Worker
 
-Der Worker ist absichtlich klein und besitzt keinen HTTP-Port, kein Backend-Image und keine Hintergrundjobs. Er verbindet sich direkt mit psycopg, führt `SELECT 1` aus und schreibt einen nicht geheimen Status-Heartbeat.
+Der Worker ist absichtlich klein und besitzt keinen HTTP-Port und kein Backend-Image. Er verbindet sich direkt mit psycopg, führt `SELECT 1` aus, schreibt einen nicht geheimen Status-Heartbeat und sichert die Datenbank mit `pg_dump`. Der Code bleibt Standardbibliothek plus `psycopg`; es gibt keinen `from app...`-Import, weil die beiden Python-Bereiche sonst gemeinsam gepflegt werden müssten.
 
 Der Docker-Healthcheck ist bewusst strikt: Nur die Kombination
 
@@ -232,6 +233,8 @@ database == "healthy"
 
 und ein nicht veralteter, zeitzonenbehafteter Heartbeat gilt als gesund. `degraded`, `starting`, `stopping`, `stopped`, `unchecked`, `unhealthy` und fehlende oder ungültige Heartbeats sind unhealthy.
 
+Der Backup-Runner fasst `status` und `database` nie an. Ein fehlgeschlagener Dump ist ein anderes Problem als eine nicht erreichbare Datenbank, deshalb bleibt der Worker auch dann gesund. Der Healthcheck wertet genau drei Felder aus; der neue Block `backup` ist additiv und kann die Strenge nicht aufweichen. Das ist mit einem Test festgeschrieben (`worker/tests/test_backup.py`, `test_a_failed_backup_keeps_the_worker_healthy`).
+
 Worker-Status:
 
 ```bash
@@ -239,15 +242,15 @@ docker compose logs -f worker
 docker compose exec worker cat /var/lib/school-assistant/worker-status/worker-status.json
 ```
 
-Die Datei liegt im eigenen Named Volume `worker-status`. Sie enthält Prozessstatus, PID, Heartbeat, letzte Datenbankprüfung und nur den Fehlertyp. Sie enthält weder Zugangsdaten noch Dokumentinhalte.
+Die Datei liegt im eigenen Named Volume `worker-status`. Sie enthält Prozessstatus, PID, Heartbeat, letzte Datenbankprüfung und nur den Fehlertyp. Der Block `backup` ergänzt den Ablauf des Backup-Runners: `enabled`, `schedule`, `timezone`, `retention_days`, `directory_writable`, `pg_dump_path`, `runner_available`, `last_started_at`, `last_finished_at`, `last_successful_at`, `next_due_at`, `last_duration_seconds`, `last_file`, `last_size_bytes`, `kept_files`, `removed_files` und `last_error`. Alle Zeitstempel sind zeitzonenbehaftete UTC-Angaben mit `+00:00`; ohne Zone wären sie für den Healthcheck und die Anzeige wertlos. Kein Feld dieser Datei enthält ein Passwort. `pg_dump_path` nennt den Pfad des Programms, `pg_dump` selbst erscheint nirgends - es steht in `PGPASSWORD` in der Umgebung des Kindprozesses, nicht in der Argumentliste.
 
 Sicherheits- und Mount-Regeln:
 
 - Image und Compose laufen mit UID/GID `10001:10001`.
-- Das Root-Dateisystem ist read-only; nur das eigene Statusverzeichnis ist beschreibbar.
+- Das Root-Dateisystem ist read-only; beschreibbar sind nur das eigene Statusverzeichnis und das Backup-Verzeichnis.
 - Alle Linux-Capabilities werden entfernt und `no-new-privileges` ist aktiv.
-- Dokumente, Backups und Importe sind im Worker read-only eingebunden.
-- Nur das Statusverzeichnis ist für den Worker beschreibbar.
+- Dokumente und Importe sind im Worker read-only eingebunden.
+- **Backups müssen im Worker read/write eingebunden sein**, sonst schlägt jeder Lauf mit `PermissionError` fehl. Der Worker prüft das beim Start und schreibt `directory_writable: false` in den Status.
 - Der Build-Kontext enthält ausschließlich `worker/`.
 
 ## Storage und Datenbank
@@ -255,7 +258,7 @@ Sicherheits- und Mount-Regeln:
 | Host-Pfad-Variable | Standardpfad | Backend | Worker |
 | --- | --- | --- | --- |
 | `DOCUMENTS_HOST_PATH` | `./data/documents` | read/write | read-only |
-| `BACKUPS_HOST_PATH` | `./data/backups` | read/write | read-only |
+| `BACKUPS_HOST_PATH` | `./data/backups` | read/write | read/write, nur für `pg_dump` |
 | `IMPORTS_HOST_PATH` | `./data/imports` | read/write | read-only |
 
 Die absoluten Containerziele sind fest:
@@ -291,9 +294,51 @@ docker compose exec backend alembic -c alembic.ini history
 
 Änderungen an `POSTGRES_USER`, `POSTGRES_PASSWORD` oder `POSTGRES_DB` wirken nicht automatisch auf ein bereits initialisiertes `pgdata`-Volume.
 
-Es ist noch kein Backup-Runner enthalten. Die Backup- und Kalenderintegrationen sind daher reserviert; `BACKUP_SCHEDULE` und `BACKUP_RETENTION_DAYS` werden noch nicht ausgeführt. Der folgende Abschnitt ist ein Runbook für den manuellen Weg, kein Automatismus.
+Der Backup-Runner ist umgesetzt und läuft im Worker; der Abschnitt "Backup und Restore" beschreibt ihn und den manuellen Weg daneben. Die Kalenderintegrationen bleiben reserviert.
 
 ## Backup und Restore
+
+### Der automatische Runner
+
+Der Worker sichert die Datenbank selbst. Er ist der einzige Dauerläufer, der nichts vom HTTP-Prozess abhängt, und `pg_dump` braucht weder FastAPI noch SQLAlchemy noch eine Session. Im Backend wäre ein Thread im Uvicorn-Prozess derselbe Fallstrick wie beim WebUntis-Scheduler: mit `uvicorn --workers 2` liefe die Sicherung zweimal.
+
+```text
+Worker ──► pg_dump --format=custom --no-owner --no-privileges ──► $BACKUP_STORAGE_PATH
+```
+
+- **Ablage:** `BACKUP_STORAGE_PATH`, im Compose-Stack `/var/lib/school-assistant/backups`, auf dem Host `BACKUPS_HOST_PATH`.
+- **Zeitplan:** `BACKUP_SCHEDULE`, Standard `0 2 * * *`, ausgewertet in `SCHOOL_TIMEZONE`.
+- **Aufbewahrung:** `BACKUP_RETENTION_DAYS`, Standard `30`, gezählt in **Tagen**.
+- **Dateiname:** `school-<JJJJMMTTThhmmssZ>.dump` (UTC, lexikografisch sortierbar) plus `school-<...>.dump.sha256` im Format von `sha256sum -c`.
+
+Warum der Zeitplan ein Cron-String bleibt und kein Intervall in Sekunden: `BACKUP_SCHEDULE` ist als `0 2 * * *` dokumentiert, und diese Schreibweise nennt einen Tageszeitpunkt, den man sich merken kann. Ausgewertet wird er **im Worker selbst**, nicht von einem Host-Cron - die Deutung hängt damit an keinem Betriebssystem und keinem Daemon. Unterstützt ist bewusst nur eine kleine, eindeutige Teilmenge, alles andere wird beim Start mit deutschem Klartext abgelehnt, statt stillschweigend falsch gedeutet zu werden:
+
+| Feld | Werte | Bedeutung |
+| --- | --- | --- |
+| Minute | `*`, `N`, `N-M`, `N-M/S`, `*/S`, Kommalisten | 0 bis 59 |
+| Stunde | wie oben | 0 bis 23 |
+| Tag des Monats | wie oben | 1 bis 31 |
+| Monat | wie oben | 1 bis 12 |
+| Wochentag | wie oben | 0 bis 6, Sonntag ist 0; 7 wie 0 |
+
+Nicht unterstützt und deshalb ein Fehler: `@daily` und andere Kurzformen, Monats- und Wochentagsnamen, `?`, `L`. Für `Tag des Monats` und `Wochentag` gilt die POSIX-Regel: sind **beide** Felder eingeschränkt, genügt eines von beiden. `0 2 * * 1-5` ist also "werktags um 02:00" und nicht die unmögliche UND-Deutung.
+
+Nicht im Worker ausgeführt wird eine Cron-Bibliothek. Eine eingezogene Abhängigkeit wäre eine dritte Fremdbibliothek in einem Image, das sonst nur `psycopg` kennt, und sie zöge `python-dateutil` mit. Die Teilmenge hier ist eng genug, um sie in Tests festzuschreiben (`worker/tests/test_backup.py`, `ScheduleParsingTests`).
+
+Der Runner verarbeitet jeden fälligen Termin höchstens einmal: gesucht wird der jüngste passende Zeitpunkt im Fenster `BACKUP_CATCHUP_HOURS` (Standard 72). War der Worker zum Termin nicht da, holt er ihn beim nächsten Start nach. Nach einem Neustart liest er den letzten erfolgreichen Lauf aus dem **Namen des neuesten Dumps** - eine eigene Zustandsdatei wäre eine zweite Wahrheit, die auseinanderlaufen kann.
+
+Die Rotation löscht nur, was älter als `BACKUP_RETENTION_DAYS` ist, und **nie das neueste Backup**: bei `BACKUP_RETENTION_DAYS=0` bleibt genau eine Datei stehen. Das ist der Fall, in dem der Runner lange ausgefallen war und deshalb am wichtigsten ist. Gelöscht wird ausschließlich, was dem Namensmuster `school-<JJJJMMTTThhmmssZ>.dump` entspricht; eine von Hand abgelegte Datei wird weder rotiert noch als „letzter Lauf" gelesen. Eine **fehlgeschlagene** Sicherung löst keine Rotation aus - sonst räumt ein Ausfall die Historie weg.
+
+Aus dem Worker-Log (ohne Zugangsdaten):
+
+```text
+Backup-Runner bereit: Zeitplan 0 2 * * * (Europe/Berlin), Aufbewahrung 30 Tage, Ablage /var/lib/school-assistant/backups
+Backup-Ziel: postgres:5432/school als school_assistant
+pg_dump: /usr/bin/pg_dump
+Backup geschrieben: school-20260930T000001Z.dump (1048576 Byte, 2.3 s), 30 Sicherungen auf dem Datentraeger.
+```
+
+`Backup-Ziel` ist die Kontrollzeile: Der Host wird aus `DATABASE_URL` gelesen und **nie geraten oder auf `localhost` gesetzt**. Im Compose-Netz steht dort `postgres`, weil die URL im Compose-Stack auf den Service zeigt. Der Datenbankbenutzer braucht für `pg_dump` Rechte auf alle Tabellen und Sequenzen - `POSTGRES_USER` ist Superuser, genügt also.
 
 ### Was gesichert werden muss
 
@@ -324,6 +369,22 @@ cmd /c 'docker compose exec -T postgres pg_dump -U school_assistant -d school_as
 
 Zwei Details, an denen ein Backup sonst stillschweigend kaputtgeht: `-T` verhindert, dass `docker compose exec` ein TTY anhängt und die Binärdaten verfälscht, und der PowerShell-Aufruf läuft bewusst über `cmd /c`, weil `>` in PowerShell 5.1 den Textstrom umkodiert und das Dump zerstört. `-Fc` erzeugt das komprimierte Custom-Format, das `pg_restore` und nicht `psql` liest. Anschließend `ls -l school.dump`: Ist die Datei kilobytegroß, wurde sie beschädigt.
 
+### Der Dump des Runners prüfen
+
+Der Runner legt seinen Dump unter `BACKUPS_HOST_PATH` ab und schreibt daneben eine Prüfsumme. Beide Schritte sind read-only für den Betrachter:
+
+```bash
+ls -l ./data/backups
+docker run --rm -v "$PWD/data/backups:/backups:ro" -w /backups pgvector/pgvector:0.8.1-pg15-bookworm \
+  sha256sum -c school-20260930T000001Z.dump.sha256
+```
+
+`pg_restore --list` zeigt den Inhalt, ohne etwas wiederherzustellen - die billigste Prüfung, ob das Custom-Format lesbar ist:
+
+```bash
+docker compose exec worker pg_restore --list /var/lib/school-assistant/backups/school-20260930T000001Z.dump
+```
+
 ### Restore in den laufenden Stack
 
 ```bash
@@ -332,6 +393,17 @@ docker compose exec -T postgres pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB"
 docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT extname FROM pg_extension;"
 docker compose start backend worker
 ```
+
+Ein Dump des Runners liegt im Host-Verzeichnis `BACKUPS_HOST_PATH` und wird direkt in den Container gespeist:
+
+```bash
+docker compose stop backend worker
+docker compose exec -T postgres pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists \
+  < ./data/backups/school-20260930T000001Z.dump
+docker compose start backend worker
+```
+
+Der Runner ruft `pg_dump` mit `--no-owner` und `--no-privileges` auf. Das ist kein Zufall: Ohne diese Schalter trägt der Dump Eigentümer-Anweisungen, und die Restore-Übung spielt in eine Wegwerf-Datenbank mit einem **anderen** Benutzer zurück - der Restore würde an genau diesen Anweisungen scheitern, nicht an den Daten.
 
 Der Ablauf ist absichtlich in dieser Reihenfolge: `pg_restore --clean` droppt Objekte, und ein laufendes Backend hält darauf offene Verbindungen. Nach dem Start prüft `docker compose logs backend`, ob Alembic etwas nachmigriert hat - der Dump enthält den Stand aus `alembic_version`. Eine Migration bedeutet, dass Dump und Code nicht zusammengehören. In der Extension-Liste muss `vector` stehen; fehlt sie, hilft nur `CREATE EXTENSION IF NOT EXISTS vector;` im Ziel. `postgres/init/001-vector.sql` wird ausschließlich bei einer frischen Initialisierung des Volumes ausgeführt und ist für den Restore nicht zuständig.
 
@@ -353,9 +425,45 @@ docker rm -f restore-drill
 docker volume rm restore-drill-data
 ```
 
-`--exit-on-error` ist in der Übung richtig und im Notfallrestore fragwürdig: In der Übung soll ein Fehler laut werden und nicht teilweise wiederhergestelltes Chaos hinterlassen. Prüfziele sind dieselben wie im Notfall: Benutzerzeilen vorhanden, `vector` aktiv, Alembic-Stand plausibel. Ergänzend einen der ältesten Dump-Sätze nehmen, weil ein frischer Dump nur beweist, dass das Werkzeug funktioniert, nicht die Historie.
+`--exit-on-error` ist in der Übung richtig und im Notfallrestore fragwürdig: In der Übung soll ein Fehler laut werden und nicht teilweise wiederhergestelltes Chaos hinterlassen. Prüfziele sind dieselben wie im Notfall: Benutzerzeilen vorhanden, `vector` aktiv, Alembic-Stand plausibel. Ergänzend einen der ältesten Dump-Sätze nehmen, weil ein frischer Dump nur beweist, dass das Werkzeug funktioniert, nicht die Historie. Aus dem automatisierten Ablauf ist dafür `BACKUPS_HOST_PATH` auf ein anderes Laufwerk zu setzen und `BACKUP_RETENTION_DAYS` so groß zu wählen, dass der betreffende Tag noch auf dem Datenträger liegt.
 
-**Nicht ausgeführt.** In der Entwicklungsumgebung dieser Äbung läuft kein Docker-Daemon; weder Dump noch Restore wurden je durchgespielt. Der Ablauf ist dokumentiert, nicht bestätigt.
+**Nicht ausgeführt.** In der Entwicklungsumgebung dieser Äbung läuft kein Docker-Daemon; weder Dump noch Restore wurden je durchgespielt, und `pg_dump` stand auf dem Host nicht zur Verfügung. Der Ablauf ist dokumentiert, nicht bestätigt.
+
+Dasselbe gilt für den automatischen Runner: implementiert und über einen als `pg_dump` eingesetzten Attrappen abgesichert, aber nie gegen eine echte PostgreSQL-Instanz gelaufen.
+
+### Der Backup-Stand in den Einstellungen
+
+`GET /api/v1/backups/status` liest den Block `backup` aus der Statusdatei des Workers und ist rein lesend; einen Knopf zum Auslösen gibt es nicht, weil der Zeitplan im Worker läuft und ein zweiter Weg dorthin ein zweiter Zustand wäre. Die Karte **Sicherung** in den Einstellungen zeigt Zeitplan, Aufbewahrung, letzte und nächste Sicherung, Dateiname, Größe, Anzahl der Sicherungen und den letzten Fehler.
+
+Ist die Datei nicht erreichbar, antwortet der Endpunkt mit HTTP 200, `available: false` und einem deutschen Klartext - **kein** 503 und **kein** erfundenes Ergebnis. Zeitstempel ohne Zeitzone werden verworfen, statt sie als UTC zu deuten.
+
+Damit das überhaupt etwas liefert, müssen Backend und Worker das Volume `worker-status` teilen. **Das ist im aktuellen Compose-Stand nicht der Fall:** Das Volume hängt nur am Worker, das Backend sieht die Datei also nicht und die Karte zeigt dauerhaft den Klartext. Die nötige Änderung ist ein Mount im Backend-Service:
+
+```yaml
+    volumes:
+      - type: volume
+        source: worker-status
+        target: /var/lib/school-assistant/worker-status
+        read_only: true
+```
+
+`WORKER_STATUS_PATH` ist für das Backend bereits vorhanden und zeigt auf denselben Pfad wie beim Worker.
+
+### Ablageort außerhalb des Containers
+
+`BACKUP_STORAGE_PATH` und `BACKUP_FILE_PREFIX` sind gewöhnliche Konfigurationswerte; im Image ist nichts davon fest verdrahtet. Das ist der Punkt, an dem eine Desktop-Installation andockt: Der Worker sucht `pg_dump` über `BACKUP_PG_DUMP_BINARY`, danach über den PATH und zuletzt unter `/usr/lib/postgresql/<version>/bin/`. Auf Windows genügt also ein Verweis auf die `pg_dump.exe` der mitgelieferten PostgreSQL-Installation, auf macOS einer auf den `PATH` des Startskripts. Am Worker-Code ändert sich dafür nichts.
+
+Was **heute** schon sinnvoll ist und was erst mit einer Desktop-Variante Bedeutung bekommt, ist bewusst getrennt:
+
+| Heute schon umgesetzt | Erst mit der Desktop-Variante |
+| --- | --- |
+| Ablageort aus `BACKUP_STORAGE_PATH`, nicht fest verdrahtet | Ablage unter einem Benutzerdatenverzeichnis je Betriebssystem |
+| Datenbankhost aus `DATABASE_URL`, nie geraten und nie fest auf `localhost` | `localhost` bzw. der eingebettete Datenbankserver als bewusste Wahl |
+| `pg_dump` über Suchpfad statt über einen festen Containerpfad | mitgeliefertes `postgresql-client` neben der eingebetteten Datenbank |
+| Rotation in Tagen, unabhängig vom Ablageort | Abbruch bei zu wenig freiem Speicher, zweiter Datenträger |
+| identischer Zeitplan- und Retention-Code | ein Tray-Eintrag, der den nächsten Termin anzeigt |
+
+Eine Desktop-App, eine Installer-Form und die Wahl zwischen Tauri und Electron sind hier **nicht** enthalten und nicht entschieden.
 
 ## Konfiguration
 
@@ -410,7 +518,7 @@ docker volume rm restore-drill-data
 | `WORKER_POLL_INTERVAL_SECONDS` | `300` | Abstand der DB-Prüfungen |
 | `WORKER_HEARTBEAT_INTERVAL_SECONDS` | `30` | Abstand der Status-Heartbeats |
 | `WORKER_HEALTH_MAX_AGE_SECONDS` | `120` | Maximales Heartbeat-Alter |
-| `WORKER_STATUS_PATH` | `/var/lib/school-assistant/worker-status/worker-status.json` | Statusdatei im eigenen Volume |
+| `WORKER_STATUS_PATH` | `/var/lib/school-assistant/worker-status/worker-status.json` | Statusdatei im eigenen Volume; liest auch das Backend, wenn es das Volume mit teilt |
 | `DOCUMENTS_HOST_PATH` | `./data/documents` | Host-Quelle für Dokumente |
 | `BACKUPS_HOST_PATH` | `./data/backups` | Host-Quelle für Backups |
 | `IMPORTS_HOST_PATH` | `./data/imports` | Host-Quelle für Importe |
@@ -418,8 +526,20 @@ docker volume rm restore-drill-data
 | `INTEGRATION_TIMEOUT_SECONDS` | `10` | Zeitlimit für den Verbindungstest einer Integration (1 bis 120) |
 | `BACKUP_STORAGE_PATH` | `/var/lib/school-assistant/backups` | Stabiles internes Backend-/Worker-Ziel |
 | `IMPORT_STORAGE_PATH` | `/var/lib/school-assistant/imports` | Stabiles internes Backend-/Worker-Ziel |
-| `BACKUP_SCHEDULE` | `0 2 * * *` | Reservierter Zeitplan ohne Runner |
-| `BACKUP_RETENTION_DAYS` | `30` | Reservierte Aufbewahrung ohne Runner |
+
+Backup-Runner (alle Werte wirken nur im Worker):
+
+| Variable | Standardwert | Zweck |
+| --- | --- | --- |
+| `BACKUP_ENABLED` | `true` | Runner abschaltbar, ohne den Container anzuhalten |
+| `BACKUP_SCHEDULE` | `0 2 * * *` | Fünfteiliger Cron-Ausdruck in `SCHOOL_TIMEZONE`, siehe oben. Unverständliche Werte schalten den Runner ab, statt sie zu raten |
+| `BACKUP_RETENTION_DAYS` | `30` | Aufbewahrung in Tagen; `0` lässt genau das neueste Backup stehen |
+| `BACKUP_TICK_SECONDS` | `60` | Wie oft der Runner nach einem fälligen Termin sieht |
+| `BACKUP_CATCHUP_HOURS` | `72` | Wie weit zurück ein versäumter Termin nachgeholt wird |
+| `BACKUP_TIMEOUT_SECONDS` | `1800` | Abbruchgrenze für einen laufenden `pg_dump` |
+| `BACKUP_CONNECT_TIMEOUT_SECONDS` | `10` | Verbindungs-Timeout von `pg_dump` |
+| `BACKUP_FILE_PREFIX` | `school` | Namenspräfix der Dump-Dateien; die Rotation erkennt nur dieses Muster |
+| `BACKUP_PG_DUMP_BINARY` | leer | Pfad zum `pg_dump`, wenn es weder im PATH noch unter `/usr/lib/postgresql` liegt |
 
 ### Reservierte spätere Integrationen
 
@@ -565,7 +685,7 @@ Vom Repository-Root:
 
 ```bash
 python -m unittest discover -s worker/tests -v
-python -m py_compile worker/main.py worker/healthcheck.py
+python -m py_compile worker/main.py worker/healthcheck.py worker/env.py worker/backup.py
 ```
 
 ARM64-Buildcheck des isolierten Worker-Images, manuell auf einem Host mit aktivem buildx und QEMU:
@@ -698,8 +818,8 @@ docker compose down
 - `BACKEND_INTERNAL_URL` ist serverintern und darf nicht mit `NEXT_PUBLIC_` Präfix verwendet werden.
 - `SESSION_COOKIE_SECURE=true` ist für eine Veröffentlichung über HTTPS erforderlich. Der Wert wird nicht aus `APP_ENV=production` abgeleitet, siehe "Betrieb hinter HTTPS".
 - `CORS_ORIGINS` sollte nur tatsächlich benötigte Origin(s) enthalten.
-- Der Worker läuft ohne Root-Rechte, ohne Linux-Capabilities, mit read-only Root-Dateisystem und read-only Datenzugriffen.
-- Automatische Backups, Restore-Tests und Secret-Rotation sind nicht eingerichtet. Die manuellen Abläufe stehen in "Backup und Restore" und "Secret-Rotation"; ausgeführt wurde keiner davon.
+- Der Worker läuft ohne Root-Rechte, ohne Linux-Capabilities, mit read-only Root-Dateisystem und read-only Datenzugriffen auf Dokumente und Importe.
+- Automatische Backups laufen im Worker; **Restore-Tests und Secret-Rotation sind nicht eingerichtet** und ausgeführt wurde keiner der beiden Abläufe. Die Runbooks stehen in "Backup und Restore" und "Secret-Rotation".
 - Eine spätere Veröffentlichung sollte TLS, Reverse-Proxy, Authentifizierung, Cookies, CORS, Rate-Limits, Backups und Log-Schutz gemeinsam prüfen. Die Prüfliste dafür beginnt im Abschnitt "Betrieb hinter HTTPS".
 
 ## Troubleshooting
@@ -738,6 +858,22 @@ docker compose exec worker cat /var/lib/school-assistant/worker-status/worker-st
 
 Prüfen Sie `DATABASE_URL`, den Schreibzugriff auf `worker-status` und ob `WORKER_HEALTH_MAX_AGE_SECONDS` größer als `WORKER_HEARTBEAT_INTERVAL_SECONDS` ist. Nur `running` plus `healthy` und ein frischer Heartbeat werden akzeptiert.
 
+### Backup schlägt fehl
+
+Ein Fehlschlag des Backups macht den Worker **nicht** unhealthy - der Healthcheck wertet nur `status`, `database` und den Heartbeat. Der eigentliche Fehler steht im Block `backup`:
+
+```bash
+docker compose logs worker | grep -i backup
+docker compose exec worker cat /var/lib/school-assistant/worker-status/worker-status.json
+```
+
+Die vier wahrscheinlichsten Ursachen:
+
+- `pg_dump wurde nicht gefunden` - das Image ist ohne `postgresql-client` gebaut worden. `docker compose build worker` behebt das.
+- `Die Sicherung konnte nicht geschrieben werden: Permission denied` - der Backup-Pfad ist im Worker read-only eingebunden. Er muss read/write sein.
+- `pg_dump endete mit Code 1: ...` - die Rolle aus `DATABASE_URL` darf die Datenbank nicht lesen, oder der Host stimmt nicht.
+- Eine Zeile `Der Backup-Runner läuft nicht: ...` im Log nennt den Grund; ein unverständlicher `BACKUP_SCHEDULE` schaltet den Runner ab, statt ihn falsch zu deuten.
+
 ### Port ist belegt
 
 ```bash
@@ -751,3 +887,5 @@ Stoppen Sie den kollidierenden Prozess oder den alten Stack. Die Ports bleiben a
 Ein vollständiges Raspberry-Pi- oder Cloudflare-Deployment ist nicht enthalten. Die Bausteine dafür sind jetzt dokumentiert, aber keiner davon ist eingerichtet oder gelaufen: der Reverse-Proxy und `SESSION_COOKIE_SECURE` im Abschnitt "Betrieb hinter HTTPS", die Rotationsschritte im Abschnitt "Secret-Rotation", Dump und Restore-Übung im Abschnitt "Backup und Restore", der ARM64-Buildcheck als Workflow.
 
 Offen bleibt, was sich in dieser Umgebung nicht prüfen lässt: Ressourcenmessung auf dem Zielgerät, ein durchgelaufener Restore, ein TLS-Handshake und ein Stack auf echter ARM-Hardware. PostgreSQL darf nicht öffentlich oder durch einen Tunnel direkt freigegeben werden.
+
+Für den Backup-Runner kam hinzu: `postgresql-client-15` wurde nie per `apt-get` installiert, es gab keinen laufenden Stack und kein echtes `pg_dump`. Geprüft sind damit nur der Ablauf um das Programm herum (Pipe, Prüfsumme, atomares Umbenennen, Rotation, Nachholen nach einem Neustart) und das strenge Ablehnen unbekannter Zeitpläne. Ob der Paketname in `python:3.12-slim-bookworm` so heißt und ob `pg_dump` dort unter `/usr/bin` oder nur unter `/usr/lib/postgresql/15/bin` liegt, zeigt erst `docker compose build worker`.

@@ -9,6 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import (
     auth,
+    backups,
     calendar,
     dashboard,
     exams,
@@ -122,6 +123,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Noten. Ohne diese Zeile waeren Schnitt, Verlauf, Hochrechnung und die
     # Freigabe fuer den KI-Dienst nicht erreichbar.
     application.include_router(grades.router)
+    # Der Backup-Status. Ohne diese Zeile waere der read-only Endpunkt nicht
+    # erreichbar und die Einstellungen zeigten dauerhaft "nicht verfuegbar".
+    application.include_router(backups.router)
     from app.api import documents, files, integrations
     application.include_router(integrations.router)
     application.include_router(files.router)
