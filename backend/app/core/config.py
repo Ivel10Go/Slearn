@@ -164,6 +164,43 @@ class Settings(BaseSettings):
         ge=0,
         validation_alias=AliasChoices("MODEL_MIN_FREE_BYTES", "model_min_free_bytes"),
     )
+    # Reihenfolge der KI-Wege. **Standard ist lokal zuerst**, und das ist eine
+    # Produktentscheidung, keine Voreinstellung aus Bequemlichkeit: ein lokaler
+    # Server kostet nichts und versendet nichts. Wer es umkehrt, etwa weil der
+    # lokale Weg im Schulnetz zu langsam ist, stellt es hier um - der Weg selbst
+    # ist derselbe, es wird nur andersherum probiert.
+    ai_local_first: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("AI_LOCAL_FIRST", "ai_local_first"),
+    )
+    # Zeitbudget fuer einen lokalen Modelllauf, **wenn er der einzige Weg ist**.
+    # Dann gibt es nichts, wofuer man sich beeilen koennte, und ein 8B-Modell auf
+    # CPU darf sich Zeit nehmen. Bewusst weit ueber
+    # `integration_timeout_seconds` - das ist der *Verbindungs*-test (10 s).
+    ai_local_timeout_seconds: float = Field(
+        default=60.0,
+        gt=0,
+        le=600,
+        validation_alias=AliasChoices("AI_LOCAL_TIMEOUT_SECONDS", "ai_local_timeout_seconds"),
+    )
+    # Dasselbe Budget, aber **kuerzer**, wenn hinter dem lokalen Weg noch ein
+    # Online-Provider wartet. Das ist das gestufte Zurueckfallen: ein lokales
+    # Modell, das in 15 Sekunden nichts liefert, verstellt dem schnelleren Weg
+    # nur die Reihenfolge. Ohne Provider im Rueckgrat gilt der grosse Wert.
+    ai_local_fast_timeout_seconds: float = Field(
+        default=15.0,
+        gt=0,
+        le=600,
+        validation_alias=AliasChoices("AI_LOCAL_FAST_TIMEOUT_SECONDS", "ai_local_fast_timeout_seconds"),
+    )
+    # Zeitbudget fuer eine Generierung beim Online-Provider. Ebenso getrennt vom
+    # Verbindungstest - ein Modelllauf dauert laenger als ein `GET /models`.
+    ai_generate_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        le=600,
+        validation_alias=AliasChoices("AI_GENERATE_TIMEOUT_SECONDS", "ai_generate_timeout_seconds"),
+    )
     # Der Backup-Stand liegt in der Statusdatei des Workers. Das Backend greift
     # nicht auf den Worker zu, sondern liest dieselbe Datei - und das nur, wenn
     # beide das Volume `worker-status` teilen. Der Standardwert ist deshalb

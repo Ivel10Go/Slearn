@@ -32,6 +32,7 @@ import { ExamsSection } from "@/components/manage/exams-section";
 import { HomeworkSection } from "@/components/manage/homework-section";
 import { SpeechControls } from "@/components/speech/speech-controls";
 import { ApiError, askDocuments, completeStudyTask, startStudyTask, stopStudyTask } from "@/lib/api";
+import { describeSource } from "@/lib/ai-runtime";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   formatDate,
@@ -260,13 +261,20 @@ function mergeStudyAction(task: DashboardStudyTask, result: StudyActionResult, a
 /**
  * Die Kopfzeile des Dashboards.
  *
- * Der Satz kommt vom Backend und ist einmal pro Tag vom KI-Provider erzeugt.
- * Steht dort `source: "fallback"`, hat kein Modell geschrieben - der Satz wurde
- * aus den Daten gebaut. Das wird sichtbar gemacht, damit niemand einen
- * Zufallssatz fuer eine KI-Aussage haelt.
+ * Der Satz kommt vom Backend und ist einmal pro Tag von einem KI-Weg erzeugt.
+ * Das Badge sagt, **welcher** Weg das war: ein Server auf diesem Rechner, ein
+ * Online-Dienst oder - bei `fallback` - gar kein Modell, sondern der Satz aus den
+ * Daten. Das wird sichtbar gemacht, damit niemand einen Zufallssatz fuer eine
+ * KI-Aussage haelt.
+ *
+ * Die Herkunft wird ueber `describeSource` beschriftet, damit Dashboard und
+ * Dokumentenfrage **eine** Formulierung teilen. Zwei Stellen, die "Lokales
+ * Modell" und "Von der KI" unabhaengig voneinander erfinden, waeren genau die
+ * zwei Herkunftssysteme, die es nicht geben soll.
  */
 function GreetingHeader({ username }: { username?: string | null }) {
   const { greeting, error, status, refresh, refreshing } = useGreeting();
+  const herkunft = greeting ? describeSource(greeting.source, greeting.model) : null;
 
   return (
     <header id="overview" className={cn(anchorClass, "flex flex-col justify-between gap-4 sm:flex-row sm:items-start")}>
@@ -276,8 +284,8 @@ function GreetingHeader({ username }: { username?: string | null }) {
           Dein Tagesbriefing
         </p>
         {status === "loading" ? (
-          <Skeleton className="h-9 w-full max-w-xl" />
-        ) : status === "error" || !greeting ? (
+          <Skeleton className="h-9 w-full max-xl" />
+        ) : status === "error" || !greeting || !herkunft ? (
           <>
             <h1 className="text-2xl font-extrabold tracking-[-0.03em] sm:text-3xl">
               Willkommen{username ? `, ${username}` : ""}.
@@ -292,11 +300,8 @@ function GreetingHeader({ username }: { username?: string | null }) {
               {greeting.text}
             </h1>
             <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-              <Badge variant={greeting.source === "ai" ? "info" : "secondary"}>
-                {greeting.source === "ai" ? "Von der KI" : "Aus deinen Daten"}
-              </Badge>
-              {greeting.source === "ai" && greeting.model ? <span>{greeting.model}</span> : null}
-              {greeting.source === "ai" && greeting.generatedOn ? (
+              <Badge variant={herkunft.fromModel ? "info" : "secondary"}>{herkunft.text}</Badge>
+              {greeting.generatedOn ? (
                 <>
                   <span className="text-border">·</span>
                   <span>für {formatDate(new Date(`${greeting.generatedOn}T12:00:00`))}</span>
@@ -306,6 +311,7 @@ function GreetingHeader({ username }: { username?: string | null }) {
           </>
         )}
       </div>
+
       <div className="flex shrink-0 items-center gap-2">
         <Button
           type="button"
@@ -459,15 +465,25 @@ function UsageCard({ data }: { data: DashboardData }) {
   );
 }
 
+/**
+ * Die Herkunft einer Dokumenten-Antwort.
+ *
+ * Dieselbe Beschriftung wie im Tagesbriefing (`describeSource`), damit die Frage
+ * "woher kommt das?" an beiden Stellen dieselbe Antwort bekommt. Der einzige
+ * Unterschied ist der Text: hier stammt der Daten-Satz aus den Dokumenten, dort
+ * aus dem Tagesstand.
+ */
 function AnswerBadge({ answer }: { answer: DocumentAnswer }) {
-  if (answer.source === "none") {
-    return <Badge variant="outline">Keine Treffer</Badge>;
+  const herkunft = describeSource(answer.source, answer.model);
+  if (herkunft.fromModel) {
+    return <Badge variant="secondary">{herkunft.text}</Badge>;
   }
-  if (answer.source === "ai") {
-    return <Badge variant="secondary">{answer.model ? `KI-Antwort · ${answer.model}` : "KI-Antwort"}</Badge>;
+  if (answer.source === "none") {
+    return <Badge variant="outline">{herkunft.text}</Badge>;
   }
   return <Badge variant="info">Aus deinen Dokumenten</Badge>;
 }
+
 
 /**
  * Der Hinweis, ob der Notenstand im Prompt stand.

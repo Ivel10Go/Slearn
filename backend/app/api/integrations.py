@@ -88,6 +88,7 @@ def integration_catalog(settings: AppSettings) -> list[dict[str, object]]:
             "label": spec.label,
             "description": spec.description,
             "required_config": list(spec.required_config),
+            "optional_config": list(spec.optional_config),
             "required_one_of": [list(group) for group in spec.required_one_of],
             "required_credentials": list(spec.required_credentials),
             "optional_credentials": list(spec.optional_credentials),

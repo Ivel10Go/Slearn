@@ -16,6 +16,7 @@ from app.services.ai_provider import AiProviderError, probe_ai_provider
 from app.services.caldav import DEFAULT_CALENDAR_PATH, CalDavClient
 from app.services.calendar_sync import CalendarSyncError, CalendarSyncOutcome, IcalAdapter
 from app.services.documents import DocumentSyncOutcome, sync_documents
+from app.services.local_inference import RUNTIME_VALUES, describe_container_trap
 from app.services.timetable_import import (
     DEFAULT_SYNC_WEEKS,
     SyncOutcome,
@@ -38,6 +39,9 @@ class IntegrationSpec:
     label: str
     description: str
     required_config: tuple[str, ...] = ()
+    #: Felder, die man **kann**, aber nicht muss. Sie werden mitgespeichert und
+    #: mitgeschickt, aber nie als "fehlt" gemeldet.
+    optional_config: tuple[str, ...] = ()
     required_credentials: tuple[str, ...] = ()
     optional_credentials: tuple[str, ...] = ()
     #: Gruppen, von denen **mindestens ein** Feld kommen muss. Für Quellen, die
@@ -56,7 +60,7 @@ class IntegrationSpec:
 
     @property
     def config_keys(self) -> tuple[str, ...]:
-        allowed = set(self.required_config)
+        allowed = set(self.required_config) | set(self.optional_config)
         for group in self.required_one_of:
             allowed.update(group)
         return tuple(sorted(allowed))
@@ -72,9 +76,19 @@ INTEGRATION_SPECS: Final[dict[str, IntegrationSpec]] = {
     ),
     "ai_provider": IntegrationSpec(
         kind="ai_provider",
-        label="KI-Provider",
-        description="Lokales Ollama oder ein OpenAI-kompatibler Endpoint für den Assistenten.",
+        label="KI-Server",
+        description=(
+            "Ein OpenAI-kompatibler Server: lokal auf diesem Rechner (Ollama, LM Studio, llama.cpp) "
+            "oder online (OpenAI und Ähnliches). Beide stehen absichtlich in derselben Art - "
+            "eine lokale und eine Online-Verbindung brauchen dieselben Felder und dieselbe Prüfung."
+        ),
         required_config=("base_url", "model"),
+        # `runtime` nennt die Art des Servers und ist **optional**: ein Eintrag
+        # von heute hat es nicht, und die Art wird dann aus der Adresse abgeleitet
+        # (`app/services/local_inference.route_kind`). Ohne dieses Feld gaebe es
+        # fuer lokal und online zwei Arten - und damit zwei Eintraege fuer eine
+        # Verbindung, die sich sonst in keiner Weise unterscheidet.
+        optional_config=("runtime",),
         optional_credentials=("api_key",),
     ),
     "documents": IntegrationSpec(
@@ -174,8 +188,27 @@ def normalize_config(kind: str, config: dict[str, str], storage_root: str) -> di
             # dort genauso wie der Dokumentordner: eine Adresse, die auf
             # beliebige Dateien des Servers zeigt, wäre ein Loch.
             value = _validate_documents_path(value, storage_root)
+        elif kind == "ai_provider" and field == "runtime":
+            value = _validate_runtime(value)
         normalized[field] = value
     return normalized
+
+
+def _validate_runtime(value: str) -> str:
+    """Prueft das optionale Feld ``runtime``.
+
+    Ein unbekannter Wert wird **abgelehnt** und nicht stillschweigend auf ``auto``
+    gesetzt: wer aus einem Tippfehler in der Oberflaeche eine falsche Herkunft
+    macht, sieht die Meldung sofort - ein still korrigiertes Feld waere eine
+    Herkunftsangabe, die niemand nachgeprueft hat. Ein von Hand in die Datenbank
+    geschriebener Wert faellt dagegen ueber ``ai_routing.normalize_runtime`` still
+    auf ``auto`` zurueck, weil dort kein Formular mehr im Weg steht.
+    """
+    cleaned = value.strip().lower().replace("-", "_")
+    if cleaned not in RUNTIME_VALUES:
+        erlaubt = ", ".join(RUNTIME_VALUES)
+        raise IntegrationValidationError(f"runtime must be one of: {erlaubt}. Die Angabe darf auch leer bleiben.")
+    return cleaned
 
 
 def normalize_credentials(kind: str, credentials: dict[str, str]) -> dict[str, str]:
@@ -270,16 +303,24 @@ def check_integration_connection(
         return f"WebUntis ist erreichbar und die Zugangsdaten stimmen ({identity.describe()})."
 
     if kind == "ai_provider":
+        base_url = config.get("base_url", "")
         try:
             models = probe_ai_provider(
-                base_url=config.get("base_url", ""),
+                base_url=base_url,
                 model=config.get("model", ""),
                 api_key=credentials.get("api_key", ""),
                 timeout_seconds=timeout_seconds,
             )
         except AiProviderError as exc:
-            raise IntegrationConnectionError(str(exc)) from exc
-        return f"Der KI-Provider ist erreichbar und {models.describe()}"
+            # Der haeufigste Grund fuer einen nicht erreichbaren **lokalen**
+            # Server ist nicht ein falscher Port, sondern `localhost`: aus dem
+            # Docker-Container zeigt das auf den Container selbst. Der Hinweis
+            # steht deshalb in der Meldung, die die Oberflaeche anzeigt - nicht
+            # in einem Kommentar, den niemand liest, wenn der Knopf rot wird.
+            trap = describe_container_trap(base_url)
+            raise IntegrationConnectionError(f"{exc} {trap}" if trap else str(exc)) from exc
+        return f"Der KI-Server ist erreichbar und {models.describe()}"
+
 
     if kind == "documents":
         return _check_documents_path(config.get("path", ""), document_storage_path)

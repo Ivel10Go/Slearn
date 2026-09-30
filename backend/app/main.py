@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import (
+    ai_runtime,
     auth,
     backups,
     calendar,
@@ -214,6 +215,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # die Oberflaeche wuerde gar nicht erst erfahren, dass der Textmodus der
     # Normalzustand ist.
     application.include_router(speech.router)
+    # Die bekannten lokalen KI-Laufzeiten mit ihren Standardadressen und dem
+    # `host.docker.internal`-Hinweis. Ohne diese Zeile zeigte das Formular fuer
+    # einen KI-Server keine Vorschlaege und keinen Hinweis auf den haeufigsten
+    # Konfigurationsfehler.
+    application.include_router(ai_runtime.router)
     # Benachrichtigungen: die Erinnerungseinstellungen, der oeffentliche
     # VAPID-Schluessel, die Abonnements und der Weg, ueber den die offene Seite
     # ihre Erinnerungen abholt. Ohne diese Zeile waere der ganze Abschnitt

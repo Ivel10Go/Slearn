@@ -14,6 +14,7 @@ from app.core.time import as_utc, resolve_timezone_name, utc_now, zone_or_utc
 from app.db.entities import GreetingCache
 from app.schemas.dashboard import DashboardResponse
 from app.schemas.greeting import GreetingRead
+from app.services import ai_routing
 from app.services import grades as grades_service
 from app.services.dashboard import serialize_dashboard
 from app.services.greeting import greeting_cache_is_fresh, render_greeting
@@ -22,10 +23,18 @@ router = APIRouter(prefix="/api/v1/greeting", tags=["greeting"])
 
 
 def _read(text: str, source: str, model: str | None, generated_at: datetime) -> GreetingRead:
+    """Baut die Antwort - und **normalisiert** die Herkunft.
+
+    Der Normalisierungsschritt ist kein Kosmetik: ``greeting_cache.source`` kann
+    noch ``ai`` enthalten, weil die Zeilen vor dieser Aenderung geschrieben
+    wurden. Ohne den Schritt erschiene ein heute noch gueltiger Cacheeintrag als
+    ``fallback`` - also als Datenluege in genau dem Feld, das Datenluegen verhindern
+    soll.
+    """
     stamp = as_utc(generated_at)
     return GreetingRead(
         text=text,
-        source=source,
+        source=ai_routing.normalize_source(source),
         model=model,
         generated_at=stamp,
         generated_on=stamp.date(),

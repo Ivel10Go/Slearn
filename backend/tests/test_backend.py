@@ -6,7 +6,7 @@ import io
 import json
 import threading
 import wave
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -47,10 +47,12 @@ from app.db.entities import (
 from app.main import create_app
 from app.schemas.auth import UserRead
 from app.services import (
+    ai_routing,
     calendar_consent,
     calendar_feed,
     calendar_sync,
     google_calendar,
+    local_inference,
     model_catalog,
     piper_voices,
     web_push,
@@ -3326,17 +3328,19 @@ def test_greeting_uses_the_provider_when_configured(
 
     def fake_generate(*, base_url: str, model: str, system_prompt: str, user_prompt: str, **kwargs: object) -> str:
         aufrufe.append((system_prompt, user_prompt))
-        return "Herzlich willkommen, heute steht ein gro�er Tag an."
+        return "Herzlich willkommen, heute steht ein großer Tag an."
 
-    monkeypatch.setattr("app.services.greeting.generate_text", fake_generate)
+    monkeypatch.setattr("app.services.ai_routing.generate_text", fake_generate)
 
     body = client.get("/api/v1/greeting").json()
 
-    assert body["source"] == "ai"
-    assert body["text"] == "Herzlich willkommen, heute steht ein gro�er Tag an."
+    assert body["source"] == "provider"
+    assert body["text"] == "Herzlich willkommen, heute steht ein großer Tag an."
     assert body["model"] == "gpt-4o-mini"
     assert len(aufrufe) == 1
+
     assert "Herzlich willkommen" in aufrufe[0][0]
+
     # Der Prompt traegt echte Zahlen aus dem Dashboard, nicht Platzhalter.
     assert "Stunden heute:" in aufrufe[0][1]
 
@@ -3355,7 +3359,7 @@ def test_greeting_is_cached_per_day(
         anzahl[0] += 1
         return f"Satz Nummer {anzahl[0]}."
 
-    monkeypatch.setattr("app.services.greeting.generate_text", fake_generate)
+    monkeypatch.setattr("app.services.ai_routing.generate_text", fake_generate)
 
     erster = client.get("/api/v1/greeting").json()
     zweiter = client.get("/api/v1/greeting").json()
@@ -3377,7 +3381,7 @@ def test_greeting_refresh_forces_a_new_sentence(
         anzahl[0] += 1
         return f"Neu {anzahl[0]}."
 
-    monkeypatch.setattr("app.services.greeting.generate_text", fake_generate)
+    monkeypatch.setattr("app.services.ai_routing.generate_text", fake_generate)
 
     client.get("/api/v1/greeting")
     aktualisiert = client.post("/api/v1/greeting/refresh").json()
@@ -3399,7 +3403,7 @@ def test_greeting_survives_a_failing_provider(
     def kaputt(**kwargs: object) -> str:
         raise AiProviderError("Der KI-Provider ist nicht erreichbar: ConnectError")
 
-    monkeypatch.setattr("app.services.greeting.generate_text", kaputt)
+    monkeypatch.setattr("app.services.ai_routing.generate_text", kaputt)
 
     antwort = client.get("/api/v1/greeting")
 
@@ -3417,7 +3421,7 @@ def test_greeting_strips_markdown_from_the_model(
     _create_ai_provider(client)
 
     monkeypatch.setattr(
-        "app.services.greeting.generate_text",
+        "app.services.ai_routing.generate_text",
         lambda **kwargs: "**Herzlich willkommen.**\n- Mathe um 8:00",
     )
 
@@ -9766,3 +9770,830 @@ def test_der_meldungstext_kommt_aus_der_letzten_zeile() -> None:
 def test_das_programm_entscheidet_ueber_die_meldung() -> None:
     assert speech_service.program_exists("") is False
     assert speech_service.program_exists("gibt-es-nicht-als-programm") is False
+
+
+# --- Lokale KI: Laufzeiten, Fallback-Kette und Herkunft -----------------------
+#
+# **Alle Tests dieser Sektion laufen gegen einen gemockten OpenAI-kompatiblen
+# Server.** In dieser Umgebung gibt es kein llama-server, kein Ollama und kein
+# LM Studio; ein Test, der einen echten braucht, waere kein Test. Gegen einen
+# echten lokalen Server ist deshalb **nichts verifiziert**.
+
+
+class _GemockterServer:
+    """Ein OpenAI-kompatibler Server aus Attrappen.
+
+    Er unterscheidet nur zwei Pfade: ``/models`` und alles andere. Er laedt kein
+    Modell und erzeugt kein Token - er gibt vor, geantwortet zu haben.
+    """
+
+    def __init__(
+        self,
+        *,
+        modelle: tuple[str, ...] = ("llama3.2",),
+        antwort: str = "Hallo.",
+    ) -> None:
+        self.modelle = modelle
+        self.antwort = antwort
+        self.aufrufe: list[str] = []
+
+    def transport(self) -> httpx.BaseTransport:
+        return _ServerTransport(self)
+
+
+class _ServerTransport(httpx.BaseTransport):
+    def __init__(self, server: _GemockterServer) -> None:
+        self.server = server
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        self.server.aufrufe.append(str(request.url))
+        if request.url.path.endswith("/models"):
+            return httpx.Response(200, content=_models_response(*self.server.modelle).content, request=request)
+        return httpx.Response(200, content=_chat_response(self.server.antwort).content, request=request)
+
+
+def _weg(
+    quelle: str,
+    base_url: str,
+    *,
+    model: str = "Auto",
+    api_key: str = "",
+    runtime: str = "auto",
+    identitaet: int = 1,
+    name: str = "Server",
+) -> ai_routing.AiRoute:
+    return ai_routing.AiRoute(
+        source=quelle,
+        runtime=runtime,
+        integration_id=identitaet,
+        name=name,
+        base_url=base_url,
+        model=model,
+        api_key=api_key,
+    )
+
+
+def _erreichbar(server: _GemockterServer) -> Callable[..., local_inference.LocalRuntimeStatus]:
+    """Eine Erreichbarkeitsfrage, die immer 'da' sagt."""
+
+    def probe(**kwargs: object) -> local_inference.LocalRuntimeStatus:
+        return local_inference.LocalRuntimeStatus(
+            reachable=True,
+            ok=True,
+            base_url=str(kwargs.get("base_url", "")),
+            runtime=str(kwargs.get("runtime", "auto")),
+            model_id=server.modelle[0] if server.modelle else None,
+            available=server.modelle,
+            message=f"Der lokale Server antwortet, {len(server.modelle)} Modell verfuegbar.",
+        )
+
+    return probe
+
+
+def _nicht_erreichbar(meldung: str = "Der lokale Server antwortet nicht."):
+    def probe(**kwargs: object) -> local_inference.LocalRuntimeStatus:
+        return local_inference.LocalRuntimeStatus(
+            reachable=False,
+            ok=False,
+            base_url=str(kwargs.get("base_url", "")),
+            runtime=str(kwargs.get("runtime", "auto")),
+            model_id=None,
+            available=(),
+            message=meldung,
+        )
+
+    return probe
+
+
+def _erzeugt(server: _GemockterServer, quelle: str) -> Callable[..., str]:
+    """Ein Erzeuger, der festhält, welcher Weg geantwortet hat."""
+
+    def erzeuge(*_a: object, **kwargs: object) -> str:
+        server.aufrufe.append(quelle)
+        return server.antwort
+
+    return erzeuge
+
+
+def _darf_nicht_erzeugen(*_a: object, **_kw: object) -> str:
+    raise AssertionError("Der lokale Weg darf nach einer erfolglosen Frage nicht erzeugen.")
+
+
+# --- 1. Adressen lesen: lokal oder online ----------------------------------
+
+
+@pytest.mark.parametrize(
+    ("base_url", "lokal"),
+    [
+        ("http://localhost:11434", True),
+        ("http://127.0.0.1:1234", True),
+        ("http://127.0.0.5:1234", True),
+        ("http://host.docker.internal:11434", True),
+        ("http://host.containers.internal:1234", True),
+        ("http://gateway.docker.internal:8080", True),
+        ("http://LM-Studio.local:1234/v1", True),
+        ("http://192.168.10.7:11434", True),
+        ("http://10.1.2.3:1234", True),
+        ("http://172.16.5.5:8080", True),
+        ("http://[fd12:3456::1]:1234", True),
+        ("https://api.openai.com/v1", False),
+        ("https://api.example.com:8443/v1", False),
+    ],
+)
+def test_lokale_adresse_wird_erkannt(base_url: str, lokal: bool) -> None:
+    assert local_inference.is_local_base_url(base_url) is lokal
+
+
+def test_route_ist_lokal_oder_provider() -> None:
+    assert local_inference.route_kind("http://localhost:11434", "auto") == "local"
+    assert local_inference.route_kind("https://api.example.com/v1", "auto") == "provider"
+    # Ein privater Host ist lokal, auch wenn es ein Rechner im LAN ist.
+    assert local_inference.route_kind("http://192.168.178.31:11434", "auto") == "local"
+
+
+def test_runtime_entscheidet_gegen_die_adresse() -> None:
+    """Wer ``runtime`` setzt, gewinnt - sonst waere die Angabe wirkungslos."""
+    assert local_inference.route_kind("http://192.168.178.31:11434", "online") == "provider"
+    assert local_inference.route_kind("https://api.example.com/v1", "llama_cpp") == "local"
+    assert local_inference.route_kind("https://api.example.com/v1", "auto") == "provider"
+
+
+def test_kaputte_oder_leere_adresse_ist_nicht_lokal() -> None:
+    assert local_inference.is_local_base_url("") is False
+    assert local_inference.is_local_base_url("keine-url") is False
+
+
+# --- 2. Der host.docker.internal-Hinweis -------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("base_url", "erwartet"),
+    [
+        ("http://localhost:11434", "http://host.docker.internal:11434"),
+        ("http://127.0.0.1:1234", "http://host.docker.internal:1234"),
+        ("http://localhost:8080/v1", "http://host.docker.internal:8080"),
+    ],
+)
+def test_container_adresse_ersetzt_localhost(base_url: str, erwartet: str) -> None:
+    assert local_inference.docker_host_for(base_url) == erwartet
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        # Bereits richtig: der Host ist ueber die Bruecke benannt.
+        "http://host.docker.internal:11434",
+        # Ein privater Host braucht keine Ersetzung - er ist der Rechner.
+        "http://192.168.10.7:11434",
+        # Ein Online-Anbieter wird nie umgeschrieben.
+        "https://api.example.com/v1",
+        # Ohne Port gibt es nichts zu uebertragen.
+        "http://localhost",
+        "",
+    ],
+)
+def test_container_adresse_braucht_keine_ersetzung(base_url: str) -> None:
+    assert local_inference.docker_host_for(base_url) is None
+    assert local_inference.describe_container_trap(base_url) is None
+
+
+def test_localhost_wird_im_satz_erklaert() -> None:
+    satz = local_inference.describe_container_trap("http://localhost:11434")
+    assert satz is not None
+    assert "Docker" in satz
+    assert "host.docker.internal:11434" in satz
+
+
+def test_verbindungstest_nennt_den_container_fallstrick(
+    app_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Der haeufigste Konfigurationsfehler steht in der Meldung, die man liest."""
+    login(app_client)
+    integration_id = app_client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "ai_provider",
+            "name": "Ollama auf dem Rechner",
+            "config": {"base_url": "http://localhost:11434", "model": "llama3.2"},
+        },
+    ).json()["id"]
+
+    def nicht_erreichbar(**_: object) -> AiProviderModels:
+        raise AiProviderError("Der KI-Provider ist nicht erreichbar: ConnectError")
+
+    monkeypatch.setattr(integrations_service, "probe_ai_provider", nicht_erreichbar)
+
+    body = app_client.post(f"/api/v1/integrations/{integration_id}/test").json()
+
+    assert body["ok"] is False
+    assert "host.docker.internal:11434" in body["message"]
+    assert "Docker" in body["message"]
+
+
+# --- 3. Laufzeiten und Presets ----------------------------------------------
+
+
+def test_presets_kennen_die_drei_lokalen_laufzeiten() -> None:
+    arten = [preset.kind for preset in local_inference.RUNTIME_PRESETS]
+    assert arten == ["ollama", "lm_studio", "llama_cpp"]
+    ports = {preset.kind: preset.port for preset in local_inference.RUNTIME_PRESETS}
+    assert ports == {"ollama": 11434, "lm_studio": 1234, "llama_cpp": 8080}
+
+
+def test_preset_nennt_beide_adressen() -> None:
+    """Im Docker-Stack zaehlt host.docker.internal, nativ 127.0.0.1."""
+    preset = local_inference.runtime_preset("ollama")
+    assert preset is not None
+    assert preset.base_url == "http://host.docker.internal:11434"
+    assert preset.native_base_url == "http://127.0.0.1:11434"
+
+
+def test_auto_ist_keine_laufzeit() -> None:
+    assert local_inference.runtime_preset("auto") is None
+    assert "auto" not in local_inference.LOCAL_RUNTIME_KINDS
+
+
+def test_laufzeit_route_liefert_presets_und_reihenfolge(app_client: TestClient) -> None:
+    login(app_client)
+    body = app_client.get("/api/v1/ai-runtime").json()
+
+    assert body["container_host"] == "host.docker.internal"
+    assert body["local_first"] is True
+    assert [eintrag["kind"] for eintrag in body["runtimes"]] == ["ollama", "lm_studio", "llama_cpp"]
+    assert body["runtimes"][0]["base_url"] == "http://host.docker.internal:11434"
+    assert body["runtimes"][0]["native_base_url"] == "http://127.0.0.1:11434"
+    assert "localhost" in body["container_trap_hint"]
+    assert "ollama" in body["runtime_values"]
+    assert len(body["stages"]) == 3
+
+
+def test_laufzeit_route_braucht_eine_sitzung(app_client: TestClient) -> None:
+    assert app_client.get("/api/v1/ai-runtime").status_code == 401
+
+
+def test_laufzeit_route_fragt_nichts_ab(app_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Die Route liefert Presets, kein Verbindungsversuch - es gibt nichts zu starten."""
+    login(app_client)
+
+    def verboten(**_: object) -> None:
+        raise AssertionError("Die Laufzeit-Route darf keinen Server abfragen.")
+
+    monkeypatch.setattr(local_inference, "probe_local_runtime", verboten)
+    assert app_client.get("/api/v1/ai-runtime").status_code == 200
+
+
+# --- 4. runtime im Formular --------------------------------------------------
+
+
+def test_ai_provider_akzeptiert_ein_optionales_runtime(app_client: TestClient) -> None:
+    login(app_client)
+    created = app_client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "ai_provider",
+            "name": "Ollama",
+            "config": {
+                "base_url": "http://host.docker.internal:11434",
+                "model": "llama3.2",
+                "runtime": "ollama",
+            },
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["config"]["runtime"] == "ollama"
+
+
+def test_ai_provider_lehnt_unbekanntes_runtime_ab(app_client: TestClient) -> None:
+    """Ein Tippfehler wird gemeldet statt stillschweigend zu 'auto'."""
+    login(app_client)
+    created = app_client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "ai_provider",
+            "name": "Tippfehler",
+            "config": {"base_url": "http://host.docker.internal:11434", "model": "x", "runtime": "llamacpp"},
+        },
+    )
+    assert created.status_code == 422
+    assert "runtime" in created.json()["detail"]
+
+
+def test_lokal_und_online_teilen_sich_die_art(app_client: TestClient) -> None:
+    """Eine lokale und eine Online-Verbindung brauchen **keine** zwei Eintraege."""
+    login(app_client)
+    catalog = app_client.get("/api/v1/integrations/catalog").json()
+    mit_runtime = [eintrag["kind"] for eintrag in catalog if "runtime" in eintrag["optional_config"]]
+    assert mit_runtime == ["ai_provider"]
+
+    created = app_client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "ai_provider",
+            "name": "Lokales Modell",
+            "config": {"base_url": "http://host.docker.internal:11434", "model": "Auto"},
+        },
+    )
+    assert created.status_code == 201
+    # Ohne runtime bleibt der Eintrag vollstaendig - das Feld ist optional.
+    assert "runtime" not in created.json()["config"]
+    assert created.json()["missing_fields"] == []
+
+
+def test_unbekanntes_runtime_aus_der_datenbank_wird_zu_auto() -> None:
+    assert ai_routing.normalize_runtime("") == "auto"
+    assert ai_routing.normalize_runtime(None) == "auto"
+    assert ai_routing.normalize_runtime("LLAMA-CPP") == "llama_cpp"
+    assert ai_routing.normalize_runtime("gibtsnicht") == "auto"
+
+
+# --- 5. Reihenfolge der Wege ------------------------------------------------
+
+
+def test_lokaler_weg_gewinnt_gegen_den_online_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lokal zuerst: kostenlos, und die Daten verlassen den Rechner nicht."""
+    server = _GemockterServer(antwort="Vom lokalen Server.")
+    monkeypatch.setattr("app.services.ai_routing.probe_local_runtime", _erreichbar(server))
+    monkeypatch.setattr("app.services.ai_routing.generate_locally", _erzeugt(server, "lokal"))
+    monkeypatch.setattr("app.services.ai_routing.generate_text", _erzeugt(server, "provider"))
+
+    ergebnis = ai_routing.generate_with_routes(
+        (
+            _weg(ai_routing.SOURCE_LOCAL, "http://host.docker.internal:11434", identitaet=9),
+            _weg(ai_routing.SOURCE_PROVIDER, "https://api.example.com/v1", identitaet=2),
+        ),
+        "System",
+        "Frage",
+    )
+
+    assert ergebnis is not None
+    assert ergebnis.source == "local"
+    assert server.aufrufe == ["lokal"]
+
+
+def test_online_provider_nimmt_den_platz_des_gescheiterten_lokalen_wegs(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = _GemockterServer(antwort="Vom Anbieter.")
+    monkeypatch.setattr("app.services.ai_routing.probe_local_runtime", _erreichbar(server))
+    monkeypatch.setattr(
+        "app.services.ai_routing.generate_locally",
+        lambda *a, **kw: (_ for _ in ()).throw(AiProviderError("Zeitüberschreitung bei der Generierung.")),
+    )
+    monkeypatch.setattr("app.services.ai_routing.generate_text", _erzeugt(server, "provider"))
+
+    ergebnis = ai_routing.generate_with_routes(
+        (
+            _weg(ai_routing.SOURCE_LOCAL, "http://host.docker.internal:11434", identitaet=9),
+            _weg(ai_routing.SOURCE_PROVIDER, "https://api.example.com/v1", identitaet=2),
+        ),
+        "System",
+        "Frage",
+    )
+
+    assert ergebnis is not None
+    assert ergebnis.source == "provider"
+    assert server.aufrufe == ["provider"]
+    assert [versuch.source for versuch in ergebnis.attempts] == ["local"]
+
+
+def test_toter_server_kostet_nur_die_billige_frage(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ohne Probe wuerde ein toter Server das ganze Modelllauf-Budget auffressen."""
+    server = _GemockterServer()
+    gefragt: list[float] = []
+
+    def probe(**kwargs: object) -> local_inference.LocalRuntimeStatus:
+        gefragt.append(float(kwargs["timeout_seconds"]))
+        return _nicht_erreichbar()(kwargs)
+
+    monkeypatch.setattr("app.services.ai_routing.probe_local_runtime", probe)
+    monkeypatch.setattr("app.services.ai_routing.generate_locally", _darf_nicht_erzeugen)
+    monkeypatch.setattr("app.services.ai_routing.generate_text", _erzeugt(server, "provider"))
+
+    ergebnis = ai_routing.generate_with_routes(
+        (
+            _weg(ai_routing.SOURCE_LOCAL, "http://host.docker.internal:11434", identitaet=9),
+            _weg(ai_routing.SOURCE_PROVIDER, "https://api.example.com/v1", identitaet=2),
+        ),
+        "System",
+        "Frage",
+        local_fast_timeout=15.0,
+    )
+
+    assert ergebnis is not None
+    assert ergebnis.source == "provider"
+    assert gefragt == [local_inference.LOCAL_PROBE_TIMEOUT_SECONDS]
+
+
+def test_ohne_provider_bekommt_der_lokale_weg_das_volle_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gestuftes Zurueckfallen: allein steht dem lokalen Weg die ganze Zeit zu."""
+    server = _GemockterServer(antwort="Lokal, aber langsam.")
+    budgets: list[float] = []
+
+    def erzeuge(*_a: object, **kwargs: object) -> str:
+        budgets.append(float(kwargs["timeout_seconds"]))
+        return server.antwort
+
+    monkeypatch.setattr("app.services.ai_routing.probe_local_runtime", _erreichbar(server))
+    monkeypatch.setattr("app.services.ai_routing.generate_locally", erzeuge)
+
+    ergebnis = ai_routing.generate_with_routes(
+        (_weg(ai_routing.SOURCE_LOCAL, "http://host.docker.internal:11434", identitaet=9),),
+        "System",
+        "Frage",
+        local_timeout=60.0,
+        local_fast_timeout=15.0,
+    )
+
+    assert ergebnis is not None
+    assert ergebnis.source == "local"
+    assert budgets == [60.0]
+
+
+def test_mit_provider_im_rueckgrat_bleibt_der_lokale_weg_kurz(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = _GemockterServer(antwort="Schnell genug.")
+    budgets: list[float] = []
+
+    def erzeuge(*_a: object, **kwargs: object) -> str:
+        budgets.append(float(kwargs["timeout_seconds"]))
+        return server.antwort
+
+    monkeypatch.setattr("app.services.ai_routing.probe_local_runtime", _erreichbar(server))
+    monkeypatch.setattr("app.services.ai_routing.generate_locally", erzeuge)
+
+    ai_routing.generate_with_routes(
+        (
+            _weg(ai_routing.SOURCE_LOCAL, "http://host.docker.internal:11434", identitaet=9),
+            _weg(ai_routing.SOURCE_PROVIDER, "https://api.example.com/v1", identitaet=2),
+        ),
+        "System",
+        "Frage",
+        local_timeout=60.0,
+        local_fast_timeout=15.0,
+    )
+
+    assert budgets == [15.0]
+
+
+def test_timeout_waehlt_das_kurze_budget_nur_mit_fallback() -> None:
+    assert ai_routing.local_timeout_for(True, alone=60.0, with_fallback=15.0) == 15.0
+    assert ai_routing.local_timeout_for(False, alone=60.0, with_fallback=15.0) == 60.0
+
+
+def test_leere_antwort_ist_schlechter_als_der_daten_satz(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ein leerer Text waere eine Luege in der Form einer KI-Antwort."""
+    monkeypatch.setattr("app.services.ai_routing.probe_local_runtime", _erreichbar(_GemockterServer()))
+    monkeypatch.setattr("app.services.ai_routing.generate_locally", lambda *a, **kw: "   ")
+
+    assert (
+        ai_routing.generate_with_routes(
+            (_weg(ai_routing.SOURCE_LOCAL, "http://host.docker.internal:11434"),),
+            "System",
+            "Frage",
+        )
+        is None
+    )
+
+
+def test_ohne_jeden_weg_wird_nichts_erfunden() -> None:
+    """Leer heisst: der Aufrufer baut aus den Daten. Kein Ersatztext hier."""
+    assert ai_routing.generate_with_routes((), "System", "Frage") is None
+
+
+def test_der_zweite_weg_ueberlebt_auch_einen_fremden_fehler(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nicht nur AiProviderError darf einen Weg abbrechen - ein Fremdfehler auch."""
+    server = _GemockterServer(antwort="Vom Anbieter.")
+
+    def kaputt(**_: object) -> str:
+        raise ValueError("ein Fehler, den es nicht gibt")
+
+    monkeypatch.setattr("app.services.ai_routing.probe_local_runtime", _erreichbar(server))
+    monkeypatch.setattr("app.services.ai_routing.generate_locally", kaputt)
+    monkeypatch.setattr("app.services.ai_routing.generate_text", _erzeugt(server, "provider"))
+
+    ergebnis = ai_routing.generate_with_routes(
+        (
+            _weg(ai_routing.SOURCE_LOCAL, "http://host.docker.internal:11434", identitaet=9),
+            _weg(ai_routing.SOURCE_PROVIDER, "https://api.example.com/v1", identitaet=2),
+        ),
+        "System",
+        "Frage",
+    )
+
+    assert ergebnis is not None
+    assert ergebnis.source == "provider"
+
+
+def test_generate_locally_spricht_das_offene_protokoll(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gegen einen gemockten Server: derselbe Aufruf wie beim Online-Provider.
+
+    Der Test belegt genau eine Sache - ``generate_locally`` landet auf
+    ``POST {base}/v1/chat/completions`` und liest die Antwort wie der
+    Online-Weg. Er belegt **nicht**, dass ein echter ``llama-server`` das tut.
+    """
+    server = _GemockterServer(modelle=("qwen",), antwort="Von llama-server.")
+    client = AiProviderClient("http://host.docker.internal:8080", "qwen", "")
+    client._client = httpx.Client(transport=server.transport(), timeout=5.0)
+
+    # `generate_locally` haelt `generate_text` aus `ai_provider` im eigenen
+    # Namensraum; monkeypatch muss deshalb dort ansetzen, nicht am Ursprung.
+    monkeypatch.setattr(
+        local_inference,
+        "generate_text",
+        lambda **kwargs: client.generate(
+            str(kwargs["system_prompt"]),
+            str(kwargs["user_prompt"]),
+            max_tokens=int(kwargs["max_tokens"]),
+        ),
+    )
+
+    text = local_inference.generate_locally(
+        "System",
+        "Frage",
+        model="qwen",
+        base_url="http://host.docker.internal:8080",
+        timeout_seconds=12.0,
+    )
+
+    assert text == "Von llama-server."
+    assert server.aufrufe == ["http://host.docker.internal:8080/v1/chat/completions"]
+
+
+def test_generate_locally_reicht_den_provider_fehler_durch() -> None:
+    """Wer den Weg entscheidet, muss den Fehler bekommen - nicht der Aufrufer."""
+    with pytest.raises(AiProviderError):
+        local_inference.generate_locally(
+            "System",
+            "Frage",
+            model="qwen",
+            base_url="ftp://kein-server",
+        )
+
+
+# --- 6. Wege aus der Datenbank ----------------------------------------------
+
+
+def test_wege_kommen_lokal_zuerst_aus_der_datenbank(app_context: tuple[TestClient, Session, User]) -> None:
+    """Reihenfolge ist Produktentscheidung: lokal vor Online, unabhaengig von der Id."""
+    _, db, user = app_context
+    settings = Settings(secret_key="test-secret-key", integration_encryption_key="test-integration-encryption-key")
+    key = "test-integration-encryption-key"
+
+    # Der Online-Eintrag bekommt bewusst die **kleinere** Id.
+    online = SyncSource(
+        user_id=user.id,
+        source_type="ai_provider",
+        name="Online",
+        enabled=True,
+        configuration={"base_url": "https://api.example.com/v1", "model": "gpt-4o-mini"},
+        credentials=encrypt_credentials({"api_key": "geheim"}, key),
+    )
+    lokal = SyncSource(
+        user_id=user.id,
+        source_type="ai_provider",
+        name="Ollama",
+        enabled=True,
+        configuration={"base_url": "http://host.docker.internal:11434", "model": "llama3.2", "runtime": "ollama"},
+        credentials=encrypt_credentials({"api_key": "leer"}, key),
+    )
+    db.add_all([online, lokal])
+    db.commit()
+
+    wege = ai_routing.resolve_ai_routes(db, user.id, settings)
+
+    assert [weg.source for weg in wege] == ["local", "provider"]
+    assert wege[0].model == "llama3.2"
+    assert wege[1].api_key == "geheim"
+
+
+def test_deaktivierte_und_leere_wege_werden_uebersprungen(app_context: tuple[TestClient, Session, User]) -> None:
+    _, db, user = app_context
+    settings = Settings(secret_key="test-secret-key", integration_encryption_key="test-integration-encryption-key")
+    key = "test-integration-encryption-key"
+
+    aus = SyncSource(
+        user_id=user.id,
+        source_type="ai_provider",
+        name="Ausgeschaltet",
+        enabled=False,
+        configuration={"base_url": "http://host.docker.internal:11434", "model": "llama3.2"},
+        credentials=encrypt_credentials({"api_key": "leer"}, key),
+    )
+    ohne_adresse = SyncSource(
+        user_id=user.id,
+        source_type="ai_provider",
+        name="Ohne Adresse",
+        enabled=True,
+        configuration={"model": "llama3.2"},
+        credentials=encrypt_credentials({"api_key": "leer"}, key),
+    )
+    db.add_all([aus, ohne_adresse])
+    db.commit()
+
+    assert ai_routing.resolve_ai_routes(db, user.id, settings) == ()
+
+
+def test_ai_local_first_kehrt_die_reihenfolge_um(app_context: tuple[TestClient, Session, User]) -> None:
+    """Wer im Schulnetz einen langsameren lokalen Server hat, dreht die Kette um."""
+    _, db, user = app_context
+    schluessel = "test-integration-encryption-key"
+    db.add_all(
+        [
+            SyncSource(
+                user_id=user.id,
+                source_type="ai_provider",
+                name="Online",
+                enabled=True,
+                configuration={"base_url": "https://api.example.com/v1", "model": "gpt-4o-mini"},
+                credentials=encrypt_credentials({"api_key": "geheim"}, schluessel),
+            ),
+            SyncSource(
+                user_id=user.id,
+                source_type="ai_provider",
+                name="Ollama",
+                enabled=True,
+                configuration={"base_url": "http://host.docker.internal:11434", "model": "llama3.2"},
+                credentials=encrypt_credentials({"api_key": "leer"}, schluessel),
+            ),
+        ]
+    )
+    db.commit()
+
+    lokal_zuerst = Settings(secret_key="test-secret-key", integration_encryption_key=schluessel)
+    online_zuerst = Settings(
+        secret_key="test-secret-key",
+        integration_encryption_key=schluessel,
+        ai_local_first=False,
+    )
+
+    assert [weg.source for weg in ai_routing.resolve_ai_routes(db, user.id, lokal_zuerst)] == ["local", "provider"]
+    assert [weg.source for weg in ai_routing.resolve_ai_routes(db, user.id, online_zuerst)] == ["provider", "local"]
+
+
+def test_lokaler_server_braucht_keinen_api_schluessel(app_context: tuple[TestClient, Session, User]) -> None:
+    """Ollama, LM Studio und llama-server verlangen keinen Schluessel.
+
+    Ein Eintrag ganz ohne hinterlegte Zugangsdaten ist darum ein vollwertiger
+    Weg. Verlangte man hier eine Credential-Zeile, wuerde man genau die
+    Verbindung aussortieren, um die es geht - und niemand faelle auf, weil
+    ``missing_fields`` leer bleibt.
+    """
+    _, db, user = app_context
+    settings = Settings(secret_key="test-secret-key", integration_encryption_key="test-integration-encryption-key")
+    db.add(
+        SyncSource(
+            user_id=user.id,
+            source_type="ai_provider",
+            name="Ollama ohne Schluessel",
+            enabled=True,
+            configuration={"base_url": "http://host.docker.internal:11434", "model": "llama3.2"},
+            credentials=None,
+        )
+    )
+    db.commit()
+
+    wege = ai_routing.resolve_ai_routes(db, user.id, settings)
+
+    assert [weg.name for weg in wege] == ["Ollama ohne Schluessel"]
+    assert wege[0].api_key == ""
+    assert wege[0].source == "local"
+
+
+def test_ohne_schluessel_keine_wege_statt_einer_ausnahme(app_context: tuple[TestClient, Session, User]) -> None:
+    """Ein fehlender INTEGRATION_ENCRYPTION_KEY lahmlegt die KI, nicht das Dashboard."""
+    _, db, user = app_context
+    db.add(
+        SyncSource(
+            user_id=user.id,
+            source_type="ai_provider",
+            name="Ollama",
+            enabled=True,
+            configuration={"base_url": "http://host.docker.internal:11434", "model": "llama3.2"},
+            credentials=encrypt_credentials({"api_key": "leer"}, "anderer-schluessel"),
+        )
+    )
+    db.commit()
+
+    ohne = Settings(secret_key="test-secret-key")
+    assert ai_routing.resolve_ai_routes(db, user.id, ohne) == ()
+
+
+def test_nicht_entschluesselbarer_eintrag_ueberspringt_die_anderen(app_context: tuple[TestClient, Session, User]) -> None:
+    _, db, user = app_context
+    settings = Settings(secret_key="test-secret-key", integration_encryption_key="test-integration-encryption-key")
+    key = "test-integration-encryption-key"
+
+    kaputt = SyncSource(
+        user_id=user.id,
+        source_type="ai_provider",
+        name="Kaputter Schluessel",
+        enabled=True,
+        configuration={"base_url": "http://host.docker.internal:11434", "model": "llama3.2"},
+        credentials=encrypt_credentials({"api_key": "falsch"}, "anderer-schluessel"),
+    )
+    gut = SyncSource(
+        user_id=user.id,
+        source_type="ai_provider",
+        name="Guter Eintrag",
+        enabled=True,
+        configuration={"base_url": "https://api.example.com/v1", "model": "gpt-4o-mini"},
+        credentials=encrypt_credentials({"api_key": "geheim"}, key),
+    )
+    db.add_all([kaputt, gut])
+    db.commit()
+
+    wege = ai_routing.resolve_ai_routes(db, user.id, settings)
+
+    assert [weg.name for weg in wege] == ["Guter Eintrag"]
+
+
+# --- 7. Herkunft im Antwortschema --------------------------------------------
+
+
+def test_alte_herkunft_ai_wird_zu_provider() -> None:
+    """Ein Cacheeintrag von gestern darf nicht als Datenluege erscheinen."""
+    assert ai_routing.normalize_source("ai") == "provider"
+    assert ai_routing.normalize_source("local") == "local"
+    assert ai_routing.normalize_source("provider") == "provider"
+    assert ai_routing.normalize_source("fallback") == "fallback"
+    # Alles Unbekannte wird zur harmlosen Annahme.
+    assert ai_routing.normalize_source("etwas-anderes") == "fallback"
+    assert ai_routing.normalize_source("") == "fallback"
+    assert ai_routing.normalize_source(None) == "fallback"
+
+
+def test_greeting_cache_mit_altem_ai_wird_als_provider_gelesen(app_context: tuple[TestClient, Session, User]) -> None:
+    """Der Normalisierungsschritt sitzt beim Lesen, nicht in einer Migration."""
+    client, db, user = app_context
+    login(client)
+    db.add(
+        GreetingCache(
+            user_id=user.id,
+            sentence="Herzlich willkommen, gestern geschrieben.",
+            source="ai",
+            model="gpt-4o-mini",
+            generated_on=date.today(),
+            generated_at=datetime(2026, 9, 25, 8, 0, tzinfo=timezone.utc),
+        )
+    )
+    db.commit()
+
+    body = client.get("/api/v1/greeting").json()
+
+    assert body["source"] == "provider"
+    assert body["text"] == "Herzlich willkommen, gestern geschrieben."
+
+
+# --- 8. Der lokale Weg als Geminiokte ---------------------------------------
+
+
+def test_lokaler_server_liefert_den_gruesssatz(
+    app_context: tuple[TestClient, Session, User], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ende zu Ende ueber die API - aber gegen einen gemockten Server."""
+    client, _, _ = app_context
+    login(client)
+    created = client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "ai_provider",
+            "name": "llama-server",
+            "config": {
+                "base_url": "http://host.docker.internal:8080",
+                "model": "qwen",
+                "runtime": "llama_cpp",
+            },
+            # Kein `credentials`: ein lokaler Server verlangt keinen Schluessel.
+        },
+    )
+    assert created.status_code == 201
+
+    server = _GemockterServer(modelle=("qwen",), antwort="Herzlich willkommen, der lokale Server antwortet.")
+    monkeypatch.setattr("app.services.ai_routing.probe_local_runtime", _erreichbar(server))
+    monkeypatch.setattr("app.services.ai_routing.generate_locally", _erzeugt(server, "lokal"))
+
+    body = client.get("/api/v1/greeting").json()
+
+    assert body["source"] == "local"
+    assert body["model"] == "qwen"
+    assert body["text"] == "Herzlich willkommen, der lokale Server antwortet."
+
+
+def test_abgestuerzter_lokaler_server_erzeugt_keinen_500(
+    app_context: tuple[TestClient, Session, User], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ein abgestuerzter llama-server ist eine kaputte Fremdverbindung, kein Serverfehler."""
+    client, _, _ = app_context
+    login(client)
+    client.post(
+        "/api/v1/integrations",
+        json={
+            "kind": "ai_provider",
+            "name": "llama-server",
+            "config": {"base_url": "http://host.docker.internal:8080", "model": "qwen", "runtime": "llama_cpp"},
+        },
+    )
+
+    monkeypatch.setattr("app.services.ai_routing.probe_local_runtime", _nicht_erreichbar())
+
+    antwort = client.get("/api/v1/greeting")
+
+    assert antwort.status_code == 200
+    assert antwort.json()["source"] == "fallback"

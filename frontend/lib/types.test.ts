@@ -295,4 +295,16 @@ describe("Dokumente-Parsing", () => {
     expect(result).toMatchObject({ source: "fallback", model: null });
     expect(result.sources).toEqual([]);
   });
+
+  it("behaelt die vier Herkuenfte auseinander", () => {
+    // `local`, `provider`, `fallback` und `none` sind vier verschiedene
+    // Antworten auf vier verschiedene Fragen; `ai` ist der gespeicherte
+    // Altwert von `provider`.
+    const quelle = (source: string) => parseDocumentAnswer({ answer: "A.", source, sources: [] }).source;
+    expect(quelle("local")).toBe("local");
+    expect(quelle("provider")).toBe("provider");
+    expect(quelle("ai")).toBe("provider");
+    expect(quelle("fallback")).toBe("fallback");
+    expect(quelle("none")).toBe("none");
+  });
 });
