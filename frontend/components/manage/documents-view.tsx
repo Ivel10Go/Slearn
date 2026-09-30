@@ -293,7 +293,10 @@ export function DocumentsView() {
 
             {frage.result ? (
               <div className="space-y-3">
-                <AntwortHerkunft antwort={frage.result} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <AntwortHerkunft antwort={frage.result} />
+                  {frage.result.grades_shared ? <Badge variant="info">Noten mitgeschickt</Badge> : <Badge variant="outline">Noten nicht mitgeschickt</Badge>}
+                </div>
                 <p className="border border-border bg-background/60 px-4 py-3 text-sm leading-6">{frage.result.answer}</p>
                 {frage.result.sources.length > 0 ? (
                   <ul className="space-y-2">

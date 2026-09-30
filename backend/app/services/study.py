@@ -23,6 +23,7 @@ from app.schemas.study import (
     StudyTaskRecurrence,
     StudyTaskStatus,
 )
+from app.services import grades as grades_service
 
 # Feste Tagesabstaende. "monthly" fehlt absichtlich: ein Monat ist nicht
 # immer gleich lang, das braucht eine eigene Rechnung.
@@ -295,9 +296,10 @@ def _exam_titles(db: Session, user_id: int, tasks: list[StudyPlanTask]) -> dict[
 def read_tasks(db: Session, user_id: int, tasks: list[StudyPlanTask]) -> list[StudyTaskRead]:
     """Eine Aufgabenliste inklusive Abhaengigkeiten und Klausurnamen lesen.
 
-    Drei Abfragen statt einer je Task: die Abhaengigkeiten brauchen eine
-    Gruppenabfrage, die Klausurtitel eine weitere. Genau das ist der
-    N+1-Fall, der auf dem Dashboard erst mit 60 Aufgaben auffaellt.
+    Vier Abfragen statt einer je Task: die Abhaengigkeiten brauchen eine
+    Gruppenabfrage, die Klausurtitel eine weitere, die Fachschnitte eine dritte.
+    Genau das ist der N+1-Fall, der auf dem Dashboard erst mit 60 Aufgaben
+    auffaellt.
     """
     if not tasks:
         return []
@@ -305,6 +307,7 @@ def read_tasks(db: Session, user_id: int, tasks: list[StudyPlanTask]) -> list[St
     blocked_by = open_prerequisites_by_task(db, user_id, ids)
     blocking = blocking_task_ids(db, user_id, ids)
     titles = _exam_titles(db, user_id, tasks)
+    schnitte = _subject_averages(db, user_id, tasks)
     reads: list[StudyTaskRead] = []
     for task in tasks:
         subject = task.topic.subject if task.topic else None
@@ -340,9 +343,22 @@ def read_tasks(db: Session, user_id: int, tasks: list[StudyPlanTask]) -> list[St
                     for prerequisite in blocked_by.get(task.id, [])
                 ],
                 blocking_task_ids=blocking.get(task.id, []),
+                subject_average=schnitte.get(subject.id) if subject is not None else None,
+                subject_passed=grades_service.is_passing(schnitte.get(subject.id)) if subject is not None else None,
             )
         )
     return reads
+
+
+def _subject_averages(db: Session, user_id: int, tasks: list[StudyPlanTask]) -> dict[int, float]:
+    """Die Fachschnitte aller Faecher, die in dieser Aufgabenliste vorkommen.
+
+    Eine Aufgabe ohne Thema hat auch kein Fach und damit keinen Schnitt: nicht
+    0,0, sondern gar nichts. Eine 0,0 waere eine schlechte Note, und das ist
+    eine andere Aussage.
+    """
+    fach_ids = {task.topic.subject_id for task in tasks if task.topic is not None and task.topic.subject_id is not None}
+    return grades_service.subject_averages(db, user_id, {fach_id for fach_id in fach_ids if fach_id is not None})
 
 
 def exam_topics(db: Session, user_id: int, subject_id: int | None) -> list[Topic]:
@@ -378,6 +394,40 @@ def topic_priority(confidence: float) -> int:
     """
     bounded = min(1.0, max(0.0, confidence))
     return max(0, min(4, round((1.0 - bounded) * 4)))
+
+
+def exam_priority(confidence: float, subject_average: float | None) -> int:
+    """Die Prioritaet einer erzeugten Aufgabe aus **beiden** Quellen.
+
+    Die Aufloesung des Konflikts zwischen "niedrige Konfidenz" und "schlechte
+    Note" - sie steht hier, weil sie an dieser Stelle faellt:
+
+    * **Die Reihenfolge bleibt die Konfidenz.** Eine Note ist ein *Fachschnitt*:
+      "Geschichte 4,4" sagt nichts darueber, ob das Thema Bundeswehr oder
+      Industrialisierung schwach ist. Beide Themen einer Klausur bekommen exakt
+      dieselbe Note, also kann sie in dieser Liste nichts unterscheiden. Sie
+      einzumischen, wuerde eine Genauigkeit vortaeuschen, die in den Daten nicht
+      steht - und die Liste stuende nach Klassen sortiert, nicht nach Bedarf.
+      Die Reihenfolge ist damit weiterhin *total* und stabil, was beim Verketten
+      der Aufgaben Voraussetzung ist.
+    * **Die Prioritaet nimmt den groesseren der beiden Werte.** Die Spalte
+      sortiert absteigend, sie ist das, was auf dem Dashboard oben steht. Beide
+      Signale meinen dasselbe - "hier musst du hin" - nur aus unterschiedlicher
+      Sicht: die Konfidenz sagt "du traust dich nicht", der Schnitt sagt "hier
+      verlierst du Punkte". Keines davon macht das andere gegenstandslos. Der
+      hoehere Wert gewinnt, damit ein Thema, das sich sicher anfuehlt und in
+      einem durchgefallenen Fach liegt, nicht still nach hinten rutscht: das
+      waere genau der Fehler, den man mit "Prioritaet haengt am Notenstand"
+      verhindern will.
+    * **Ohne Noten bleibt alles wie vorher.** ``None`` ergibt 0, und
+      ``max(0, konfidenz)`` ist der alte Wert. Ein frisches Fach verhaelt sich
+      also exakt wie vor dieser Erweiterung.
+
+    Beide Quellen sind monoton: ein schlechterer Schnitt erhoeht die Prioritaet
+    und eine niedrigere Konfidenz ebenso, und ein zweiter Lauf mit denselben
+    Zahlen erzeugt wieder dieselben Werte. Deshalb kann die Liste nicht springen.
+    """
+    return max(topic_priority(confidence), grades_service.grade_priority(subject_average))
 
 
 def plan_day_starts(
@@ -432,6 +482,11 @@ def generate_exam_tasks(
     Themen. Uebersprungen wird ein Thema, wenn im selben Plan fuer dieselbe
     Klausur und dasselbe Thema schon eine offene Aufgabe haengt - sonst
     waere ein zweiter Klick auf "Aufgaben erzeugen" eine Duplikatserie.
+
+    Die Prioritaet kommt aus Konfidenz **und** Notenstand, aufgeloest in
+    ``exam_priority``. Die Reihenfolge der Themen bleibt die Konfidenzreihenfolge
+    von ``exam_topics``; dort steht auch, warum eine Note sie nicht umsortieren
+    kann.
     """
     topics = exam_topics(db, user_id, exam.subject_id)
     if not topics:
@@ -457,10 +512,15 @@ def generate_exam_tasks(
     days = plan_day_starts(zone, exam.date, lead_days, len(pending), scheduled_hour)
     end_of_day = time(hour=23, minute=59)
     order_index = next_order_index(db, plan.id)
+    # Eine Abfrage fuer den Schnitt des Klausurfachs, nicht eine je Thema: alle
+    # Themen einer Klausur teilen sich das Fach und damit auch den Schnitt.
+    fachschnitt = grades_service.subject_averages(db, user_id, {exam.subject_id} if exam.subject_id is not None else set())
+    durchschnitt = fachschnitt.get(exam.subject_id) if exam.subject_id is not None else None
     created: list[StudyPlanTask] = []
     previous: StudyPlanTask | None = None
     for offset, (topic, scheduled_for) in enumerate(zip(pending, days, strict=True)):
         progress = topic.progress
+        konfidenz = float(progress.confidence) if progress is not None else 0.0
         task = StudyPlanTask(
             user_id=user_id,
             study_plan_id=plan.id,
@@ -474,7 +534,7 @@ def generate_exam_tasks(
             # erst am Klausurtag. `end_of_day` haengt an denselben Tag, weil
             # `scheduled_for` bereits in die Ortszeit des Nutzers zeigt.
             due_date=as_utc(datetime.combine(scheduled_for.astimezone(zone).date(), end_of_day, tzinfo=zone)),
-            priority=topic_priority(float(progress.confidence) if progress is not None else 0.0),
+            priority=exam_priority(konfidenz, durchschnitt),
             status="pending",
             order_index=order_index + offset,
         )

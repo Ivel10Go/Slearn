@@ -1,8 +1,8 @@
 "use client";
 
 import { getDemoDashboard, getDemoScheduleRange, isDemoFallbackEnabled } from "./demo";
-import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type CalendarEvent, type DashboardData, type DocumentAnswer, type DocumentRecord, type DocumentSearchResult, type Exam, type FileUploadResult, type Greeting, type Homework, type ScheduleRange, type StudySessionRecord, type StudyTask, type StudyTaskState, type Subject, type SubjectOption } from "./types";
-import { collectSubjectNames, parseCalendarEventArray, parseCalendarEventRead, parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseExamArray, parseExamRead, parseExamTaskPlanResult, parseFileUploadResponse, parseHomeworkArray, parseHomeworkRead, parseIntegrationArray, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseLearningInsights, parseStudyDependencyArray, parseStudyDependencyRead, parseStudyPlanArray, parseStudyPlanRead, parseStudySeriesArray, parseStudySeriesRead, parseStudySessionRead, parseStudyTaskArray, parseStudyTaskRead, parseSubjectArray, parseSubjectRead, parseTopicProgressArray, parseTopicProgressRead, parseUserResponse, parseUserSession, parseWeeklyGoalRead } from "./schemas";
+import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type CalendarEvent, type DashboardData, type DocumentAnswer, type DocumentRecord, type DocumentSearchResult, type Exam, type FileUploadResult, type Grade, type GradeImportPreview, type GradeImportResult, type GradeKind, type GradeSharing, type GradeSummary, type Greeting, type Homework, type ScheduleRange, type StudySessionRecord, type StudyTask, type StudyTaskState, type Subject, type SubjectOption } from "./types";
+import { collectSubjectNames, parseCalendarEventArray, parseCalendarEventRead, parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseExamArray, parseExamRead, parseExamTaskPlanResult, parseFileUploadResponse, parseGradeArray, parseGradeImportPreview, parseGradeImportResult, parseGradeRead, parseGradeSharing, parseGradeSummary, parseHomeworkArray, parseHomeworkRead, parseIntegrationArray, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseLearningInsights, parseStudyDependencyArray, parseStudyDependencyRead, parseStudyPlanArray, parseStudyPlanRead, parseStudySeriesArray, parseStudySeriesRead, parseStudySessionRead, parseStudyTaskArray, parseStudyTaskRead, parseSubjectArray, parseSubjectRead, parseTopicProgressArray, parseTopicProgressRead, parseUserResponse, parseUserSession, parseWeeklyGoalRead } from "./schemas";
 import type { ExamTaskPlanResult, IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult, LearningInsights, StudyPlan, StudyTaskDependency, StudyTaskOrder, StudyTaskSeries, StudyTaskSeriesInput, TopicProgress, WeeklyGoal } from "./types";
 
 const API_PREFIX = "/api/backend";
@@ -825,6 +825,144 @@ export async function setWeeklyGoal(goalMinutes: number): Promise<WeeklyGoal> {
     body: JSON.stringify({ goal_minutes: goalMinutes }),
   });
   return parseWeeklyGoalRead(payload);
+}
+
+/* ------------------------------------------------------------------- Noten */
+
+export interface GradeWrite {
+  subject_id: number;
+  grade_value: number;
+  kind?: GradeKind;
+  weight?: number;
+  graded_on: string;
+  comment?: string | null;
+}
+
+export interface GradeChanges {
+  subject_id?: number | null;
+  grade_value?: number;
+  kind?: GradeKind;
+  weight?: number;
+  graded_on?: string;
+  comment?: string | null;
+}
+
+/**
+ * Die Noten des Nutzers, neueste zuerst.
+ *
+ * Ohne Demo-Fallback: eine erfundene Notenliste waere an ihren Zahlen nicht als
+ * solche erkennbar, und ein Schnitt aus erfundenen Noten ist eine erfundene
+ * Aussage ueber die eigene Leistung.
+ */
+export async function getGrades(filter: { subjectId?: number; limit?: number } = {}): Promise<Grade[]> {
+  return parseGradeArray(
+    await apiRequest(collectionPath("/v1/grades", { subject_id: filter.subjectId, limit: filter.limit })),
+  );
+}
+
+export async function createGrade(input: GradeWrite): Promise<Grade> {
+  assertId(input.subject_id, "Das Fach");
+  const payload = await apiRequest("/v1/grades", { method: "POST", body: JSON.stringify(compact(input)) });
+  return parseGradeRead(payload);
+}
+
+export async function updateGrade(gradeId: number, changes: GradeChanges): Promise<Grade> {
+  assertId(gradeId, "Die Note");
+  const payload = await apiRequest(resourcePath("grades", gradeId), {
+    method: "PATCH",
+    body: JSON.stringify(compact(changes)),
+  });
+  return parseGradeRead(payload);
+}
+
+export async function deleteGrade(gradeId: number): Promise<void> {
+  assertId(gradeId, "Die Note");
+  await apiRequest(resourcePath("grades", gradeId), { method: "DELETE" });
+}
+
+/**
+ * Schnitt, Verlauf und Hochrechnung in einem Aufruf.
+ *
+ * `projectedWeight` ist die Gewichtung, die noch aussteht - eine Angabe der
+ * Lernenden, keine gespeicherte Groesse. Ohne sie bleibt die Hochrechnung leer,
+ * und die Karte zeigt den Rueckblick.
+ */
+export async function getGradeSummary(filter: { subjectId?: number; projectedWeight?: number } = {}): Promise<GradeSummary> {
+  return parseGradeSummary(
+    await apiRequest(
+      collectionPath("/v1/grades/summary", { subject_id: filter.subjectId, projected_weight: filter.projectedWeight }),
+    ),
+  );
+}
+
+/** Ob Noten den KI-Dienst erreichen duerfen. `false` ist der Normalfall. */
+export async function getGradeSharing(): Promise<GradeSharing> {
+  return parseGradeSharing(await apiRequest("/v1/grades/sharing"));
+}
+
+/** Die Zustimmung setzen oder zuruecknehmen. */
+export async function setGradeSharing(enabled: boolean): Promise<GradeSharing> {
+  return parseGradeSharing(
+    await apiRequest("/v1/grades/sharing", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  );
+}
+
+/**
+ * Die Fundstellen eines Dokuments, **ohne** etwas anzulegen.
+ *
+ * `subjectId` ist das Vorgabefach fuer Zeilen, in denen kein Fachname steht.
+ */
+export async function previewGradeImport(input: {
+  documentId: number;
+  subjectId?: number;
+  defaultKind?: GradeKind;
+  defaultWeight?: number;
+  defaultDate?: string;
+}): Promise<GradeImportPreview> {
+  assertId(input.documentId, "Das Dokument");
+  return parseGradeImportPreview(
+    await apiRequest(
+      collectionPath("/v1/grades/import", {
+        document_id: input.documentId,
+        subject_id: input.subjectId,
+        default_kind: input.defaultKind,
+        default_weight: input.defaultWeight,
+        default_date: input.defaultDate,
+      }),
+    ),
+  );
+}
+
+/**
+ * Die bestaetigten Zeilen als Noten anlegen.
+ *
+ * Nur die Schluessel: der Server liest Note, Art, Datum und Fach selbst aus dem
+ * Dokument, damit die Oberflaeche keine Note erfinden kann, die in keiner
+ * Zeile steht.
+ */
+export async function importGrades(input: {
+  documentId: number;
+  keys: string[];
+  subjectId?: number;
+  defaultKind?: GradeKind;
+  defaultWeight?: number;
+  defaultDate?: string;
+}): Promise<GradeImportResult> {
+  assertId(input.documentId, "Das Dokument");
+  const payload = await apiRequest("/v1/grades/import", {
+    method: "POST",
+    body: JSON.stringify(
+      compact({
+        document_id: input.documentId,
+        keys: input.keys,
+        subject_id: input.subjectId,
+        default_kind: input.defaultKind,
+        default_weight: input.defaultWeight,
+        default_date: input.defaultDate,
+      }),
+    ),
+  });
+  return parseGradeImportResult(payload);
 }
 
 /* ------------------------------------------------------------------- Dateien */

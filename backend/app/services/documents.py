@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -119,6 +120,10 @@ class QuestionAnswer:
     source: str
     sources: list[DocumentSource]
     model: str | None = None
+    # True nur, wenn der Notenstand wirklich im Prompt stand. Die Oberflaeche
+    # zeigt das an, damit niemand eine Antwort auf "wie stehe ich in Mathe?"
+    # fuer eine Kenntnis haelt, die gar nicht geschickt wurde.
+    grades_shared: bool = False
 
 
 def is_supported(path: Path) -> bool:
@@ -533,11 +538,23 @@ _SYSTEM_PROMPT: str = (
 )
 
 
-def build_rag_prompt(question: str, hits: list[SearchHit]) -> str:
+def build_rag_prompt(question: str, hits: list[SearchHit], grade_context: Sequence[str] | None = None) -> str:
+    """Der Prompt: die Frage, die Auszuege, und - nur bei Freigabe - der Notenstand.
+
+    Der Notenblock kommt **am Ende** und heisst ausdruecklich, dass er eine
+    Zusatzangabe ist. Ohne Freigabe ist ``grade_context`` leer bzw. ``None``,
+    und dann steht im Prompt kein Wort von Noten - es gibt keinen Pfad, auf dem
+    sie hier durchrutschen.
+    """
     zeilen = [f"Frage: {question}", "", "Dokumentauszüge:"]
     for index, hit in enumerate(hits, start=1):
         zeilen.append(f"--- Auszug {index}: {hit.filename} (Abschnitt {hit.chunk_index + 1}) ---")
         zeilen.append(hit.content)
+    if grade_context:
+        zeilen.append("")
+        zeilen.append("--- Notenstand (Zusatzangabe, weil die Freigabe erteilt wurde) ---")
+        zeilen.extend(grade_context)
+        zeilen.append("Nutze diese Zahlen nur, wenn die Frage ausdruecklich danach fragt.")
     return "\n".join(zeilen)
 
 
@@ -547,11 +564,18 @@ def answer_question(
     settings: Settings,
     question: str,
     limit: int = 5,
+    grade_context: Sequence[str] | None = None,
 ) -> QuestionAnswer:
     """Beantwortet eine Frage anhand der eigenen Dokumente.
 
     ``source`` unterscheidet dreiwertig: ``ai`` hinter einem echten Modell, ``fallback``
     aus den Daten (kein Provider oder Modellfehler) und ``none`` ohne jeden Treffer.
+
+    ``grade_context`` ist die **einzige** Stelle, an der Noten in einen
+    Provider gelangen. Sie kommt von ``app.api.documents`` und ist dort nur
+    gefuellt, wenn die Lernende die Freigabe gesetzt hat - deshalb steht hier
+    kein eigener Schalter, sondern nur ein Parameter: wer die Liste nicht
+    uebergibt, kann keine Noten mitschicken.
     """
     hits = search_chunks(db, user_id, settings, question, limit=limit)
     quellen = [hit.source() for hit in hits]
@@ -560,6 +584,7 @@ def answer_question(
             answer="In deinen Dokumenten wurde nichts Passendes gefunden.",
             source="none",
             sources=[],
+            grades_shared=bool(grade_context),
         )
 
     def _fallback() -> QuestionAnswer:
@@ -571,6 +596,7 @@ def answer_question(
             ),
             source="fallback",
             sources=quellen,
+            grades_shared=bool(grade_context),
         )
 
     provider = _load_provider(db, user_id, settings)
@@ -581,11 +607,17 @@ def answer_question(
             base_url=provider.base_url,
             model=provider.model,
             system_prompt=_SYSTEM_PROMPT,
-            user_prompt=build_rag_prompt(question, hits),
+            user_prompt=build_rag_prompt(question, hits, grade_context),
             api_key=provider.api_key,
             max_tokens=_MAX_ANSWER_TOKENS,
         )
     except AiProviderError as exc:
         logger.warning("Dokumenten-Antwort konnte nicht erzeugt werden: %s", exc)
         return _fallback()
-    return QuestionAnswer(answer=text, source="ai", sources=quellen, model=provider.model)
+    return QuestionAnswer(
+        answer=text,
+        source="ai",
+        sources=quellen,
+        model=provider.model,
+        grades_shared=bool(grade_context),
+    )

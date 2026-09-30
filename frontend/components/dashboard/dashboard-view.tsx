@@ -43,6 +43,7 @@ import { useNow } from "@/lib/use-now";
 import { useGreeting } from "@/lib/use-greeting";
 import { isDemoTaskId, type DashboardData, type DashboardLesson, type DashboardStudyTask, type DocumentAnswer, type LessonState, type StudyActionResult, type StudyTaskStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { GradesCard } from "./grades-card";
 import { ProgressCard } from "./progress-card";
 import { ScheduleCard } from "./schedule-view";
 
@@ -466,6 +467,22 @@ function AnswerBadge({ answer }: { answer: DocumentAnswer }) {
   return <Badge variant="info">Aus deinen Dokumenten</Badge>;
 }
 
+/**
+ * Der Hinweis, ob der Notenstand im Prompt stand.
+ *
+ * Die Frage ist eine andere als die nach dem Modell: eine Lernende, die nach
+ * ihrer Note fragt, muss erfahren koennen, ob das Modell ihre Note überhaupt
+ * gesehen hat. Bejaht heisst es erst nach einer ausdruecklichen Freigabe, und
+ * die steht in der Notenkarte.
+ */
+function NotenHinweis({ gradesShared }: { gradesShared: boolean }) {
+  return gradesShared ? (
+    <Badge variant="info">Noten mitgeschickt</Badge>
+  ) : (
+    <Badge variant="outline">Noten nicht mitgeschickt</Badge>
+  );
+}
+
 function AssistantCard() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<DocumentAnswer | null>(null);
@@ -538,6 +555,10 @@ function AssistantCard() {
 
         {answer ? (
           <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <AnswerBadge answer={answer} />
+              <NotenHinweis gradesShared={answer.grades_shared} />
+            </div>
             <p className="rounded-2xl border border-border bg-background/60 px-4 py-3 text-sm leading-6">{answer.answer}</p>
             {answer.sources.length > 0 ? (
               <ul className="space-y-2">
@@ -656,6 +677,15 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
         <div className="space-y-6">
           <StudyTasksCard tasks={data.studyTasks} onLernzeitGeaendert={() => setLernzeitKey((zaehler) => zaehler + 1)} />
           <ProgressCard refreshKey={lernzeitKey} />
+          {/*
+            Die Notenkarte steht neben der Fortschrittskarte, nicht unter
+            `/lernen`: Schnitt, Verlauf und Hochrechnung beantworten die Frage
+            "wie stehe ich?", und das ist eine Frage des Tagesueberblicks. Sie
+            laedt selbst und teilt sich keinen Zustand mit den Karten daneben -
+            eine Notenliste, die eine Aenderung in einer anderen Karte erst
+            bemerkt, waere ein dritter Weg in dieselbe Sache.
+          */}
+          <GradesCard />
           <ExamsSection reference={reference} />
           <HomeworkSection reference={reference} />
         </div>

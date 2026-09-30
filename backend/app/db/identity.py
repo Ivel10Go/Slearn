@@ -22,7 +22,7 @@ from app.core.time import utc_now
 from .base import Base
 
 if TYPE_CHECKING:
-    from .academic import CalendarEvent, Exam, Homework, Lesson
+    from .academic import CalendarEvent, Exam, Grade, Homework, Lesson
     from .content import Document, LearningProgress, Topic
     from .planning import StudyPlan, StudyPlanTask, StudySession, StudyTaskSeries
     from .quiz import Quiz, QuizAnswer, QuizAttempt
@@ -59,6 +59,7 @@ class User(Base):
     lessons: Mapped[list[Lesson]] = relationship(back_populates="user", cascade="all, delete-orphan")
     homeworks: Mapped[list[Homework]] = relationship(back_populates="user", cascade="all, delete-orphan")
     exams: Mapped[list[Exam]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    grades: Mapped[list[Grade]] = relationship(back_populates="user", cascade="all, delete-orphan")
     sync_sources: Mapped[list[SyncSource]] = relationship(back_populates="user", cascade="all, delete-orphan")
     calendar_events: Mapped[list[CalendarEvent]] = relationship(back_populates="user", cascade="all, delete-orphan")
     documents: Mapped[list[Document]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -174,6 +175,7 @@ class Subject(Base):
     lessons: Mapped[list[Lesson]] = relationship(back_populates="subject")
     homeworks: Mapped[list[Homework]] = relationship(back_populates="subject")
     exams: Mapped[list[Exam]] = relationship(back_populates="subject")
+    grades: Mapped[list[Grade]] = relationship(back_populates="subject")
     documents: Mapped[list[Document]] = relationship(back_populates="subject")
     topics: Mapped[list[Topic]] = relationship(back_populates="subject")
     quizzes: Mapped[list[Quiz]] = relationship(back_populates="subject")

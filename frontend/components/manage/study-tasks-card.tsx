@@ -23,6 +23,7 @@ import {
 } from "@/lib/api";
 import { toDateTimeLocal, toUtcIso } from "@/lib/datetime";
 import { formatDateTime, formatDuration } from "@/lib/format";
+import { bestandenLabel, notenText } from "@/lib/grades";
 import { useCollection } from "@/lib/use-collection";
 import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
@@ -504,6 +505,22 @@ function AufgabenZeile({
             <p className={cn("truncate text-sm font-extrabold", erledigt && "text-muted-foreground line-through")}>{aufgabe.title}</p>
             <Badge variant={zustandsVariante(aufgabe.status)}>{ZUSTANDS_LABEL[aufgabe.status]}</Badge>
             {aufgabe.priority > 0 ? <Badge variant="warning">Priorität {aufgabe.priority}</Badge> : null}
+            {/*
+              Der Fachschnitt steht neben der Prioritaet, weil er einer der
+              Gruende dafuer sein kann. Eine Prioritaet ohne Herkunft ist eine
+              Zahl, die niemand nachfragen kann - mit diesem Hinweis kann man es.
+              `null` heisst "zu diesem Fach gibt es keine Noten", nicht 0,0.
+            */}
+            {aufgabe.subject_average !== null ? (
+              <span
+                className={cn(
+                  "text-[11px] font-bold text-muted-foreground",
+                  aufgabe.subject_passed === false && "underline underline-offset-4",
+                )}
+              >
+                Schnitt {notenText(aufgabe.subject_average)} · {bestandenLabel(aufgabe.subject_passed === true)}
+              </span>
+            ) : null}
           </div>
 
           {aufgabe.subject_name || aufgabe.topic_name || aufgabe.exam_title ? (

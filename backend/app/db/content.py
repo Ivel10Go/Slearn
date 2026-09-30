@@ -28,6 +28,7 @@ from .base import Base
 from .identity import Subject, SyncSource, User
 
 if TYPE_CHECKING:
+    from .academic import Grade
     from .planning import StudyPlanTask, StudyTaskSeries
     from .quiz import Quiz, QuizQuestion
 
@@ -65,6 +66,9 @@ class Document(Base):
     user: Mapped[User] = relationship(back_populates="documents")
     subject: Mapped[Subject | None] = relationship(back_populates="documents")
     sync_source: Mapped[SyncSource | None] = relationship(back_populates="documents")
+    # Noten, die aus diesem Dokument uebernommen wurden. Beim Loeschen des
+    # Dokuments faellt nur der Verweis weg, nicht die Note.
+    grades: Mapped[list[Grade]] = relationship(back_populates="document")
     topics: Mapped[list[Topic]] = relationship(secondary="topic_documents", back_populates="documents")
     chunks: Mapped[list[DocumentChunk]] = relationship(back_populates="document", cascade="all, delete-orphan")
 

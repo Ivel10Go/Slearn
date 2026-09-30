@@ -1,4 +1,4 @@
-from .academic import CalendarEvent, Exam, Homework, Lesson
+from .academic import CalendarEvent, Exam, Grade, Homework, Lesson
 from .base import Base
 from .content import Document, DocumentChunk, GreetingCache, LearningProgress, Topic, TopicDocument
 from .identity import Room, Subject, SyncSource, Teacher, User, UserSettings
@@ -12,6 +12,7 @@ __all__ = [
     "DocumentChunk",
     "Exam",
     "GreetingCache",
+    "Grade",
     "Homework",
     "LearningProgress",
     "Lesson",
