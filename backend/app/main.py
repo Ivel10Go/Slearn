@@ -22,6 +22,7 @@ from app.api import (
 local_models,
     notifications,
     progress,
+    speech,
     study,
     subjects,
 )
@@ -34,6 +35,7 @@ from app.services.demo_seed import seed_demo_data_and_commit
 from app.services.integration_scheduler import IntegrationSyncScheduler
 from app.services.model_downloads import ModelDownloadManager
 from app.services.notification_scheduler import ReminderScheduler
+from app.services.speech import PiperSynthesizer, SpeechService, WhisperTranscriber
 
 logger = logging.getLogger("school_assistant")
 
@@ -134,10 +136,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # beim Bauen keinen Dateizugriff, und die Endpunkte brauchen ihn auch dann,
     # wenn der Lifespan noch nicht gelaufen ist (etwa in einem Test ohne
     # TestClient). `application.state.model_downloads` gibt es deshalb immer.
-    application.state.model_downloads = ModelDownloadManager(
+    downloads = ModelDownloadManager(
         Path(active_settings.model_storage_path),
         timeout_seconds=active_settings.model_download_timeout_seconds,
         min_free_bytes=active_settings.model_min_free_bytes,
+    )
+    application.state.model_downloads = downloads
+    # Der Sprachdienst **immer**, auch ohne Modell und ohne Laufzeit. Das ist der
+    # Normalzustand auf einem frischen Server, und genau dann muss
+    # `GET /api/v1/speech/capabilities` koennen sagen, dass nichts geladen ist.
+    # Ein `None` wuerde genau diese Antwort unterdruecken.
+    #
+    # Er teilt sich `downloads` mit `/api/v1/models`: Modelle und Stimmen liegen
+    # im selben Verzeichnis, und ein zweiter Manager ergaebe zwei Sperren und
+    # zwei Staende fuer dieselbe Frage.
+    application.state.speech = SpeechService(
+        downloads=downloads,
+        transcriber=(
+            WhisperTranscriber(
+                active_settings.whisper_server_url,
+                language=active_settings.whisper_language,
+                timeout_seconds=active_settings.whisper_server_timeout_seconds,
+            )
+            if active_settings.whisper_server_url
+            else None
+        ),
+        synthesizer=(
+            PiperSynthesizer(active_settings.piper_binary_path)
+            if active_settings.piper_binary_path
+            else None
+        ),
+        enabled=active_settings.speech_enabled,
+        stt_model_id=active_settings.speech_stt_model_id,
+        voice_id=active_settings.speech_tts_voice_id,
+        max_upload_bytes=active_settings.speech_max_upload_bytes,
+        max_seconds=active_settings.speech_max_seconds,
+        max_text_characters=active_settings.speech_max_text_characters,
+        ffmpeg_path=active_settings.ffmpeg_binary_path,
     )
     if active_settings.cors_origins:
         application.add_middleware(
@@ -173,6 +208,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # erreichbar und die Einstellungen zeigten dauerhaft "nicht verfuegbar".
     application.include_router(backups.router)
     application.include_router(local_models.router)
+    # Der Sprach-Assistent: Faehigkeiten, Stimmen, Transkript und Ton. Ohne
+    # diese Zeile waere `GET /api/v1/speech/capabilities` nicht erreichbar und
+    # die Oberflaeche wuerde gar nicht erst erfahren, dass der Textmodus der
+    # Normalzustand ist.
+    application.include_router(speech.router)
     # Benachrichtigungen: die Erinnerungseinstellungen, der oeffentliche
     # VAPID-Schluessel, die Abonnements und der Weg, ueber den die offene Seite
     # ihre Erinnerungen abholt. Ohne diese Zeile waere der ganze Abschnitt

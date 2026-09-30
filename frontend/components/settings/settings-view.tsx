@@ -27,6 +27,7 @@ import {
 import { BackupStatusCard } from "@/components/settings/backup-status-card";
 import { ModelCatalogCard } from "@/components/settings/model-catalog-card";
 import { NotificationSettingsCard } from "@/components/settings/notification-settings-card";
+import { VoiceCatalogCard } from "@/components/settings/voice-catalog-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -992,6 +993,13 @@ writing,
         />
         <div className="space-y-6">
           <ModelCatalogCard />
+          {/*
+            Die Stimmen stehen **unter** dem Modellkatalog und nicht darin: eine
+            Stimme ist eine Stimme *in einer* Sprache, ein Whisper-Modell hat
+            nur eine Sprache. Zusammengelegt waere genau die Entscheidung unsichtbar,
+            die man hier treffen muss.
+          */}
+          <VoiceCatalogCard />
           <AccountCard user={user} onLogout={onLogout} isLoggingOut={isLoggingOut} />
           <CalendarFeedCard
             feed={feed}
