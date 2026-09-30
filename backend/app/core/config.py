@@ -72,6 +72,14 @@ class Settings(BaseSettings):
         default="/var/lib/school-assistant/documents",
         validation_alias=AliasChoices("DOCUMENT_STORAGE_PATH", "document_storage_path"),
     )
+    # Der Backup-Stand liegt in der Statusdatei des Workers. Das Backend greift
+    # nicht auf den Worker zu, sondern liest dieselbe Datei - und das nur, wenn
+    # beide das Volume `worker-status` teilen. Der Standardwert ist deshalb
+    # bewusst unveraendert, auch wenn der Pfad in einem Aufruf nichts findet.
+    worker_status_path: str = Field(
+        default="/var/lib/school-assistant/worker-status/worker-status.json",
+        validation_alias=AliasChoices("WORKER_STATUS_PATH", "worker_status_path"),
+    )
     admin_username: str | None = Field(default=None, validation_alias=AliasChoices("ADMIN_USERNAME", "admin_username"))
     admin_password: SecretStr | None = Field(
         default=None,
