@@ -37,20 +37,20 @@
 
 - [x] Modell-Katalog im Backend (Hugging Face/GGUF, mit Größe und RAM-Bedarf) — `app/services/model_catalog.py`, statisch und kuratiert, fünf Einträge; Größen und SHA256 live gegen die Hugging-Face-API verifiziert. RAM-Bedarf wird **berechnet**, nicht gespeichert, und als Schätzung markiert
 - [x] Download-Manager in der App (fortsetzbar, SHA256-verifiziert) — serverseitig in `app/services/model_downloads.py`: Resume per HTTP-Range, SHA256 über den wieder gelesenen Präfix, Prüfung **vor** dem atomaren Umbenennen, Fortsetzungspunkt aus `stat()` statt gespeichert
-- [ ] Lokale Inference (z. B. llama.cpp), ohne Docker
+- [x] Lokale Inference (z. B. llama.cpp), ohne Docker — der Backend **startet keinen** Server; der Nutzer bringt seinen mit (`llama_cpp` in `RUNTIME_PRESETS`). Variante „Binary ins Image" hätte es um hunderte MB vergrößert und wäre auf dem unterstützten Raspberry Pi nicht lauffähig
 - [ ] Fine-Tuning-Pipeline für Lernplan-Modelle (lokal feinabgestimmt)
 - [ ] Lernplan-Erstellung: Stundenplan + offene Aufgaben + Klausuren → Lernplan
-- [ ] Fallback auf Online-Provider, Herkunft im UI (`local`/`provider`)
-- [ ] „Modelle lernen am Nutzer": persönlicher Trainingsdatensatz je Benutzer (eigene Noten, Aufgaben, hochgeladene Materialien), feinabgestimmtes Modell pro Nutzer statt geteiltem Prompt
-- [ ] Custom-KI ohne Docker: lokale OpenAI-kompatible Server (Ollama, LM Studio) als erste Klasse in `ai_provider`, inkl. `host.docker.internal`-Hinweis im UI (siehe AGENTS.md)
+- [x] Fallback auf Online-Provider, Herkunft im UI (`local`/`provider`) — Reihenfolge **lokal → online → der Aufrufer baut aus den Daten**, mit gestuftem Budget (15 s wenn ein Provider im Rückgrat ist, sonst 60 s); `source` bleibt `ai` gültig und wird über `normalize_source` zu `provider`
+- [ ] „Modelle lernen am Nutzer": persönlicher Trainingsdatensatz je Nutzer (eigene Noten, Aufgaben, hochgeladene Materialien), feinabgestimmtes Modell pro Nutzer statt geteiltem Prompt
+- [x] Custom-KI ohne Docker: lokale OpenAI-kompatible Server (Ollama, LM Studio) als erste Klasse in `ai_provider`, inkl. `host.docker.internal`-Hinweis im UI (siehe AGENTS.md) — `optional_config: ["runtime"]`, kein zweiter Adapterpfad; der Hinweis steht an vier sichtbaren Stellen
 
 ## Sprach-Assistent (STT + TTS)
 
-- [ ] Lokales STT-Modell (Whisper-Derivat) mit Download über Modell-Katalog
-- [ ] Lokales TTS-Modell (Piper), Sprachauswahl
-- [ ] Mikrofonaufnahme im Frontend, Transkription im Backend
-- [ ] Antwort per Sprachausgabe, Push-to-Talk/Tastenkürzel
-- [ ] Fallback auf Textmodus ohne Modell
+- [x] Lokales STT-Modell (Whisper-Derivat) mit Download über Modell-Katalog — zwei Whisper-Einträge lagen schon im Katalog; `GET /api/v1/speech/capabilities` sagt je Richtung getrennt, ob **Modell** und ob **Laufzeit** vorhanden ist
+- [x] Lokales TTS-Modell (Piper), Sprachauswahl — `backend/app/services/piper_voices.py` baut fertige `ModelSpec`-Objekte und lädt über **denselben** unveränderten Download-Manager. Piper-Stimmen sind zwei Einzeldateien (`.onnx` + `.onnx.json`), **kein Archiv** — deshalb wurde kein Entpacker gebaut
+- [x] Mikrofonaufnahme im Frontend, Transkription im Backend — **zwei echte CSP-Blocker gefunden und behoben**: `Permissions-Policy: microphone=()` blockierte `getUserMedia` komplett, und das fehlende `media-src` ließ `default-src 'self'` gelten, was `blob:` sperrte (die **Wiedergabe** wäre gestorben, nicht die Aufnahme)
+- [x] Antwort per Sprachausgabe, Push-to-Talk/Tastenkürzel — Strg/⌘ + Umschalt + L, gehalten; `feuertKuerzel()` lässt es nicht feuern bei Eingabefeldern, laufender IME-Komposition oder gedrückter Alt-Taste
+- [x] Fallback auf Textmodus ohne Modell — **erste Klasse, nicht Fehlerzweig**: `GET /capabilities` antwortet immer 200 und nennt pro Richtung einen deutschen Grund, halbe Ausstattung funktioniert halb, ein verweigertes Mikrofon ist `mikrofonZustand: "verweigert"` ohne Fehler
 
 ## Backup-Runner
 
@@ -112,9 +112,9 @@ Das Grundsystem steht: `StudyPlanTask` mit `start`/`stop`/`complete` (`app/api/s
 
 ## Reward-System
 
-- [ ] Punkte für erledigte Lernaufgaben und abgeschlossene Lernsessions
-- [ ] Auszeichnungen in eigener Tabelle, nicht in der UI-`badge`-Komponente
-- [ ] Fortschrittsanzeige im Dashboard, im vorhandenen eckigen Monochrom-Design
-- [ ] Belohnungen an Lerninhalte koppeln, damit es kein reines Zähler-Spiel bleibt
-- [ ] Punkte niemals in Noten- oder KI-Berechnungen einfließen lassen
+- [x] Punkte für erledigte Lernaufgaben und abgeschlossene Lernsessions — `reward_entries` als **Ledger vergüteter Ereignisse**, kein Zählerfeld; Eindeutigkeit über `(user_id, kind, event_key)`
+- [x] Auszeichnungen in eigener Tabelle, nicht in der UI-`badge`-Komponente — `reward_badges` mit Bedingung, Fortschritt, Zeitpunkt und `scope`; die Badge-Komponente rendert nur einen fertigen Zustand, eine Auszeichnung ist ein Objekt mit Lebenslauf
+- [x] Fortschrittsanzeige im Dashboard, im vorhandenen eckigen Monochrom-Design — `components/dashboard/rewards-card.tsx`, gleiche Spalte wie Fortschritt und Noten
+- [x] Belohnungen an Lerninhalte koppeln, damit es kein reines Zähler-Spiel bleibt — Einheit ist der **Fachtag**, nicht die Aufgabe; gestaffelt statt Satz-pro-Minute, gedeckelt, und Punkte steigen monoton (kein Rückgabemechanismus)
+- [x] Punkte niemals in Noten- oder KI-Berechnungen einfließen lassen — `app/services/rewards.py` importiert weder grades noch study noch KI; ein AST-Test prüft die Gegenrichtung, ein Wertobjekt-Test misst Priorität, Schnitt und Hochrechnung vor und nach dem Punktevergütung
 

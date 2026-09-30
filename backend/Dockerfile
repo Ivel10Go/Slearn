@@ -6,6 +6,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# ffmpeg ist kein Komfort, sondern eine Abhaengigkeit: die Aufnahme kommt als
+# WebM/Opus aus dem Browser, und Piper erzeugt Rohwav. Ohne ffmpeg kann der
+# Backend weder umwandeln noch die Aufnahme pruefen, und der Endpunkt antwortet
+# dann mit 503 - auch fuer eine WAV-Datei, die ohne den Weg durchginge.
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 

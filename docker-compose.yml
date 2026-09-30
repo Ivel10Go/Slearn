@@ -84,6 +84,21 @@ services:
       MODEL_STORAGE_PATH: "/var/lib/school-assistant/models"
       MODEL_DOWNLOAD_TIMEOUT_SECONDS: "${MODEL_DOWNLOAD_TIMEOUT_SECONDS:-60}"
       MODEL_MIN_FREE_BYTES: "${MODEL_MIN_FREE_BYTES:-536870912}"
+      # Sprach-Assistent. whisper.cpp bringt seinen eigenen HTTP-Dienst mit und
+      # laeuft ausserhalb des Python-Prozesses; Piper ist ein Kommandozeilenwerk.
+      # Beide sind bewusst nicht Teil des Images - der Textmodus ist der
+      # Normalzustand, und ein 200-MB-Rad ohne Importeintrag waere schlechter
+      # als keins. ffmpeg dagegen ist im Image (siehe backend/Dockerfile).
+      SPEECH_ENABLED: "${SPEECH_ENABLED:-false}"
+      WHISPER_SERVER_URL: "${WHISPER_SERVER_URL:-}"
+      WHISPER_LANGUAGE: "${WHISPER_LANGUAGE:-de}"
+      PIPER_BINARY_PATH: "${PIPER_BINARY_PATH:-}"
+      # Lokale KI-Routen: lokal zuerst, mit kuerzerem Budget wenn ein
+      # Online-Provider im Rueckgrat steht.
+      AI_LOCAL_FIRST: "${AI_LOCAL_FIRST:-true}"
+      AI_LOCAL_TIMEOUT_SECONDS: "${AI_LOCAL_TIMEOUT_SECONDS:-60}"
+      AI_LOCAL_FAST_TIMEOUT_SECONDS: "${AI_LOCAL_FAST_TIMEOUT_SECONDS:-15}"
+      AI_GENERATE_TIMEOUT_SECONDS: "${AI_GENERATE_TIMEOUT_SECONDS:-30}"
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
