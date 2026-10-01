@@ -370,15 +370,6 @@ Der Fehler, an dem man das merkt, ist unspektakulär: `POST /api/v1/auth/login` 
 - `CORS_ORIGINS` wird im Normalbetrieb nicht gebraucht, weil der Browser das Backend nie direkt erreicht. Nur wer `/api/v1/...` direkt aus dem Browser aufruft, trägt dort die HTTPS-Origin ein.
 - Der Service Worker (`public/sw.js`, network-first mit `/offline/` als Fallback) braucht keine Anpassung.
 
-### Auf dem Handy installieren (PWA)
-
-Es gibt keine native Handy-App; die Weboberfläche lässt sich aber als PWA auf den Startbildschirm legen. Voraussetzung ist eine **HTTPS-Adresse** (Abschnitt oben): über Klartext-HTTP im LAN gilt die Seite nicht als sichere Herkunft, der Service Worker wird nicht registriert und das Mikrofon bleibt gesperrt. Eine Ausnahme ist `localhost`, die das Handy aber nicht erreicht.
-
-- **Android (Chrome):** Menü ⋮ → „App installieren" bzw. „Zum Startbildschirm hinzufügen".
-- **iOS (Safari):** Teilen-Symbol → „Zum Home-Bildschirm". Nur Safari kann das; Chrome auf iOS nicht.
-- Von unterwegs ohne öffentlichen Port: ein VPN (z. B. Tailscale oder WireGuard) auf den Server und dort HTTPS über den Reverse-Proxy. Der Stack selbst bleibt an `127.0.0.1` gebunden.
-- Nach einer Änderung der App-Shell `CACHE_NAME` in `public/sw.js` anheben, sonst sieht das Handy die alte Oberfläche.
-
 ### Prüfliste nach der Umstellung
 
 ```bash
