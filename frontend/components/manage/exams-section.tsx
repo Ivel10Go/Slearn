@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { CalendarDays, CheckCircle2, ListPlus, LoaderCircle, Plus, RefreshCw, TrendingUp, X } from "lucide-react";
+import { CalendarDays, CheckCircle2, ListPlus, LoaderCircle, Plus, RefreshCw, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, FormError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -163,13 +163,9 @@ export function ExamsSection({ reference }: { reference: Date }) {
 
   return (
     <Card id="exams" className={anchorClass}>
-      <CardHeader className="flex-row flex-wrap items-start justify-between space-y-0 pb-4">
+      <CardHeader className="flex-row flex-wrap items-start justify-between space-y-0 pb-3">
         <div>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <TrendingUp className="h-5 w-5 text-primary" aria-hidden="true" />
-            Prüfungen
-          </CardTitle>
-          <CardDescription className="mt-1">Alle Termine mit Countdown – auch die, die schon vorbei sind.</CardDescription>
+          <CardTitle>Prüfungen</CardTitle>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={kommend.length ? "warning" : "success"}>{kommend.length} anstehend</Badge>
@@ -191,11 +187,11 @@ export function ExamsSection({ reference }: { reference: Date }) {
           Dashboard die Themen nur; jetzt entsteht daraus eine Aufgabe je Thema.
         */}
         {planErgebnis ? (
-          <p className="rounded-2xl border border-foreground/20 bg-foreground/5 px-4 py-3 text-sm font-semibold" role="status">
+          <p className="rounded-md border border-foreground/20 bg-foreground/5 px-4 py-3 text-sm font-semibold" role="status">
             {planErgebnis.created_count} Aufgaben angelegt
             {planErgebnis.skipped_count > 0 ? `, ${planErgebnis.skipped_count} Thema übersprungen` : ""}
             {planErgebnis.last_due_on ? ` · bis ${formatDate(planErgebnis.last_due_on)}` : ""}. Sie stehen in der Kachel{" "}
-            <span className="font-extrabold">Lernaufgaben</span>.
+            <span className="font-semibold">Lernaufgaben</span>.
           </p>
         ) : null}
         <FormError message={planFehler} />
@@ -203,13 +199,13 @@ export function ExamsSection({ reference }: { reference: Date }) {
         {plaene.items.length === 0 && sammlung.items.length > 0 ? (
           <p className="border border-dashed border-border px-4 py-3 text-xs leading-5 text-muted-foreground">
             Für den Generator braucht es einen Lernplan. Lege in der Kachel{" "}
-            <span className="font-extrabold">Lernaufgaben</span> einen an.
+            <span className="font-semibold">Lernaufgaben</span> einen an.
           </p>
         ) : null}
 
         {zielPruefung !== null ? (
           <div className="space-y-4 border border-primary/20 bg-primary/5 p-4">
-            <p className="text-sm font-bold">Lernplan aus den Themen erzeugen</p>
+            <p className="text-sm font-semibold">Lernplan aus den Themen erzeugen</p>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field id="generator-plan" label="Lernplan" required>
                 {(props) => (
@@ -255,9 +251,9 @@ export function ExamsSection({ reference }: { reference: Date }) {
         ) : null}
 
         {formularOffen ? (
-          <form onSubmit={absenden} noValidate className="space-y-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-bold">{bearbeitet === null ? "Neue Prüfung" : "Prüfung bearbeiten"}</p>
+              <p className="text-sm font-semibold">{bearbeitet === null ? "Neue Prüfung" : "Prüfung bearbeiten"}</p>
               <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
                 <X aria-hidden="true" />
               </Button>
@@ -367,7 +363,7 @@ export function ExamsSection({ reference }: { reference: Date }) {
 
             {vergangen.length > 0 ? (
               <details open={vergangenOffen} onToggle={(event) => setVergangenOffen(event.currentTarget.open)}>
-                <summary className="cursor-pointer list-none text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                <summary className="cursor-pointer list-none text-xs font-medium text-muted-foreground">
                   {vergangen.length} vorbei
                 </summary>
                 <ul className="mt-3 space-y-2.5">
@@ -430,8 +426,8 @@ function PruefungsZeile({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
-            {fachname ? <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">{fachname}</p> : null}
-            <p className={cn("mt-1 truncate text-sm font-extrabold", countdown.isOverdue && "text-muted-foreground")}>
+            {fachname ? <p className="text-xs font-medium text-primary">{fachname}</p> : null}
+            <p className={cn("mt-1 truncate text-sm font-semibold", countdown.isOverdue && "text-muted-foreground")}>
               {pruefung.title}
             </p>
           </div>

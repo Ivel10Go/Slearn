@@ -65,7 +65,7 @@ export function StudyPlansCard({ plans, status, error, actionError, pending, onR
 
   return (
     <Card className="border-border/80 bg-card/90">
-      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-4">
+      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
           <CardTitle>Lernpläne</CardTitle>
           <CardDescription className="mt-1">Jeder Plan sammelt Aufgaben zu einem Thema. Ohne Plan gibt es keine Aufgaben.</CardDescription>
@@ -86,7 +86,7 @@ export function StudyPlansCard({ plans, status, error, actionError, pending, onR
         <SectionBanner error={error} actionError={actionError} onRetry={onReload} />
 
         {formularOffen ? (
-          <form onSubmit={absenden} noValidate className="space-y-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
             <Field id="plan-titel" label="Titel" required>
               {(props) => (
                 <Input
@@ -197,7 +197,7 @@ function PlanZeile({ plan, busy, onRename, onDelete }: { plan: StudyPlan; busy: 
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-2">
-              <p className="truncate text-sm font-extrabold">{plan.title}</p>
+              <p className="truncate text-sm font-semibold">{plan.title}</p>
               <Badge variant={plan.status === "active" ? "success" : "outline"}>{STATUS_LABEL[plan.status]}</Badge>
             </div>
             {plan.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{plan.description}</p> : null}

@@ -227,7 +227,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
 
   return (
     <Card className="border-border/80 bg-card/90">
-      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-4">
+      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
           <CardTitle>Lernaufgaben</CardTitle>
           <CardDescription className="mt-1">Aufgaben mit Priorität, Frist und Voraussetzungen.</CardDescription>
@@ -249,7 +249,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
       <CardContent className="space-y-4">
         <SectionBanner error={sammlung.error} actionError={sammlung.actionError} onRetry={() => void sammlung.reload()} />
 
-        <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+        <label className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
           Sortieren
           <Select
             value={ordnung}
@@ -277,9 +277,9 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
         ) : null}
 
         {formularOffen && plans.length > 0 ? (
-          <form onSubmit={absenden} noValidate className="space-y-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-bold">{bearbeitet === null ? "Neue Lernaufgabe" : "Lernaufgabe bearbeiten"}</p>
+              <p className="text-sm font-semibold">{bearbeitet === null ? "Neue Lernaufgabe" : "Lernaufgabe bearbeiten"}</p>
               <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
                 <X aria-hidden="true" />
               </Button>
@@ -502,7 +502,7 @@ function AufgabenZeile({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className={cn("truncate text-sm font-extrabold", erledigt && "text-muted-foreground line-through")}>{aufgabe.title}</p>
+            <p className={cn("truncate text-sm font-semibold", erledigt && "text-muted-foreground line-through")}>{aufgabe.title}</p>
             <Badge variant={zustandsVariante(aufgabe.status)}>{ZUSTANDS_LABEL[aufgabe.status]}</Badge>
             {aufgabe.priority > 0 ? <Badge variant="warning">Priorität {aufgabe.priority}</Badge> : null}
             {/*
@@ -514,7 +514,7 @@ function AufgabenZeile({
             {aufgabe.subject_average !== null ? (
               <span
                 className={cn(
-                  "text-[11px] font-bold text-muted-foreground",
+                  "text-[11px] font-semibold text-muted-foreground",
                   aufgabe.subject_passed === false && "underline underline-offset-4",
                 )}
               >
@@ -581,7 +581,7 @@ function AufgabenZeile({
           }
         }}
       >
-        <summary className="cursor-pointer list-none text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground hover:text-foreground">
+        <summary className="cursor-pointer list-none text-xs font-medium text-muted-foreground hover:text-foreground">
           Voraussetzungen verwalten
         </summary>
         <div className="mt-3">
@@ -708,7 +708,7 @@ function AbhaengigkeitsBereich({
 
   return (
     <div className="space-y-2.5">
-      <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Voraussetzungen</p>
+      <p className="text-xs font-medium text-muted-foreground">Voraussetzungen</p>
 
       {laeuft && voraussetzungen.length === 0 ? (
         <Skeleton className="h-8 w-full" />
@@ -744,7 +744,7 @@ function AbhaengigkeitsBereich({
       {kandidaten.length > 0 ? (
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-[12rem] flex-1 space-y-1.5">
-            <label htmlFor={`voraussetzung-${aufgabe.id}`} className="block text-xs font-bold">
+            <label htmlFor={`voraussetzung-${aufgabe.id}`} className="block text-xs font-semibold">
               Neue Voraussetzung
             </label>
             <Select id={`voraussetzung-${aufgabe.id}`} value={auswahl} onChange={(event) => setAuswahl(event.target.value)} disabled={laeuft}>

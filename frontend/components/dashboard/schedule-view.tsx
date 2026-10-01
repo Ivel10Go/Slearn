@@ -131,12 +131,12 @@ function LessonCell({ lesson, reference, detailed }: { lesson: DashboardLesson; 
       {detailed ? (
         <>
           <span className="flex items-baseline justify-between gap-2">
-            <span className="text-[11px] font-bold tabular-nums text-muted-foreground">
+            <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">
               {formatTime(lesson.startTime)} – {formatTime(lesson.endTime)}
             </span>
-            {isCurrent ? <span className="text-[10px] font-bold uppercase tracking-wide text-primary">Jetzt</span> : null}
+            {isCurrent ? <span className="text-[10px] font-medium text-primary">Jetzt</span> : null}
           </span>
-          <span className={cn("truncate text-sm font-extrabold", lesson.isCancelled && "line-through")}>{lesson.subject}</span>
+          <span className={cn("truncate text-sm font-semibold", lesson.isCancelled && "line-through")}>{lesson.subject}</span>
           {lesson.title ? <span className="truncate text-xs text-muted-foreground">{lesson.title}</span> : null}
           <span className="truncate text-[11px] text-muted-foreground">
             {[lesson.room, lesson.teacher].filter(Boolean).join(" · ")}
@@ -144,14 +144,14 @@ function LessonCell({ lesson, reference, detailed }: { lesson: DashboardLesson; 
         </>
       ) : (
         <>
-          <span className={cn("truncate text-xs font-extrabold", lesson.isCancelled && "line-through")}>
+          <span className={cn("truncate text-xs font-semibold", lesson.isCancelled && "line-through")}>
             {lesson.subjectShort ?? lesson.subject}
           </span>
           <span className="truncate text-[10px] text-muted-foreground">{lesson.room}</span>
         </>
       )}
       {lesson.isCancelled ? (
-        <span className="text-[9px] font-bold uppercase tracking-wide text-destructive">Entfallen</span>
+        <span className="text-[9px] font-medium text-destructive">Entfallen</span>
       ) : null}
     </div>
   );
@@ -276,10 +276,7 @@ export function ScheduleCard() {
     <Card id="schedule" className="scroll-mt-24">
       <CardHeader className="gap-3 pb-4">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <CardTitle className="flex items-center gap-1.5 text-sm font-extrabold">
-            <CalendarDays className="h-4 w-4 text-primary" aria-hidden="true" />
-            Stundenplan
-          </CardTitle>
+          <CardTitle>Stundenplan</CardTitle>
           <span className="text-xs font-semibold tabular-nums text-muted-foreground">
             {start && end ? `${formatWeekNumber(start)} · ${formatDateRange(start, end)}` : "lädt …"}
           </span>
@@ -383,17 +380,17 @@ export function ScheduleCard() {
                         <div className="flex items-baseline justify-between gap-1">
                           <span
                             className={cn(
-                              "text-[11px] font-bold uppercase tracking-[0.12em]",
+                              "text-[11px] font-medium",
                               istHeute ? "text-foreground underline underline-offset-[5px]" : "text-muted-foreground",
                             )}
                           >
                             {formatDate(day, { weekday: "short" })}
                           </span>
-                          <span className={cn("text-sm font-extrabold tabular-nums", istHeute ? "text-foreground" : "text-muted-foreground")}>
+                          <span className={cn("text-sm font-semibold tabular-nums", istHeute ? "text-foreground" : "text-muted-foreground")}>
                             {formatDate(day, { day: "2-digit" })}
                           </span>
                         </div>
-                        <p className="mt-0.5 truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                        <p className="mt-0.5 truncate text-[10px] font-medium text-muted-foreground/70">
                           {anzahl === 0
                             ? day.getDay() === 0 || day.getDay() === 6
                               ? "Wochenende"
@@ -415,7 +412,7 @@ export function ScheduleCard() {
                     >
                       <span
                         className={cn(
-                          "text-[11px] font-bold tabular-nums",
+                          "text-[11px] font-semibold tabular-nums",
                           row.isNow ? "text-primary underline underline-offset-[3px]" : "text-muted-foreground",
                         )}
                       >

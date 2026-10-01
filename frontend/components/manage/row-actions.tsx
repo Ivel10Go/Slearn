@@ -80,7 +80,7 @@ export function SectionBanner({ error, actionError, onRetry }: SectionBannerProp
     <>
       {error ? (
         <div
-          className="flex flex-col gap-3 rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between"
+          className="flex flex-col gap-3 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between"
           role="alert"
         >
           <span>{error}</span>
@@ -92,7 +92,7 @@ export function SectionBanner({ error, actionError, onRetry }: SectionBannerProp
         </div>
       ) : null}
       {actionError && !error ? (
-        <p className="rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert">
+        <p className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert">
           {actionError}
         </p>
       ) : null}

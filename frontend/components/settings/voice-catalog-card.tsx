@@ -88,7 +88,7 @@ function VoiceRow({
     <li className="border border-border/70 p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-bold">{stimme.label}</p>
+          <p className="text-sm font-semibold">{stimme.label}</p>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <Badge variant="outline">{stimme.language_label}</Badge>
             <Badge variant="secondary">{stimme.speaker_label}</Badge>
@@ -104,15 +104,15 @@ function VoiceRow({
 
       <dl className="mt-4 grid gap-2 sm:grid-cols-3">
         <div className="border border-border/70 bg-muted/40 px-3.5 py-3">
-          <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Abtastrate</dt>
+          <dt className="text-[11px] font-medium text-muted-foreground">Abtastrate</dt>
           <dd className="mt-1 text-sm font-semibold tabular-nums">{stimme.sample_rate.toLocaleString("de-DE")} Hz</dd>
         </div>
         <div className="border border-border/70 bg-muted/40 px-3.5 py-3">
-          <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Dateien</dt>
+          <dt className="text-[11px] font-medium text-muted-foreground">Dateien</dt>
           <dd className="mt-1 text-sm font-semibold">{stimme.files.length}</dd>
         </div>
         <div className="border border-border/70 bg-muted/40 px-3.5 py-3">
-          <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Lizenz der Stimmdaten</dt>
+          <dt className="text-[11px] font-medium text-muted-foreground">Lizenz der Stimmdaten</dt>
           <dd className="mt-1 text-sm font-semibold">{stimme.license}</dd>
         </div>
       </dl>
@@ -310,10 +310,7 @@ export function VoiceCatalogCard() {
     <Card className="border-border/80 bg-card/90">
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div>
-          <CardTitle className="flex items-center gap-2">
-            <Volume2 className="h-5 w-5" aria-hidden="true" />
-            Stimmen für die Sprachausgabe
-          </CardTitle>
+          <CardTitle>Stimmen für die Sprachausgabe</CardTitle>
           <CardDescription className="mt-1">
             Eine Stimme ist immer <strong>eine Stimme in einer Sprache</strong>. Für den Lernraum brauchst du eine deutsche -
             jede Stimme ist eine andere Person. Ohne Stimme bleibt alles andere genau so, wie es ist.
@@ -359,7 +356,7 @@ export function VoiceCatalogCard() {
         {!laedt
           ? stimmenNachSprache(stimmen).map((abschnitt) => (
               <section key={abschnitt.sprache} className="space-y-3">
-                <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{abschnitt.sprache}</h3>
+                <h3 className="text-[11px] font-medium text-muted-foreground">{abschnitt.sprache}</h3>
                 <ul className="space-y-4">
                   {abschnitt.gruppe.map((stimme) => (
                     <VoiceRow

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+    <title>Lernraum</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #0a0a0a;
+        --muted: #6e6e6e;
+        --track: #ededed;
+      }
+      :root[data-theme="dark"] {
+        --bg: #0a0a0a;
+        --fg: #ededed;
+        --muted: #8c8c8c;
+        --track: #1f1f1f;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: var(--bg);
+        color: var(--fg);
+        font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        -webkit-app-region: drag;
+        user-select: none;
+      }
+      .mark {
+        display: flex;
+        width: 40px;
+        height: 40px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 9px;
+        background: var(--fg);
+        color: var(--bg);
+        font-size: 21px;
+        font-weight: 600;
+      }
+      .name {
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .status {
+        color: var(--muted);
+      }
+      .bar {
+        position: relative;
+        width: 120px;
+        height: 2px;
+        overflow: hidden;
+        border-radius: 2px;
+        background: var(--track);
+      }
+      .bar::after {
+        position: absolute;
+        inset: 0;
+        width: 40%;
+        border-radius: 2px;
+        background: var(--fg);
+        animation: slide 1.1s ease-in-out infinite;
+        content: "";
+      }
+      @keyframes slide {
+        from {
+          transform: translateX(-100%);
+        }
+        to {
+          transform: translateX(250%);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .bar::after {
+          animation: none;
+          width: 100%;
+          opacity: 0.4;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="mark" aria-hidden="true">L</div>
+    <div class="name">Lernraum</div>
+    <div class="bar" role="progressbar" aria-label="Wird gestartet"></div>
+    <div class="status">Wird gestartet …</div>
+    <script>
+      document.documentElement.dataset.theme = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
+    </script>
+  </body>
+</html>

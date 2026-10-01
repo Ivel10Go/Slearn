@@ -1,0 +1,32 @@
+{
+  "name": "lernraum-desktop",
+  "productName": "Lernraum",
+  "version": "1.0.0",
+  "description": "Lernraum als Desktop-App für Windows und macOS",
+  "private": true,
+  "main": "main.js",
+  "author": "Lernraum",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "electron .",
+    "build:backend": "node scripts/build-backend.mjs",
+    "build:frontend": "node scripts/build-frontend.mjs",
+    "build:icons": "python scripts/make-icons.py",
+    "prepare:resources": "npm run build:backend && npm run build:frontend",
+    "dist": "npm run prepare:resources && electron-builder --publish never",
+    "dist:win": "npm run prepare:resources && electron-builder --win --publish never",
+    "dist:mac": "npm run prepare:resources && electron-builder --mac --publish never",
+    "check": "node --check main.js && node --check preload.js && node --test lib/runtime.test.js",
+    "smoke:backend": "node scripts/smoke-backend.mjs"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3"
+  },
+  "allowScripts": {
+    "electron@44.5.1": true
+  }
+}

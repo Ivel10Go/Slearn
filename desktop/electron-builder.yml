@@ -1,0 +1,67 @@
+# Baut die Installer. Vorher muessen `resources/backend` (PyInstaller) und
+# `resources/frontend` (Next standalone) existieren - `npm run dist` erledigt
+# beides. Ein Installer laesst sich nur auf dem eigenen System bauen: Windows
+# auf Windows, macOS auf einem Mac (PyInstaller kann nicht quer kompilieren).
+appId: app.lernraum.desktop
+productName: Lernraum
+copyright: Lernraum
+directories:
+  output: dist
+  buildResources: assets
+files:
+  - main.js
+  - preload.js
+  - splash.html
+  - lib/runtime.js
+  - package.json
+extraResources:
+  - from: resources/backend
+    to: backend
+  # Ohne den Filter laesst electron-builder den Punkt-Ordner `.next` weg, und
+  # Ordner namens `node_modules` filtert er in jedem Fall heraus - deshalb ein
+  # eigener Eintrag, der direkt *aus* dem Ordner kopiert. Fehlt einer der
+  # beiden, startet der Next-Server mit "Cannot find module 'next'" bzw. ohne
+  # CSS und JS.
+  - from: resources/frontend
+    to: frontend
+    filter:
+      - "**/*"
+      - ".next/**/*"
+  - from: resources/frontend/node_modules
+    to: frontend/node_modules
+    filter:
+      - "**/*"
+asar: true
+
+win:
+  target: nsis
+  icon: assets/icon.ico
+  artifactName: Lernraum-Setup-${version}.${ext}
+
+nsis:
+  # Ein-Klick-Installation ohne Adminrechte: installiert fuer den aktuellen
+  # Benutzer, legt Start- und Desktop-Verknuepfung an und startet danach.
+  oneClick: true
+  perMachine: false
+  runAfterFinish: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Lernraum
+  # Die Lerndaten liegen im Benutzerprofil und ueberleben eine Deinstallation.
+  deleteAppDataOnUninstall: false
+
+mac:
+  # Die Architektur kommt vom Aufruf (`--arm64`/`--x64`), nicht von hier: das
+  # eingefrorene Backend gibt es nur fuer die Architektur des bauenden Macs.
+  target: dmg
+  category: public.app-category.education
+  icon: assets/icon.icns
+  artifactName: Lernraum-${version}-${arch}.${ext}
+  hardenedRuntime: true
+  entitlements: assets/entitlements.mac.plist
+  entitlementsInherit: assets/entitlements.mac.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: Lernraum nutzt das Mikrofon nur, wenn du eine Frage diktierst.
+
+dmg:
+  title: Lernraum

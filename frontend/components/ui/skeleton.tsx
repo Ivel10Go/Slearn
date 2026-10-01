@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 // ueberlagerte Animationen auf derselben Flaeche wirken unruhig und kosten
 // doppelte Compositing-Arbeit.
 function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("skeleton-shimmer bg-muted", className)} {...props} />;
+  return <div className={cn("skeleton-shimmer rounded-md bg-muted", className)} {...props} />;
 }
 
 export { Skeleton };

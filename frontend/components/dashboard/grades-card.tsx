@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import { Award, FileText, GraduationCap, LoaderCircle, Plus, RefreshCw, ShieldAlert, Trash2, TrendingUp, X } from "lucide-react";
+import { FileText, GraduationCap, LoaderCircle, Plus, RefreshCw, ShieldAlert, Trash2, TrendingUp, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, FormError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -75,8 +75,8 @@ const MAX_OFFEN = 100;
 function Kennzahl({ titel, wert, zusatz }: { titel: string; wert: string; zusatz: string }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{titel}</p>
-      <p className="mt-1 truncate text-base font-extrabold tracking-tight">{wert}</p>
+      <p className="text-[11px] font-medium text-muted-foreground">{titel}</p>
+      <p className="mt-1 truncate text-base font-semibold tracking-tight">{wert}</p>
       <p className="mt-0.5 text-xs text-muted-foreground">{zusatz}</p>
     </div>
   );
@@ -178,7 +178,7 @@ function FachZeile({ name, average, count, passed, gewicht }: { name: string; av
         </p>
       </div>
       <p className="flex shrink-0 items-baseline gap-2">
-        <span className="text-sm font-extrabold tabular-nums">{notenText(average)}</span>
+        <span className="text-sm font-semibold tabular-nums">{notenText(average)}</span>
         <Badge variant={passed ? "outline" : "default"}>{bestandenLabel(passed)}</Badge>
       </p>
     </li>
@@ -238,7 +238,7 @@ function NotenFormular({ laeuft, onSchliessen, onSpeichern }: { laeuft: boolean;
   return (
     <form onSubmit={absenden} noValidate className="space-y-4 border border-border p-4">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-bold">Note eintragen</p>
+        <p className="text-sm font-semibold">Note eintragen</p>
         <Button type="button" size="icon" variant="ghost" onClick={onSchliessen} disabled={laeuft} aria-label="Formular schließen">
           <X aria-hidden="true" />
         </Button>
@@ -352,7 +352,7 @@ function NotenImport({ laeuft, onGeaendert }: { laeuft: boolean; onGeaendert: ()
   return (
     <div className="space-y-4 border border-border p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm font-bold">Aus einem Dokument übernehmen</p>
+        <p className="text-sm font-semibold">Aus einem Dokument übernehmen</p>
         <Badge variant="secondary">erst ansehen, dann anlegen</Badge>
       </div>
 
@@ -470,7 +470,7 @@ function NotenImport({ laeuft, onGeaendert }: { laeuft: boolean; onGeaendert: ()
                     }
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold">
+                    <p className="truncate text-sm font-semibold">
                       {notenText(zeile.value)} · {zeile.subject_name ?? "Fach nicht erkannt"}
                     </p>
                     <p className="text-[11px] text-muted-foreground">
@@ -509,7 +509,7 @@ function FreigabeSchalter({ sharing, laeuft, onAendern }: { sharing: GradeSharin
   return (
     <div className="border border-border bg-muted/30 p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="flex items-center gap-2 text-xs font-bold">
+        <p className="flex items-center gap-2 text-xs font-semibold">
           <ShieldAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
           Noten an den KI-Dienst senden
         </p>
@@ -548,10 +548,7 @@ export function GradesCard() {
     return (
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Award className="h-5 w-5 text-primary" aria-hidden="true" />
-            Noten
-          </CardTitle>
+          <CardTitle>Noten</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3" aria-busy="true" aria-label="Noten werden geladen">
           <Skeleton className="h-20 w-full" />
@@ -565,11 +562,7 @@ export function GradesCard() {
     return (
       <Card role="alert">
         <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Award className="h-5 w-5 text-primary" aria-hidden="true" />
-            Noten
-          </CardTitle>
-          <CardDescription className="mt-1">{noten.error ?? "Die Noten sind gerade nicht verfügbar."}</CardDescription>
+          <CardTitle>Noten</CardTitle>
         </CardHeader>
         <CardContent>
           <Button type="button" size="sm" variant="outline" onClick={() => void noten.reload()}>
@@ -587,13 +580,9 @@ export function GradesCard() {
 
   return (
     <Card>
-      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-4">
+      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Award className="h-5 w-5 text-primary" aria-hidden="true" />
-            Noten
-          </CardTitle>
-          <CardDescription className="mt-1">Schnitt, Verlauf und was ab jetzt noch kommt.</CardDescription>
+          <CardTitle>Noten</CardTitle>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={ohneNoten ? "secondary" : zusammenfassung.overall.passed ? "outline" : "default"}>{kopfZahl(zusammenfassung)}</Badge>
@@ -631,7 +620,7 @@ export function GradesCard() {
 
             <div>
               <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Verlauf des Schnitts</h3>
+                <h3 className="text-xs font-medium text-muted-foreground">Verlauf des Schnitts</h3>
                 <p className="text-xs text-muted-foreground">{verlaufBeschriftung(zusammenfassung.trend) ?? "noch kein Verlauf"}</p>
               </div>
               <VerlaufLinie trend={zusammenfassung.trend} passingGrade={zusammenfassung.passing_grade} />
@@ -640,7 +629,7 @@ export function GradesCard() {
 
             {zusammenfassung.by_subject.length > 0 ? (
               <div>
-                <h3 className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Schnitt je Fach</h3>
+                <h3 className="mb-3 text-xs font-medium text-muted-foreground">Schnitt je Fach</h3>
                 <ul className="space-y-2.5">
                   {zusammenfassung.by_subject.map((fach) => (
                     <FachZeile
@@ -665,7 +654,7 @@ export function GradesCard() {
               Raten, nicht Rechnen.
             */}
             <div>
-              <h3 className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Hochrechnung</h3>
+              <h3 className="mb-3 text-xs font-medium text-muted-foreground">Hochrechnung</h3>
               <form onSubmit={hochrechnungBerechnen} noValidate className="flex flex-wrap items-end gap-3">
                 <Field id="noten-offen" label="Noch offen" hint="Gewichtung der Leistungen, die noch kommen." className="w-44">
                   {(props) => <Input {...props} type="number" min={0} max={MAX_OFFEN} value={offen} onChange={(event) => setOffen(event.target.value)} disabled={noten.status === "loading"} />}
@@ -686,7 +675,7 @@ export function GradesCard() {
 
             <div>
               <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Zuletzt notiert</h3>
+                <h3 className="text-xs font-medium text-muted-foreground">Zuletzt notiert</h3>
                 <p className="text-xs text-muted-foreground">{notenAnzahl(zusammenfassung.total_count)}</p>
               </div>
               {noten.grades.length === 0 ? (
@@ -696,7 +685,7 @@ export function GradesCard() {
                   {noten.grades.map((note) => (
                     <li key={note.id} className="flex items-start gap-3 border border-border bg-card/60 px-3 py-2.5">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-bold">
+                        <p className="truncate text-sm font-semibold">
                           {notenText(note.grade_value)} · {note.subject_name ?? "Ohne Fach"}
                         </p>
                         <p className="text-[11px] text-muted-foreground">

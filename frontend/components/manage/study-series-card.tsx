@@ -189,12 +189,9 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
 
   return (
     <Card className="border-border/80 bg-card/90">
-      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-4">
+      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
-          <CardTitle className="flex items-center gap-2">
-            <Repeat className="h-5 w-5 text-primary" aria-hidden="true" />
-            Wiederkehrende Serien
-          </CardTitle>
+          <CardTitle>Wiederkehrende Serien</CardTitle>
           <CardDescription className="mt-1">Aus einer Vorlage entstehen automatisch einzelne Aufgaben.</CardDescription>
         </div>
         <div className="flex items-center gap-2">
@@ -219,9 +216,9 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
         ) : null}
 
         {formularOffen && plans.length > 0 ? (
-          <form onSubmit={absenden} noValidate className="space-y-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-bold">{bearbeitet === null ? "Neue Serie" : "Serie bearbeiten"}</p>
+              <p className="text-sm font-semibold">{bearbeitet === null ? "Neue Serie" : "Serie bearbeiten"}</p>
               <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
                 <X aria-hidden="true" />
               </Button>
@@ -389,7 +386,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
               <li key={serie.id} className="flex items-start gap-3 border border-border bg-card/60 p-3.5 transition-colors hover:border-foreground/40">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className={cn("truncate text-sm font-extrabold", serie.status !== "active" && "text-muted-foreground")}>{serie.title}</p>
+                    <p className={cn("truncate text-sm font-semibold", serie.status !== "active" && "text-muted-foreground")}>{serie.title}</p>
                     <Badge variant="outline">{WIEDERHOLUNG_LABEL[serie.recurrence]}</Badge>
                     {serie.status !== "active" ? <Badge variant="secondary">{serie.status === "finished" ? "Beendet" : "Storniert"}</Badge> : null}
                   </div>
