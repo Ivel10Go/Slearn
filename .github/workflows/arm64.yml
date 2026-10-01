@@ -22,7 +22,7 @@ name: ARM64 build check
 #                      workflow on the same runner pool)
 #
 # Not verified here: nothing in this repository has ever been built for arm64.
-# See the README section "ARM64-Buildcheck" for what a Raspberry Pi run still
+# See the section "ARM64-Buildcheck" in docs/entwicklung.md for what a Raspberry Pi run still
 # has to prove beyond a successful build (startup, pgvector, resource use).
 
 on:

@@ -51,7 +51,7 @@ services:
       SESSION_MAX_AGE_SECONDS: "${SESSION_MAX_AGE_SECONDS:-604800}"
       # Hinter einem TLS-Reverse-Proxy MUSS SESSION_COOKIE_SECURE=true sein. Compose leitet
       # den Wert NICHT aus APP_ENV=production ab, weil dieselbe Datei lokal im Klartext
-      # benutzt wird. README, Abschnitt "Betrieb hinter HTTPS".
+      # benutzt wird. docs/server.md, Abschnitt "Betrieb hinter HTTPS".
       SESSION_COOKIE_SECURE: "${SESSION_COOKIE_SECURE:-false}"
       SESSION_COOKIE_HTTPONLY: "${SESSION_COOKIE_HTTPONLY:-true}"
       SESSION_COOKIE_SAMESITE: "${SESSION_COOKIE_SAMESITE:-lax}"
