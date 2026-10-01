@@ -37,7 +37,10 @@ jobs:
             os: macos-14
             builder: --mac --arm64
           - name: macos-x64
-            os: macos-13
+            # Das Intel-Image `macos-13` ist abgeschaltet - ein Job darauf
+            # bleibt ohne Fehlermeldung fuer immer "queued", weil kein Runner
+            # das Label mehr annimmt. `macos-15-intel` ist GitHubs Intel-Image.
+            os: macos-15-intel
             builder: --mac --x64
     steps:
       - uses: actions/checkout@v4
