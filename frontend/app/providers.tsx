@@ -2,8 +2,10 @@
 
 import { useEffect, type ReactNode } from "react";
 import { ThemeProvider, useTheme } from "next-themes";
+import { DesktopBridge } from "@/components/desktop-bridge";
 import { NotificationBridge } from "@/components/notification-bridge";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
+import { SetupGate } from "@/components/setup-gate";
 
 function ThemeColorSync() {
   const { resolvedTheme } = useTheme();
@@ -12,7 +14,7 @@ function ThemeColorSync() {
     if (!resolvedTheme) {
       return;
     }
-    const color = resolvedTheme === "dark" ? "#0a0a0a" : "#fafafa";
+    const color = resolvedTheme === "dark" ? "#0a0a0a" : "#ffffff";
     const metas = Array.from(document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]'));
     if (metas.length === 0) {
       const meta = document.createElement("meta");
@@ -34,6 +36,7 @@ export function AppProviders({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <ThemeColorSync />
+      <DesktopBridge />
       <ServiceWorkerRegister />
       {/*
         Die Erinnerungen laufen ueber die **Seite**, nicht ueber das Dashboard:
@@ -41,7 +44,9 @@ export function AppProviders({ children }: Readonly<{ children: ReactNode }>) {
         Systemmeldung, wenn der Tab gerade nichts anzeigen kann.
       */}
       <NotificationBridge />
-      {children}
+      {/* Die Schranke steht vor den Seiten, nicht vor den Bruecken: Theme und
+          Fensterrahmen sollen auch auf der Einrichtungsseite stimmen. */}
+      <SetupGate>{children}</SetupGate>
     </ThemeProvider>
   );
 }

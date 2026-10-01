@@ -2,7 +2,7 @@
 
 import { Award, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -66,8 +66,8 @@ function Balken({ anteil, label, className }: { anteil: number; label: string; c
 function Kennzahl({ titel, wert, zusatz, balken, balkenLabel }: { titel: string; wert: string; zusatz: string; balken?: number; balkenLabel?: string }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{titel}</p>
-      <p className="mt-1 truncate text-base font-extrabold tracking-tight">{wert}</p>
+      <p className="text-[11px] font-medium text-muted-foreground">{titel}</p>
+      <p className="mt-1 truncate text-base font-semibold tracking-tight">{wert}</p>
       <p className="mt-0.5 text-xs text-muted-foreground">{zusatz}</p>
       {balken === undefined ? null : <Balken anteil={balken} label={balkenLabel ?? titel} className="mt-2" />}
     </div>
@@ -87,10 +87,10 @@ function BadgeZeile({ badge }: { badge: RewardBadge }) {
   return (
     <li className={cn("border px-3 py-2.5", badge.awarded ? "border-foreground bg-card" : "border-border bg-card/60")}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className={cn("min-w-0 truncate text-sm", badge.awarded ? "font-extrabold underline underline-offset-4" : "font-semibold")}>
+        <p className={cn("min-w-0 truncate text-sm", badge.awarded ? "font-semibold underline underline-offset-4" : "font-semibold")}>
           {badge.title}
         </p>
-        <p className="shrink-0 text-xs font-bold text-muted-foreground">
+        <p className="shrink-0 text-xs font-semibold text-muted-foreground">
           {badge.awarded ? "Erreicht" : badgeFortschrittLabel(badge)}
         </p>
       </div>
@@ -99,7 +99,7 @@ function BadgeZeile({ badge }: { badge: RewardBadge }) {
       </p>
       {badge.awarded ? null : <Balken anteil={anteil} label={`${badge.title}: ${badgeFortschrittLabel(badge)}`} className="mt-2" />}
       {badge.repeatable && badge.awarded ? (
-        <p className="mt-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Wiederholbar · nächste Woche neu</p>
+        <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">Wiederholbar · nächste Woche neu</p>
       ) : null}
     </li>
   );
@@ -111,11 +111,11 @@ function BuchungZeile({ entry, hinweis }: { entry: RewardEntry; hinweis: string 
     <li className="border border-border bg-card/60 px-3 py-2.5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <p className="min-w-0 truncate text-sm font-semibold">
-          <span className="font-bold uppercase tracking-[0.1em] text-muted-foreground">{entryArtLabel(entry)}</span>
+          <span className="font-medium text-muted-foreground">{entryArtLabel(entry)}</span>
           <span className="mx-2 text-border">·</span>
           {entry.detail}
         </p>
-        <p className="shrink-0 text-xs font-bold tabular-nums text-muted-foreground">{entryPunkteLabel(entry.points)}</p>
+        <p className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">{entryPunkteLabel(entry.points)}</p>
       </div>
       <p className="mt-0.5 text-xs text-muted-foreground">
         {entryDatumLabel(entry.earned_on)}
@@ -163,13 +163,13 @@ function KartenInhalt({ overview, error }: { overview: RewardOverview; error: st
         Eintraege, von denen die Karte nur die naechsten zeigt.
       */}
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-t border-border pt-4">
-        <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Insgesamt</h3>
-        <p className="text-sm font-extrabold tabular-nums">{summary.total_points} Punkte</p>
+        <h3 className="text-xs font-medium text-muted-foreground">Insgesamt</h3>
+        <p className="text-sm font-semibold tabular-nums">{summary.total_points} Punkte</p>
       </div>
 
       <div>
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Auszeichnungen</h3>
+          <h3 className="text-xs font-medium text-muted-foreground">Auszeichnungen</h3>
           <p className="text-xs text-muted-foreground">
             {haufen.erreicht.length > 0 ? `${haufen.erreicht.length} erreicht` : "Noch keine erreicht"}
             {haufen.offen.length > 0 ? ` · ${haufen.offen.length} offen` : ""}
@@ -193,7 +193,7 @@ function KartenInhalt({ overview, error }: { overview: RewardOverview; error: st
 
       <div>
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Zuletzt gutgeschrieben</h3>
+          <h3 className="text-xs font-medium text-muted-foreground">Zuletzt gutgeschrieben</h3>
           <p className="text-xs text-muted-foreground">
             {entries.length > sichtbareEintraege.length ? `die letzten ${sichtbareEintraege.length} von ${entries.length}` : "die letzten Buchungen"}
           </p>
@@ -230,10 +230,7 @@ export function RewardsCard({ refreshKey = 0 }: { refreshKey?: number }) {
     return (
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Award className="h-5 w-5 text-primary" aria-hidden="true" />
-            Belohnung
-          </CardTitle>
+          <CardTitle>Belohnung</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3" aria-busy="true" aria-label="Belohnung wird geladen">
           <Skeleton className="h-20 w-full" />
@@ -248,11 +245,7 @@ export function RewardsCard({ refreshKey = 0 }: { refreshKey?: number }) {
     return (
       <Card role="alert">
         <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Award className="h-5 w-5 text-primary" aria-hidden="true" />
-            Belohnung
-          </CardTitle>
-          <CardDescription className="mt-1">{error ?? "Die Belohnungen sind gerade nicht verfügbar."}</CardDescription>
+          <CardTitle>Belohnung</CardTitle>
         </CardHeader>
         <CardContent>
           <Button type="button" size="sm" variant="outline" onClick={() => void reload()}>
@@ -266,13 +259,9 @@ export function RewardsCard({ refreshKey = 0 }: { refreshKey?: number }) {
 
   return (
     <Card>
-      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-4">
+      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Award className="h-5 w-5 text-primary" aria-hidden="true" />
-            Belohnung
-          </CardTitle>
-          <CardDescription className="mt-1">Punkte für erledigte Aufgaben und gelernte Zeit in einem Fach.</CardDescription>
+          <CardTitle>Belohnung</CardTitle>
         </div>
         <Button type="button" size="icon" variant="ghost" onClick={() => void reload()} aria-label="Belohnungen neu laden" disabled={status === "loading"}>
           <RefreshCw className={cn(status === "loading" && "animate-spin")} aria-hidden="true" />

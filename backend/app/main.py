@@ -24,6 +24,7 @@ local_models,
     notifications,
     progress,
 rewards,
+    setup,
 speech,
 study,
     subjects,
@@ -186,6 +187,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
     application.include_router(health.router)
     application.include_router(auth.router)
+    # Die Ersteinrichtung der Desktop-App: legt ohne Anmeldung das eine Konto
+    # an. Ohne diese Zeile bliebe eine frische Installation beim 503
+    # "No active user is configured" stehen.
+    application.include_router(setup.router)
     application.include_router(dashboard.router)
     application.include_router(lessons.router)
     application.include_router(greeting.router)

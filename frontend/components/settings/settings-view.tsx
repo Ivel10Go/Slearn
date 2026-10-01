@@ -20,12 +20,13 @@ import {
   Plug,
   Plus,
   RefreshCw,
-  Sparkles,
+  Cpu,
   Sun,
   Trash2,
   X,
 } from "lucide-react";
 import { BackupStatusCard } from "@/components/settings/backup-status-card";
+import { DesktopCard } from "@/components/settings/desktop-card";
 import { ModelCatalogCard } from "@/components/settings/model-catalog-card";
 import { NotificationSettingsCard } from "@/components/settings/notification-settings-card";
 import { VoiceCatalogCard } from "@/components/settings/voice-catalog-card";
@@ -73,7 +74,7 @@ type BadgeVariant = "default" | "secondary" | "outline" | "success" | "warning" 
 
 const KIND_ICONS: Record<string, typeof Plug> = {
   webuntis: Cloud,
-  ai_provider: Sparkles,
+  ai_provider: Cpu,
   documents: FolderTree,
   ical: CalendarDays,
   google_calendar: CalendarDays,
@@ -95,16 +96,16 @@ const THEME_OPTIONS = [
 
 const FIELD_HINTS: Record<string, string> = {
   base_url: "Zum Beispiel https://schule.example.org",
-  school: "KÃ¼rzel oder Name deiner Schule",
+  school: "Kürzel oder Name deiner Schule",
   username: "Deine Zugangsdaten aus dem Schulportal",
   password: "Bei iCloud das app-spezifische Passwort, nicht dein Apple-ID-Passwort",
   model: "Zum Beispiel llama3.2",
-  api_key: "Leer lassen, wenn der Dienst keinen SchlÃ¼ssel braucht",
+  api_key: "Leer lassen, wenn der Dienst keinen Schlüssel braucht",
   path: "Relativ zum konfigurierten Dokumentordner",
   url: "Die abonnierte Adresse, zum Beispiel https://schule.example.org/kalender.ics",
-  client_id: "Aus der Google-Konsole unter â€žZugangsdatenâ€œ",
-  client_secret: "Bleibt verschlÃ¼sselt und verlÃ¤sst den Server nur bei Google",
-  calendar_id: "â€žprimaryâ€œ oder die Id aus der Google-Konsole",
+  client_id: "Aus der Google-Konsole unter „Zugangsdaten“",
+  client_secret: "Bleibt verschlüsselt und verlässt den Server nur bei Google",
+  calendar_id: "„primary“ oder die Id aus der Google-Konsole",
   redirect_uri:
     "Bei Google hinterlegen und hier genau so eintragen, zum Beispiel https://lernraum.example.org/api/backend/v1/integrations/1/oauth/callback",
   refresh_token: "Wird nach der Einwilligung automatisch gesetzt",
@@ -128,11 +129,11 @@ function SettingsSkeleton() {
         <Skeleton className="h-4 w-96 max-w-full" />
       </div>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
-        <Skeleton className="h-[28rem] rounded-2xl" />
+        <Skeleton className="h-[28rem] rounded-md" />
 <div className="space-y-6">
-            <Skeleton className="h-56 w-full rounded-2xl" />
-            <Skeleton className="h-64 w-full rounded-2xl" />
-            <Skeleton className="h-40 w-full rounded-2xl" />
+            <Skeleton className="h-56 w-full rounded-md" />
+            <Skeleton className="h-64 w-full rounded-md" />
+            <Skeleton className="h-40 w-full rounded-md" />
           </div>
       </div>
     </div>
@@ -158,7 +159,7 @@ function AccountCard({ user, onLogout, isLoggingOut }: AccountCardProps) {
   return (
     <Card className="border-border/80 bg-card/90">
       <CardHeader className="flex flex-row items-start gap-3.5">
-        <span className="flex h-12 w-12 shrink-0 items-center justify-center border border-border bg-primary text-sm font-extrabold text-primary-foreground">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center border border-border bg-primary text-sm font-semibold text-primary-foreground">
           {getInitials(displayName)}
         </span>
         <div className="min-w-0 flex-1">
@@ -172,8 +173,8 @@ function AccountCard({ user, onLogout, isLoggingOut }: AccountCardProps) {
       <CardContent className="space-y-5">
         <dl className="grid gap-3 sm:grid-cols-2">
           {details.map((detail) => (
-            <div key={detail.label} className="rounded-xl border border-border/70 bg-muted/40 px-3.5 py-3">
-              <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{detail.label}</dt>
+            <div key={detail.label} className="rounded-md border border-border/70 bg-muted/40 px-3.5 py-3">
+              <dt className="text-[11px] font-medium text-muted-foreground">{detail.label}</dt>
               <dd className="mt-1 truncate text-sm font-semibold">{detail.value}</dd>
             </div>
           ))}
@@ -190,7 +191,7 @@ function AccountCard({ user, onLogout, isLoggingOut }: AccountCardProps) {
               <>
                 <Button type="button" size="sm" variant="destructive" onClick={onLogout} disabled={isLoggingOut}>
                   {isLoggingOut ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <LogOut aria-hidden="true" />}
-                  {isLoggingOut ? "Wird abgemeldet â€¦" : "Jetzt abmelden"}
+                  {isLoggingOut ? "Wird abgemeldet …" : "Jetzt abmelden"}
                 </Button>
                 <Button type="button" size="sm" variant="ghost" onClick={() => setAbmeldeOffen(false)} disabled={isLoggingOut}>
                   Abbrechen
@@ -219,10 +220,10 @@ function ThemeCard() {
   }, []);
 
   return (
-    <Card className="border-border/80 bg-card/90">
+    <Card>
       <CardHeader>
         <CardTitle>Darstellung</CardTitle>
-        <CardDescription>WÃ¤hle, ob dein Lernraum hell, dunkel oder wie das System erscheint.</CardDescription>
+        <CardDescription>Wähle, ob dein Lernraum hell, dunkel oder wie das System erscheint.</CardDescription>
       </CardHeader>
       <CardContent>
         {mounted ? (
@@ -237,10 +238,10 @@ function ThemeCard() {
                   onClick={() => setTheme(option.value)}
                   aria-pressed={active}
                   className={cn(
-                    "flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-xl border text-xs font-bold transition-colors active:opacity-80",
+                    "flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-md border text-xs font-medium transition-colors active:opacity-80",
                     active
-                      ? "border-primary/40 bg-primary/10 text-primary"
-                      : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
+                      ? "border-foreground bg-accent text-foreground"
+                      : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   <Icon className="h-5 w-5" aria-hidden="true" />
@@ -307,7 +308,7 @@ function IntegrationRow({
   /*
     Google braucht zwei Schritte: die Integration anlegen und sich dann bei
     Google einwilligen. `refresh_token` in den technischen Angaben ist das
-    Merkmal dafÃ¼r - er erscheint erst, nachdem der RÃ¼ckweg durchlaufen ist. Ohne
+    Merkmal dafür - er erscheint erst, nachdem der Rückweg durchlaufen ist. Ohne
     die Freigabe zum Schreiben startet der Server den Lauf gar nicht, deshalb
     der zweite Hinweis.
   */
@@ -330,18 +331,18 @@ function IntegrationRow({
   const kiStufen = runtime && kiAdresse ? describeStages(runtime) : [];
 
   return (
-    <li className="rounded-2xl border border-border/70 bg-card/60 p-4 sm:p-5">
+    <li className="rounded-md border border-border/70 bg-card/60 p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
             <Icon className="h-5 w-5" aria-hidden="true" />
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold">{integration.name}</p>
+            <p className="truncate text-sm font-semibold">{integration.name}</p>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
               <Badge variant="outline">{integration.kind}</Badge>
               <Badge variant={status.variant}>{status.label}</Badge>
-              {incomplete ? <Badge variant="warning">UnvollstÃ¤ndig</Badge> : null}
+              {incomplete ? <Badge variant="warning">Unvollständig</Badge> : null}
               {/*
                 Das Badge sagt, **wo** der Server laeuft. Bei einem Online-Dienst
                 ist das die entscheidende Information: dann verlaesst eine Frage
@@ -378,7 +379,7 @@ function IntegrationRow({
         <dl className="mt-4 grid gap-2 sm:grid-cols-2">
           {entries.map((entry) => (
             <div key={entry.key} className="flex items-baseline justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2">
-              <dt className="text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground">{entry.label}</dt>
+              <dt className="text-xs font-medium text-muted-foreground">{entry.label}</dt>
               <dd className="truncate text-xs font-semibold">{entry.value}</dd>
             </div>
           ))}
@@ -418,14 +419,14 @@ function IntegrationRow({
 
       {/*
         Ein Konflikt ist der eine Fall, in dem ein Abruf **nichts** entschieden
-        hat: die Lernende und die Gegenseite haben denselben Termin geÃ¤ndert.
-        Er wird hier ausdrÃ¼cklich benannt, weil ein stillschweigend
-        Ã¼bergangener Konflikt wie eine verlorene Ã„nderung aussieht.
+        hat: die Lernende und die Gegenseite haben denselben Termin geändert.
+        Er wird hier ausdrücklich benannt, weil ein stillschweigend
+        übergangener Konflikt wie eine verlorene Änderung aussieht.
       */}
       {conflicts > 0 ? (
-        <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-300">
+        <p className="mt-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-300">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          {conflicts === 1 ? "Ein Termin wurde" : `${conflicts} Termine wurden`} an beiden Seiten geÃ¤ndert und sind
+          {conflicts === 1 ? "Ein Termin wurde" : `${conflicts} Termine wurden`} an beiden Seiten geändert und sind
           offen geblieben. Deine Fassung steht hier; entscheide sie in deinem Kalender neu.
         </p>
       ) : null}
@@ -438,7 +439,7 @@ function IntegrationRow({
       ) : null}
 
       {integration.last_error ? (
-        <p className="mt-3 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
+        <p className="mt-3 rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
           {integration.last_error}
         </p>
       ) : null}
@@ -454,7 +455,7 @@ function IntegrationRow({
         {result ? (
           <p
             className={cn(
-              "flex items-start gap-2 rounded-xl border px-3 py-2 text-xs font-medium",
+              "flex items-start gap-2 rounded-md border px-3 py-2 text-xs font-medium",
               result.ok
                 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/50 dark:text-emerald-300"
                 : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-300",
@@ -474,13 +475,13 @@ function IntegrationRow({
         {awaitingConsent ? (
           <Button type="button" size="sm" onClick={onAuthorize} disabled={isBusy || incomplete}>
             {isAuthorizing ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Link2 aria-hidden="true" />}
-            {isAuthorizing ? "Weiterleitung lÃ¤uft" : writingBlocked ? "Zustimmung zeigen, dann verbinden" : "Mit Google verbinden"}
+            {isAuthorizing ? "Weiterleitung läuft" : writingBlocked ? "Zustimmung zeigen, dann verbinden" : "Mit Google verbinden"}
           </Button>
         ) : null}
         {isSyncableKind(integration.kind) ? (
           <Button type="button" size="sm" onClick={onSync} disabled={!canSync}>
             {isSyncing ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
-            {isSyncing ? "LÃ¤uft" : syncLabel}
+            {isSyncing ? "Läuft" : syncLabel}
           </Button>
         ) : null}
         {confirming ? (
@@ -527,8 +528,8 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
   /*
     Aus einer Gruppe wie `{url, path}` wird **ein** alternatives Feld-Set, nicht
     zwei Pflichtfelder. Zwei bedeutungslose Pflichtfelder, von denen eines
-    reicht, wÃ¤ren eine Frage, die das Formular nicht beantworten kann - und
-    `required_one_of` ist genau dafÃ¼r da. Die PrÃ¼fung selbst liegt in
+    reicht, wären eine Frage, die das Formular nicht beantworten kann - und
+    `required_one_of` ist genau dafür da. Die Prüfung selbst liegt in
     `validateIntegrationInput`, damit sie ohne Browser testbar ist.
   */
   const alternativeSets = useMemo(() => (spec?.required_one_of ?? []).map((group) => group.filter(Boolean)), [spec]);
@@ -612,7 +613,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
     if (istKiServer && field === "runtime") {
       return (
         <div key={field} className="space-y-2">
-          <label className="text-sm font-bold" htmlFor={fieldId}>
+          <label className="text-sm font-semibold" htmlFor={fieldId}>
             {fieldLabel(field)}
             <span className="ml-1 text-xs font-semibold text-muted-foreground">(optional)</span>
           </label>
@@ -639,7 +640,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
     }
     return (
       <div key={field} className="space-y-2">
-        <label className="text-sm font-bold" htmlFor={fieldId}>
+        <label className="text-sm font-semibold" htmlFor={fieldId}>
           {fieldLabel(field)}
           {isRequired ? (
             <span className="ml-1 text-destructive">*</span>
@@ -671,11 +672,11 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-5 rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:p-5">
+    <form onSubmit={handleSubmit} noValidate className="space-y-5 rounded-md border border-primary/20 bg-primary/5 p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-bold">Neue Verbindung</p>
-          <p className="mt-1 text-xs text-muted-foreground">Zugangsdaten werden verschlÃ¼sselt gespeichert und nie im Browser abgelegt.</p>
+          <p className="text-sm font-semibold">Neue Verbindung</p>
+          <p className="mt-1 text-xs text-muted-foreground">Zugangsdaten werden verschlüsselt gespeichert und nie im Browser abgelegt.</p>
         </div>
         <Button type="button" size="icon" variant="ghost" onClick={onCancel} disabled={isSubmitting} aria-label="Abbrechen">
           <X aria-hidden="true" />
@@ -683,14 +684,14 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
       </div>
 
       <div className="space-y-2">
-        <label className="text-sm font-bold" htmlFor="integration-kind">Dienst</label>
+        <label className="text-sm font-semibold" htmlFor="integration-kind">Dienst</label>
         <select
           id="integration-kind"
           name="kind"
           value={kind}
           onChange={(event) => handleKindChange(event.target.value)}
           disabled={isSubmitting}
-          className="flex h-11 w-full rounded-xl border border-input bg-card px-3.5 py-2 text-sm text-foreground shadow-sm transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-11 w-full rounded-md border border-input bg-card px-3.5 py-2 text-sm text-foreground shadow-sm transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {catalog.map((entry) => (
             <option key={entry.kind} value={entry.kind}>
@@ -707,14 +708,14 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
       */}
       {istKiServer ? (
         <section className="space-y-3 border border-border/70 bg-muted/40 p-3.5" aria-label="Lokale KI-Server">
-          <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Läuft der Server auf deinem Rechner?</p>
+          <p className="text-xs font-medium text-muted-foreground">Läuft der Server auf deinem Rechner?</p>
           {kiVorschlaege.length > 0 ? (
             <>
               <ul className="space-y-2">
                 {kiVorschlaege.map((preset) => (
                   <li key={preset.kind} className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-bold">{preset.label}</p>
+                      <p className="text-sm font-semibold">{preset.label}</p>
                       <p className="text-[11px] leading-4 text-muted-foreground">{preset.note}</p>
                     </div>
                     <div className="flex shrink-0 gap-1.5">
@@ -760,7 +761,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
       ) : null}
 
       <div className="space-y-2">
-        <label className="text-sm font-bold" htmlFor="integration-name">Name</label>
+        <label className="text-sm font-semibold" htmlFor="integration-name">Name</label>
         <Input
           id="integration-name"
           name="name"
@@ -795,14 +796,14 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
       ) : null}
 
       {formError ? (
-        <p id={formErrorId} className="rounded-xl border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-sm font-medium text-destructive" role="alert">
+        <p id={formErrorId} className="rounded-md border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-sm font-medium text-destructive" role="alert">
           {formError}
         </p>
       ) : null}
 
       <Button type="submit" disabled={isSubmitting}>
         {isSubmitting ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Plus aria-hidden="true" />}
-        {isSubmitting ? "Wird gespeichert â€¦" : "Verbindung speichern"}
+        {isSubmitting ? "Wird gespeichert …" : "Verbindung speichern"}
       </Button>
     </form>
   );
@@ -864,7 +865,7 @@ function IntegrationsCard({
           </Button>
           <Button type="button" size="sm" onClick={() => setFormOpen((open) => !open)} disabled={isSubmitting} aria-expanded={formOpen}>
             {formOpen ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
-            {formOpen ? "SchlieÃŸen" : "HinzufÃ¼gen"}
+            {formOpen ? "Schließen" : "Hinzufügen"}
           </Button>
         </div>
       </CardHeader>
@@ -886,12 +887,12 @@ function IntegrationsCard({
         ) : null}
 
         {integrations.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border px-5 py-10 text-center">
+          <div className="rounded-md border border-dashed border-border px-5 py-10 text-center">
             <Plug className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" />
-            <p className="mt-3 text-sm font-bold">Noch nichts verbunden</p>
+            <p className="mt-3 text-sm font-semibold">Noch nichts verbunden</p>
             <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
               Stundenplan, Aufgaben und Termine kannst du auch ohne Integration manuell pflegen. Verbundene Dienste
-              liefern spÃ¤ter automatisch deine Lerninhalte.
+              liefern später automatisch deine Lerninhalte.
             </p>
           </div>
         ) : (
@@ -924,10 +925,10 @@ function IntegrationsCard({
  * Die Zustimmung, Termine in verbundene Kalender zu **schreiben**.
  *
  * Sie steht hier und nicht in der Zeile einer Integration, weil sie nicht an
- * einer hÃ¤ngt, sondern an der Frage, ob der Lernraum das Ã¼berhaupt darf. Und
- * sie ist **aus**, bis jemand sie einschaltet: Lesen genÃ¼gt, sobald eine Quelle
+ * einer hängt, sondern an der Frage, ob der Lernraum das überhaupt darf. Und
+ * sie ist **aus**, bis jemand sie einschaltet: Lesen genügt, sobald eine Quelle
  * verbunden ist - die hat die Lernende ja selbst angegeben. Schreiben ist der
- * Fall, der eine ausdrÃ¼ckliche Entscheidung braucht.
+ * Fall, der eine ausdrückliche Entscheidung braucht.
  */
 function CalendarWritingCard({
   writing,
@@ -958,19 +959,19 @@ function CalendarWritingCard({
             onChange={(event) => onToggle(event.target.checked)}
           />
           <span className="min-w-0">
-            <span className="block text-sm font-bold">
+            <span className="block text-sm font-semibold">
               {enabled ? "Freigegeben" : "Nicht freigegeben"}
             </span>
             <span className="mt-1 block text-xs text-muted-foreground">
               Gespeichert als <code className="font-mono">{writing?.preference_key ?? "share_calendar_for_writing"}</code>.
-              Ein fehlender oder kaputter Eintrag bedeutet immer â€žausâ€œ.
+              Ein fehlender oder kaputter Eintrag bedeutet immer „aus“.
             </span>
           </span>
         </label>
 
         {writing && writing.uses.length > 0 ? (
           <div className="space-y-1.5 border-t border-border/70 pt-4">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Damit wird</p>
+            <p className="text-[11px] font-medium text-muted-foreground">Damit wird</p>
             <ul className="space-y-1">
               {writing.uses.map((use) => (
                 <li key={use} className="text-xs text-muted-foreground">
@@ -986,11 +987,11 @@ function CalendarWritingCard({
 }
 
 /**
- * Die abonnierbare ICS-Adresse des Lernraums - der Weg nach drauÃŸen.
+ * Die abonnierbare ICS-Adresse des Lernraums - der Weg nach draußen.
  *
- * Der SchlÃ¼ssel ist im Klartext ein Vollzugriff auf **diese** Kalenderdatei,
- * deshalb gibt es hier ausdrÃ¼cklich einen Knopf zum Erzeugen: Wer ihn drÃ¼ckt,
- * weiÃŸ, dass eine alte Adresse mitgeht. Ein still erneuertes Geheimnis wÃ¤re
+ * Der Schlüssel ist im Klartext ein Vollzugriff auf **diese** Kalenderdatei,
+ * deshalb gibt es hier ausdrücklich einen Knopf zum Erzeugen: Wer ihn drückt,
+ * weiß, dass eine alte Adresse mitgeht. Ein still erneuertes Geheimnis wäre
  * keines, und der Knopf kostet nur einen Klick.
  */
 function CalendarFeedCard({
@@ -1050,7 +1051,7 @@ function CalendarFeedCard({
           <>
             <p className="break-all border border-border bg-muted/40 px-3 py-2 font-mono text-xs">{adresse()}</p>
             <p className="text-xs text-muted-foreground">
-              {feed.message} Ein neuer SchlÃ¼ssel macht diese Adresse sofort ungÃ¼ltig.
+              {feed.message} Ein neuer Schlüssel macht diese Adresse sofort ungültig.
             </p>
           </>
         ) : (
@@ -1060,7 +1061,7 @@ function CalendarFeedCard({
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" size="sm" onClick={onCreate} disabled={isRotating}>
             {isRotating ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Plus aria-hidden="true" />}
-            {feed?.active ? "Neuen SchlÃ¼ssel erzeugen" : "Adresse einrichten"}
+            {feed?.active ? "Neuen Schlüssel erzeugen" : "Adresse einrichten"}
           </Button>
           {feed?.active ? (
             <Button type="button" size="sm" variant="outline" onClick={kopieren}>
@@ -1139,13 +1140,12 @@ writing,
   return (
     <div className="space-y-6">
       <header>
-        <p className="mb-2 text-sm font-bold uppercase tracking-[0.18em] text-primary">Dein Lernraum</p>
-        <h1 className="text-3xl font-extrabold tracking-[-0.035em] sm:text-4xl">Einstellungen</h1>
-        <p className="mt-2 text-sm font-semibold text-muted-foreground">Konto, Erscheinungsbild, Sicherung und deine verbundenen Dienste an einem Ort.</p>
+        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Einstellungen</h1>
+        <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">Konto, Erscheinungsbild, Sicherung und deine verbundenen Dienste an einem Ort.</p>
       </header>
 
       {error ? (
-        <div className="flex flex-col gap-3 rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between" role="alert">
+        <div className="flex flex-col gap-3 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between" role="alert">
           <span>{error}</span>
           <Button type="button" size="sm" variant="outline" onClick={onRetry}>
             <RefreshCw aria-hidden="true" />
@@ -1155,13 +1155,13 @@ writing,
       ) : null}
 
       {actionError ? (
-        <p className="rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert">
+        <p className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert">
           {actionError}
         </p>
       ) : null}
 
       {/*
-        Die Zustimmung steht **Ã¼ber** der Integrationsliste und nicht als Zeile
+        Die Zustimmung steht **über** der Integrationsliste und nicht als Zeile
         darin: sie haengt an keiner einzelnen Verbindung. Wer sie sucht, soll sie
         finden, ohne erst eine Kalenderzeile auswaehlen zu muessen.
       */}
@@ -1220,18 +1220,12 @@ writing,
             onPruefen={notifications.pruefen}
             onQuittieren={notifications.quittieren}
           />
+          <DesktopCard />
           <BackupStatusCard />
           <ThemeCard />
         </div>
       </div>
 
-      <footer className="flex flex-col items-center justify-between gap-2 border-t border-border/70 pt-5 text-center text-xs text-muted-foreground sm:flex-row sm:text-left">
-        <span>Deine Angaben bleiben in deinem Lernraum.</span>
-        <span className="inline-flex items-center gap-1.5">
-          <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-          Lernraum
-        </span>
-      </footer>
     </div>
   );
 }

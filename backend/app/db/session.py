@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from typing import Any
 
 from fastapi import Request
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -28,9 +28,32 @@ def get_engine(settings: Settings | None = None) -> Engine:
     else:
         options.update({"pool_size": 5, "max_overflow": 10, "pool_recycle": 1800})
     _engine = create_engine(url, **options)
+    if url.startswith("sqlite"):
+        event.listen(_engine, "connect", _configure_sqlite_connection)
     _engine_url = url
     _session_factory = sessionmaker(bind=_engine, class_=Session, autoflush=False, expire_on_commit=False)
     return _engine
+
+
+def _configure_sqlite_connection(dbapi_connection: Any, _record: Any) -> None:
+    """SQLite so einstellen, dass es sich wie der Postgres-Betrieb verhaelt.
+
+    - ``foreign_keys``: SQLite prueft Fremdschluessel nur auf Nachfrage.
+      Postgres prueft sie immer - ohne das Pragma liesse die Desktop-App
+      Verweise ins Leere zu, die der Server mit einem Fehler ablehnt, und
+      ``ON DELETE CASCADE`` liefe gar nicht.
+    - ``journal_mode=WAL``: Lesen blockiert das Schreiben nicht. Der
+      Erinnerungs- und der WebUntis-Thread schreiben neben den Anfragen.
+    - ``busy_timeout``: eine kurz gesperrte Datenbank wartet, statt sofort mit
+      ``database is locked`` abzubrechen.
+    """
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+    finally:
+        cursor.close()
 
 
 def get_session_factory(settings: Settings | None = None) -> sessionmaker[Session]:

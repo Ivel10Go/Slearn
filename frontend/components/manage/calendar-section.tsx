@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import { CalendarDays, CheckCircle2, Clock3, LoaderCircle, Plus, RefreshCw, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, FormError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -180,13 +180,9 @@ export function CalendarSection({ reference }: { reference: Date }) {
 
   return (
     <Card id="calendar" className={anchorClass}>
-      <CardHeader className="flex-row flex-wrap items-start justify-between space-y-0 pb-4">
+      <CardHeader className="flex-row flex-wrap items-start justify-between space-y-0 pb-3">
         <div>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <CalendarDays className="h-5 w-5 text-primary" aria-hidden="true" />
-            Kalender
-          </CardTitle>
-          <CardDescription className="mt-1">Termine und Erinnerungen für deinen Lernalltag.</CardDescription>
+          <CardTitle>Kalender</CardTitle>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="secondary">{sammlung.items.length} Termine</Badge>
@@ -204,9 +200,9 @@ export function CalendarSection({ reference }: { reference: Date }) {
         <SectionBanner error={sammlung.error} actionError={sammlung.actionError} onRetry={() => void sammlung.reload()} />
 
         {formularOffen ? (
-          <form onSubmit={absenden} noValidate className="space-y-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-bold">{bearbeitet === null ? "Neuer Termin" : "Termin bearbeiten"}</p>
+              <p className="text-sm font-semibold">{bearbeitet === null ? "Neuer Termin" : "Termin bearbeiten"}</p>
               <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
                 <X aria-hidden="true" />
               </Button>
@@ -310,7 +306,7 @@ export function CalendarSection({ reference }: { reference: Date }) {
           <div className="space-y-5">
             {[...nachTag.entries()].map(([tag, termine]) => (
               <section key={tag} aria-label={formatDate(tag, { weekday: "long", day: "2-digit", month: "long" })}>
-                <h4 className={cn("mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground", isSameDay(tag, reference) && "text-primary")}>
+                <h4 className={cn("mb-2 text-[11px] font-medium text-muted-foreground", isSameDay(tag, reference) && "text-primary")}>
                   {isSameDay(tag, reference) ? "Heute" : formatDate(tag, { weekday: "long", day: "2-digit", month: "long" })}
                 </h4>
                 <ul className="space-y-2.5">
@@ -337,11 +333,11 @@ function TerminZeile({ termin, busy, onEdit, onDelete }: { termin: CalendarEvent
   return (
     <li className="flex items-start gap-3 border border-border bg-card/60 p-3.5 transition-colors hover:border-foreground/40">
       <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center bg-secondary text-secondary-foreground">
-        <span className="text-[11px] font-bold uppercase">{formatDate(termin.start_time, { month: "short" })}</span>
-        <span className="text-lg font-extrabold leading-5">{formatDate(termin.start_time, { day: "2-digit" })}</span>
+        <span className="text-[11px] font-medium">{formatDate(termin.start_time, { month: "short" })}</span>
+        <span className="text-lg font-semibold leading-5">{formatDate(termin.start_time, { day: "2-digit" })}</span>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-extrabold">{termin.title}</p>
+        <p className="truncate text-sm font-semibold">{termin.title}</p>
         <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
           <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
           {termin.all_day ? "Ganztägig" : `${formatTime(termin.start_time)} – ${formatTime(termin.end_time)}`}

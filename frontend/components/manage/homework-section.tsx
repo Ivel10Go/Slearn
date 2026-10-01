@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import { AlarmClock, BookOpen, CheckCircle2, LoaderCircle, Plus, RefreshCw, X } from "lucide-react";
+import { AlarmClock, CheckCircle2, LoaderCircle, Plus, RefreshCw, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, FormError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -153,13 +153,9 @@ export function HomeworkSection({ reference }: { reference: Date }) {
 
   return (
     <Card id="homework" className={anchorClass}>
-      <CardHeader className="flex-row flex-wrap items-start justify-between space-y-0 pb-4">
+      <CardHeader className="flex-row flex-wrap items-start justify-between space-y-0 pb-3">
         <div>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <BookOpen className="h-5 w-5 text-primary" aria-hidden="true" />
-            Hausaufgaben
-          </CardTitle>
-          <CardDescription className="mt-1">Was auf deinem Schreibtisch wartet – und was schon erledigt ist.</CardDescription>
+          <CardTitle>Hausaufgaben</CardTitle>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={uebersicht.offen.length ? "warning" : "success"}>{uebersicht.offen.length} offen</Badge>
@@ -177,9 +173,9 @@ export function HomeworkSection({ reference }: { reference: Date }) {
         <SectionBanner error={sammlung.error} actionError={sammlung.actionError} onRetry={() => void sammlung.reload()} />
 
         {formularOffen ? (
-          <form onSubmit={absenden} noValidate className="space-y-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-bold">{bearbeitet === null ? "Neue Hausaufgabe" : "Hausaufgabe bearbeiten"}</p>
+              <p className="text-sm font-semibold">{bearbeitet === null ? "Neue Hausaufgabe" : "Hausaufgabe bearbeiten"}</p>
               <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
                 <X aria-hidden="true" />
               </Button>
@@ -283,7 +279,7 @@ export function HomeworkSection({ reference }: { reference: Date }) {
 
             {uebersicht.erledigt.length > 0 ? (
               <details className="group">
-                <summary className="cursor-pointer list-none text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                <summary className="cursor-pointer list-none text-xs font-medium text-muted-foreground">
                   {uebersicht.erledigt.length} erledigt
                 </summary>
                 <ul className="mt-3 space-y-2.5">
@@ -346,7 +342,7 @@ function AufgabenZeile({
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className={cn("truncate text-sm font-extrabold", aufgabe.completed && "text-muted-foreground line-through")}>{aufgabe.title}</p>
+          <p className={cn("truncate text-sm font-semibold", aufgabe.completed && "text-muted-foreground line-through")}>{aufgabe.title}</p>
           {fachname ? <span className="text-xs font-semibold text-primary">{fachname}</span> : null}
         </div>
         {aufgabe.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{aufgabe.description}</p> : null}

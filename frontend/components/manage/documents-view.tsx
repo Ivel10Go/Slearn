@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState, type FormEvent } from "react";
-import { FileText, FolderTree, LoaderCircle, RefreshCw, Search, Sparkles, Upload } from "lucide-react";
+import { CornerDownLeft, FileText, FolderTree, LoaderCircle, MessageSquareText, RefreshCw, Search, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -115,9 +115,8 @@ export function DocumentsView() {
   return (
     <div className="space-y-6">
       <header>
-        <p className="mb-2 text-sm font-bold uppercase tracking-[0.18em] text-primary">Dein Lernraum</p>
-        <h1 className="text-3xl font-extrabold tracking-[-0.035em] sm:text-4xl">Dokumente</h1>
-        <p className="mt-2 max-w-2xl text-sm font-semibold text-muted-foreground">
+        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Dokumente</h1>
+        <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">
           Lade Unterlagen hoch, durchsuche sie und stell dem Assistenten Fragen. Ohne verbundenen KI-Dienst wird aus den Treffern
           zitiert.
         </p>
@@ -126,12 +125,9 @@ export function DocumentsView() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
         <div className="space-y-6">
           <Card className="border-border/80 bg-card/90">
-            <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-4">
+            <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
               <div>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-primary" aria-hidden="true" />
-                  Bibliothek
-                </CardTitle>
+                <CardTitle>Bibliothek</CardTitle>
                 <CardDescription className="mt-1">
                   {sammlung.items.length} {sammlung.items.length === 1 ? "Dokument" : "Dokumente"} im Bestand.
                 </CardDescription>
@@ -159,7 +155,7 @@ export function DocumentsView() {
                   event.preventDefault();
                   void hochladen();
                 }}
-                className="space-y-3 rounded-2xl border border-dashed border-border bg-muted/30 p-4"
+                className="space-y-3 rounded-md border border-dashed border-border bg-muted/30 p-4"
               >
                 <DateiAuswahl datei={datei} setDatei={setDatei} disabled={upload.pending} />
                 <div className="flex flex-wrap items-center gap-3">
@@ -192,7 +188,7 @@ export function DocumentsView() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="truncate text-sm font-extrabold">{dokument.filename}</p>
+                          <p className="truncate text-sm font-semibold">{dokument.filename}</p>
                           <Badge variant={dokument.status === "error" || dokument.status === "failed" ? "warning" : "secondary"}>
                             {statusLabel(dokument.status)}
                           </Badge>
@@ -213,10 +209,7 @@ export function DocumentsView() {
 
           <Card className="border-border/80 bg-card/90">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Search className="h-5 w-5 text-primary" aria-hidden="true" />
-                Durchsuchen
-              </CardTitle>
+              <CardTitle>Durchsuchen</CardTitle>
               <CardDescription className="mt-1">Findet Textstellen, ohne ein Modell zu befragen.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -243,7 +236,7 @@ export function DocumentsView() {
 
               {suche.result ? (
                 <div className="space-y-2.5">
-                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                  <p className="text-xs font-medium text-muted-foreground">
                     {suche.result.hits.length} Treffer zu „{suche.result.query}“
                   </p>
                   {suche.result.hits.length === 0 ? (
@@ -252,7 +245,7 @@ export function DocumentsView() {
                     <ul className="space-y-2.5">
                       {suche.result.hits.map((treffer) => (
                         <li key={`${treffer.document_id}-${treffer.chunk_index}`} className="border border-border bg-card/60 p-3">
-                          <p className="text-xs font-bold">
+                          <p className="text-xs font-semibold">
                             {treffer.filename}
                             <span className="ml-2 font-semibold text-muted-foreground">Abschnitt {treffer.chunk_index + 1}</span>
                             {treffer.distance !== null ? (
@@ -270,12 +263,9 @@ export function DocumentsView() {
           </Card>
         </div>
 
-        <Card className="border-foreground bg-card">
+        <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" aria-hidden="true" />
-              Assistent
-            </CardTitle>
+            <CardTitle>Frag deine Unterlagen</CardTitle>
             <CardDescription className="mt-1">Eine Frage zu deinen Unterlagen, mit Quellenangabe.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -293,7 +283,7 @@ export function DocumentsView() {
                 className="min-w-0 flex-1"
               />
               <Button type="submit" disabled={frage.pending || !frageText.trim()}>
-                {frage.pending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
+                {frage.pending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CornerDownLeft aria-hidden="true" />}
                 Fragen
               </Button>
             </form>
@@ -311,7 +301,7 @@ export function DocumentsView() {
                   <ul className="space-y-2">
                     {frage.result.sources.map((quelle) => (
                       <li key={`${quelle.document_id}-${quelle.chunk_index}`} className="border border-border/70 bg-muted/30 px-3 py-2.5">
-                        <p className="text-xs font-bold">
+                        <p className="text-xs font-semibold">
                           {quelle.filename}
                           <span className="ml-2 font-semibold text-muted-foreground">Abschnitt {quelle.chunk_index + 1}</span>
                         </p>
@@ -324,9 +314,9 @@ export function DocumentsView() {
                 )}
               </div>
             ) : (
-              <div className="flex min-h-28 flex-col items-center justify-center gap-3 border border-dashed border-border bg-background/40 px-5 py-8 text-center" role="status">
-                <Sparkles className="h-6 w-6 text-primary" aria-hidden="true" />
-                <p className="text-sm font-bold">Noch keine Frage</p>
+              <div className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-md border border-dashed border-border px-5 py-8 text-center" role="status">
+                <MessageSquareText className="h-5 w-5 text-muted-foreground" strokeWidth={1.75} aria-hidden="true" />
+                <p className="text-sm font-semibold">Noch keine Frage</p>
                 <p className="max-w-md text-xs leading-5 text-muted-foreground">Der Assistent antwortet aus deinen eigenen Dokumenten.</p>
               </div>
             )}
@@ -340,7 +330,7 @@ export function DocumentsView() {
 function DateiAuswahl({ datei, setDatei, disabled }: { datei: File | null; setDatei: (file: File | null) => void; disabled: boolean }) {
   return (
     <div className="space-y-2">
-      <label htmlFor="dokument-datei" className="block text-sm font-bold">
+      <label htmlFor="dokument-datei" className="block text-sm font-semibold">
         Datei
       </label>
       <input

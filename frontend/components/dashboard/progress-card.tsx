@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { BarChart3, Flame, RefreshCw, Target, Timer } from "lucide-react";
+import { Flame, RefreshCw, Target, Timer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -56,8 +56,8 @@ function Balken({ anteil, label, className }: { anteil: number; label: string; c
 function Kennzahl({ titel, wert, zusatz, balken }: { titel: string; wert: string; zusatz: string; balken?: number }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{titel}</p>
-      <p className="mt-1 truncate text-base font-extrabold tracking-tight">{wert}</p>
+      <p className="text-[11px] font-medium text-muted-foreground">{titel}</p>
+      <p className="mt-1 truncate text-base font-semibold tracking-tight">{wert}</p>
       <p className="mt-0.5 text-xs text-muted-foreground">{zusatz}</p>
       {balken === undefined ? null : <Balken anteil={balken} label={`${titel}: ${wert}`} className="mt-2" />}
     </div>
@@ -97,7 +97,7 @@ function WochenzielFormular({ ziel, laeuft, onSpeichern }: { ziel: number; laeuf
 
   return (
     <form onSubmit={absenden} noValidate className="space-y-2 border border-border p-3">
-      <label htmlFor="fortschritt-wochenziel" className="block text-xs font-bold">
+      <label htmlFor="fortschritt-wochenziel" className="block text-xs font-semibold">
         Wochenziel in Minuten
       </label>
       <div className="flex flex-wrap items-end gap-2">
@@ -141,7 +141,7 @@ function ThemenZeile({
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-2 border border-border bg-card/60 px-3 py-2.5">
       <div className="min-w-0 flex-1">
-        <p className={cn("truncate text-sm font-bold", thema.is_due && "underline underline-offset-4")}>{thema.name}</p>
+        <p className={cn("truncate text-sm font-semibold", thema.is_due && "underline underline-offset-4")}>{thema.name}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {[thema.subject_name, wiederholungLabel(thema)].filter(Boolean).join(" · ")}
         </p>
@@ -182,10 +182,7 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
     return (
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <BarChart3 className="h-5 w-5 text-primary" aria-hidden="true" />
-            Lernfortschritt
-          </CardTitle>
+          <CardTitle>Lernfortschritt</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3" aria-busy="true" aria-label="Lernfortschritt wird geladen">
           <Skeleton className="h-20 w-full" />
@@ -200,11 +197,7 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
     return (
       <Card role="alert">
         <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <BarChart3 className="h-5 w-5 text-primary" aria-hidden="true" />
-            Lernfortschritt
-          </CardTitle>
-          <CardDescription className="mt-1">{error ?? "Die Auswertung ist gerade nicht verfügbar."}</CardDescription>
+          <CardTitle>Lernfortschritt</CardTitle>
         </CardHeader>
         <CardContent>
           <Button type="button" size="sm" variant="outline" onClick={() => void reload()}>
@@ -221,13 +214,9 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
 
   return (
     <Card>
-      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-4">
+      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <BarChart3 className="h-5 w-5 text-primary" aria-hidden="true" />
-            Lernfortschritt
-          </CardTitle>
-          <CardDescription className="mt-1">Konfidenz, Lernzeit und die nächste Wiederholung.</CardDescription>
+          <CardTitle>Lernfortschritt</CardTitle>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={insights.streak.current_days > 0 ? "default" : "secondary"}>
@@ -282,13 +271,13 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
         */}
         <div>
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-            <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Lernzeit nach Wochentag</h3>
+            <h3 className="text-xs font-medium text-muted-foreground">Lernzeit nach Wochentag</h3>
             <p className="text-xs text-muted-foreground">Letzte {insights.weekday_window_days} Tage</p>
           </div>
           <div className="flex items-end gap-2">
             {weekdayBalken(insights.by_weekday).map((tag) => (
               <div key={tag.weekday} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
-                <span className="text-[11px] font-bold tabular-nums text-muted-foreground">{tag.minutes > 0 ? tag.minutes : "–"}</span>
+                <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">{tag.minutes > 0 ? tag.minutes : "–"}</span>
                 {/*
                   Die Schiene ist die Haarlinie, der Balken darin. Die
                   aria-Werte nennen die echten Minuten gegen den groessten
@@ -308,7 +297,7 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
                   {/* Ein Tag mit Lernzeit behaelt eine sichtbare Mindesthoehe, sonst waere er leer. */}
                   <div className="w-full bg-primary" style={{ height: `${Math.max(tag.anteil, tag.minutes > 0 ? 6 : 0)}%` }} />
                 </div>
-                <span className="text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">{weekdayKurz(tag.label)}</span>
+                <span className="text-[11px] font-medium text-muted-foreground">{weekdayKurz(tag.label)}</span>
               </div>
             ))}
           </div>
@@ -322,7 +311,7 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
               nicht. Beides aneinander zu schreiben wuerde beides falsch.
             */}
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Lernzeit je Fach</h3>
+              <h3 className="text-xs font-medium text-muted-foreground">Lernzeit je Fach</h3>
               <p className="text-xs text-muted-foreground">
                 {lernzeit(insights.total_minutes)} aus {insights.total_sessions} Lernsessions gesamt
               </p>
@@ -332,7 +321,7 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
                 <li key={fach.subject_id ?? "ohne-fach"}>
                   <div className="flex items-baseline justify-between gap-3">
                     <p className="truncate text-sm font-semibold">{fach.subject_name}</p>
-                    <p className="shrink-0 text-xs font-bold tabular-nums text-muted-foreground">
+                    <p className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">
                       {lernzeit(fach.minutes)} · {fach.share_percent.toLocaleString("de-DE", { maximumFractionDigits: 1 })} %
                     </p>
                   </div>
@@ -345,7 +334,7 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
 
         <div>
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-            <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Nächste Wiederholungen</h3>
+            <h3 className="text-xs font-medium text-muted-foreground">Nächste Wiederholungen</h3>
             <p className="text-xs text-muted-foreground">
               {faellig.length > 0 ? `${faellig.length} fällig` : "Nichts fällig"}
               {unbewertet > 0 ? ` · ${unbewertet} noch nicht eingeschätzt` : ""}

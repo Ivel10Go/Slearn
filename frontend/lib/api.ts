@@ -417,6 +417,38 @@ export async function logout() {
   await apiRequest("/v1/auth/logout", { method: "POST" });
 }
 
+/* ---------------------------------------------------------- Ersteinrichtung */
+
+export interface SetupInput {
+  name: string;
+  timezone?: string;
+}
+
+/**
+ * Ob dieser Lernraum noch eingerichtet werden muss.
+ *
+ * Die Einrichtung gibt es nur ohne Anmeldung (Desktop-App). Ein Server mit
+ * Anmeldung antwortet mit 404, und ein nicht erreichbares Backend wirft - in
+ * beiden Faellen ist die Antwort `false`: dann entscheidet nicht die
+ * Einrichtung, sondern die Seite selbst, was sie zeigt.
+ */
+export async function getSetupStatus(): Promise<boolean> {
+  try {
+    const payload = await apiRequest("/v1/setup");
+    return typeof payload === "object" && payload !== null && "needs_setup" in payload && payload.needs_setup === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function completeSetup(input: SetupInput) {
+  const payload = await apiRequest("/v1/setup", {
+    method: "POST",
+    body: JSON.stringify(compact(input)),
+  });
+  return parseUserResponse(payload);
+}
+
 /* ------------------------------------------------------------------- Fächer */
 
 export interface SubjectWrite {

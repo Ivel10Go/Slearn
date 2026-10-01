@@ -28,7 +28,7 @@ export default function RouteError({ error, reset }: { error: Error & { digest?:
           <span className="mb-5 flex h-14 w-14 items-center justify-center border border-border bg-muted">
             <AlertTriangle className="h-7 w-7" aria-hidden="true" />
           </span>
-          <h1 className="text-xl font-extrabold tracking-tight">Hier ist etwas schiefgelaufen</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Hier ist etwas schiefgelaufen</h1>
           <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
             Dein Lernraum konnte diese Seite gerade nicht anzeigen. Deine Daten sind davon nicht betroffen.
           </p>

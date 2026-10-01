@@ -92,20 +92,16 @@ export function SubjectsView() {
   return (
     <div className="space-y-6">
       <header>
-        <p className="mb-2 text-sm font-bold uppercase tracking-[0.18em] text-primary">Dein Lernraum</p>
-        <h1 className="text-3xl font-extrabold tracking-[-0.035em] sm:text-4xl">Fächer</h1>
-        <p className="mt-2 text-sm font-semibold text-muted-foreground">
+        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Fächer</h1>
+        <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">
           Jede Hausaufgabe, Prüfung und Lernaufgabe kann einem Fach zugeordnet werden.
         </p>
       </header>
 
       <Card className="border-border/80 bg-card/90">
-        <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-4">
+        <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
           <div>
-            <CardTitle className="flex items-center gap-2">
-              <BookOpen className="h-5 w-5 text-primary" aria-hidden="true" />
-              Meine Fächer
-            </CardTitle>
+            <CardTitle>Meine Fächer</CardTitle>
             <CardDescription className="mt-1">Von Hand angelegt oder aus dem Schulportal importiert.</CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -124,9 +120,9 @@ export function SubjectsView() {
           <SectionBanner error={sammlung.error} actionError={sammlung.actionError} onRetry={() => void sammlung.reload()} />
 
           {formularOffen ? (
-            <form onSubmit={absenden} noValidate className="space-y-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+            <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
               <div className="flex items-start justify-between gap-3">
-                <p className="text-sm font-bold">{bearbeitet === null ? "Neues Fach" : "Fach bearbeiten"}</p>
+                <p className="text-sm font-semibold">{bearbeitet === null ? "Neues Fach" : "Fach bearbeiten"}</p>
                 <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
                   <X aria-hidden="true" />
                 </Button>
@@ -215,7 +211,7 @@ export function SubjectsView() {
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-extrabold">{fach.name}</p>
+                      <p className="truncate text-sm font-semibold">{fach.name}</p>
                       {fach.source !== "manual" ? <Badge variant="outline">aus dem Portal</Badge> : null}
                     </div>
                     {fach.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{fach.description}</p> : null}

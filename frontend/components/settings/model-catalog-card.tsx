@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Cpu, Download, LoaderCircle, RefreshCw, Trash2, X } from "lucide-react";
+import { AlertTriangle, Download, LoaderCircle, RefreshCw, Trash2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -108,7 +108,7 @@ function ModelRow({
     <li className="border border-border/70 p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-bold">{model.label}</p>
+          <p className="text-sm font-semibold">{model.label}</p>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <Badge variant="outline">{describeModelTask(model.task)}</Badge>
             <Badge variant={model.status.status === "installed" ? "success" : "secondary"}>
@@ -123,11 +123,11 @@ function ModelRow({
 
       <dl className="mt-4 grid gap-2 sm:grid-cols-2">
         <div className="border border-border/70 bg-muted/40 px-3.5 py-3">
-          <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Größe</dt>
+          <dt className="text-[11px] font-medium text-muted-foreground">Größe</dt>
           <dd className="mt-1 text-sm font-semibold">{formatModelBytes(model.size_bytes)}</dd>
         </div>
         <div className="border border-border/70 bg-muted/40 px-3.5 py-3">
-          <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">RAM zur Laufzeit (Schätzung)</dt>
+          <dt className="text-[11px] font-medium text-muted-foreground">RAM zur Laufzeit (Schätzung)</dt>
           <dd className="mt-1 text-sm font-semibold">
             {model.ram_estimate_bytes > 0 ? `ab ${model.ram_estimate_gib.toFixed(1).replace(".", ",")} GiB` : "unbekannt"}
           </dd>
@@ -275,10 +275,7 @@ export function ModelCatalogCard() {
     <Card className="border-border/80 bg-card/90">
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div>
-          <CardTitle className="flex items-center gap-2">
-            <Cpu className="h-5 w-5" aria-hidden="true" />
-            Lokale Modelle
-          </CardTitle>
+          <CardTitle>Lokale Modelle</CardTitle>
           <CardDescription className="mt-1">
             Lade ein Sprach- oder Spracherkennungsmodell direkt auf den Server. Der Download läuft im Hintergrund und setzt
             nach einem Abbruch beim Teilstand fort.

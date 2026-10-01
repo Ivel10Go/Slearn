@@ -1,29 +1,23 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import {
-  BookOpen,
+  ArrowRight,
   Check,
-  CheckCircle2,
-  ChevronRight,
   Clock3,
+  CornerDownLeft,
   GraduationCap,
   LoaderCircle,
   MapPin,
   Play,
   RefreshCw,
-  Send,
-  ShieldCheck,
-  Sparkles,
-  Target,
+  Square,
   Timer,
   UserRound,
-  X,
-  Zap,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
@@ -35,7 +29,6 @@ import { ApiError, askDocuments, completeStudyTask, startStudyTask, stopStudyTas
 import { describeSource } from "@/lib/ai-runtime";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  formatDate,
   formatDuration,
   formatTime,
   getDayProgress,
@@ -61,7 +54,7 @@ interface DashboardViewProps {
 const lessonStateLabels: Record<LessonState, string> = {
   completed: "Erledigt",
   current: "Läuft gerade",
-  upcoming: "Kommt gleich",
+  upcoming: "Als Nächstes",
 };
 
 const taskStatusLabels: Record<StudyTaskStatus, string> = {
@@ -76,54 +69,22 @@ const taskStatusLabels: Record<StudyTaskStatus, string> = {
  * Ohne das landet die Sprungmarke unter dem sticky Header, weil
  * `scroll-behavior: smooth` an der Fensteroberkante ausrichtet.
  */
-const anchorClass = "scroll-mt-24";
+const anchorClass = "scroll-mt-20";
 
-function taskVariant(status: StudyTaskStatus) {
-  if (status === "completed") {
-    return "success" as const;
-  }
-  if (status === "in_progress") {
-    return "info" as const;
-  }
-  return "secondary" as const;
-}
+const weekdayFormatter = new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "numeric", month: "long" });
 
 function ProgressBar({ value, className, indicatorClassName, label }: { value: number; className?: string; indicatorClassName?: string; label?: string }) {
   const percentage = Math.min(100, Math.max(0, value));
   return (
     <div
-      className={cn("h-2 overflow-hidden bg-muted", className)}
+      className={cn("h-1 overflow-hidden rounded-full bg-muted", className)}
       role="progressbar"
       aria-label={label}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={percentage}
     >
-      <div className={cn("h-full bg-primary transition-[width] duration-slow", indicatorClassName)} style={{ width: `${percentage}%` }} />
-    </div>
-  );
-}
-
-/** Ringvariante desselben Werts wie der Balken, deshalb mit Label und aria-Werten. */
-function ProgressRing({ value, label }: { value: number; label: string }) {
-  const percentage = Math.min(100, Math.max(0, value));
-  const style: CSSProperties = {
-    background: `conic-gradient(currentColor ${percentage * 3.6}deg, color-mix(in srgb, currentColor 18%, transparent) 0deg)`,
-  };
-  return (
-    <div
-      className="relative flex h-32 w-32 shrink-0 items-center justify-center p-2 text-primary-foreground"
-      style={style}
-      role="progressbar"
-      aria-label={label}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={percentage}
-    >
-      <div className="flex h-full w-full flex-col items-center justify-center bg-primary text-primary-foreground">
-        <span className="text-3xl font-extrabold tracking-tight">{percentage}%</span>
-        <span className="text-[11px] font-bold uppercase tracking-[0.16em] opacity-75">geschafft</span>
-      </div>
+      <div className={cn("h-full rounded-full bg-foreground transition-[width] duration-slow", indicatorClassName)} style={{ width: `${percentage}%` }} />
     </div>
   );
 }
@@ -131,102 +92,165 @@ function ProgressRing({ value, label }: { value: number; label: string }) {
 function DashboardSkeleton() {
   return (
     <div className="space-y-6" aria-busy="true" aria-label="Dashboard wird geladen">
-      <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
-        <div className="space-y-3">
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-10 w-72 max-w-full" />
-          <Skeleton className="h-4 w-56" />
-        </div>
-        <Skeleton className="h-10 w-32" />
+      <div className="space-y-2.5">
+        <Skeleton className="h-3.5 w-36" />
+        <Skeleton className="h-7 w-[28rem] max-w-full" />
       </div>
-      <Skeleton className="h-52 w-full" />
-      <div className="grid gap-6 xl:grid-cols-2">
-        <Skeleton className="h-56 w-full" />
-        <Skeleton className="h-56 w-full" />
+      <Skeleton className="h-[74px] w-full" />
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
+        <div className="space-y-5">
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+        <div className="space-y-5">
+          <Skeleton className="h-48 w-full" />
+          <Skeleton className="h-48 w-full" />
+        </div>
       </div>
       <Skeleton className="h-80 w-full" />
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-        <div className="space-y-6">
-          <Skeleton className="h-80 w-full" />
-          <Skeleton className="h-96 w-full" />
-          <Skeleton className="h-72 w-full" />
-        </div>
-        <div className="space-y-6">
-          <Skeleton className="h-64 w-full" />
-          <Skeleton className="h-72 w-full" />
-        </div>
-      </div>
     </div>
   );
 }
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <Card className="mx-auto max-w-2xl border-destructive/20 bg-card" role="alert">
-      <CardContent className="flex flex-col items-center px-6 py-14 text-center sm:px-10">
-        <span className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
-          <X className="h-7 w-7" aria-hidden="true" />
-        </span>
-        <h2 className="text-xl font-extrabold">Dein Lernraum ist gerade nicht erreichbar</h2>
-        <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">{message}</p>
-        <Button type="button" className="mt-7" onClick={onRetry}>
-          <RefreshCw aria-hidden="true" />
-          Erneut versuchen
-        </Button>
-      </CardContent>
-    </Card>
+    <div className="mx-auto flex max-w-md flex-col items-center py-20 text-center" role="alert">
+      <h2 className="text-base font-semibold">Der Lernraum ist gerade nicht erreichbar</h2>
+      <p className="mt-1.5 text-[13px] leading-5 text-muted-foreground">{message}</p>
+      <Button type="button" variant="outline" className="mt-5" onClick={onRetry}>
+        <RefreshCw aria-hidden="true" />
+        Erneut versuchen
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * Die Kopfzeile des Dashboards: Datum, Tagessatz, Herkunft.
+ *
+ * Der Satz kommt vom Backend und ist einmal pro Tag von einem KI-Weg erzeugt.
+ * Die Herkunft steht klein darunter - ein Server auf diesem Rechner, ein
+ * Online-Dienst oder bei `fallback` der Satz aus den Daten -, damit niemand
+ * einen Zufallssatz fuer eine KI-Aussage haelt. Beschriftet ueber
+ * `describeSource`, damit Dashboard und Dokumentenfrage **eine** Formulierung
+ * teilen.
+ */
+function GreetingHeader({ username, reference }: { username?: string | null; reference: Date }) {
+  const { greeting, error, status, refresh, refreshing } = useGreeting();
+  const herkunft = greeting ? describeSource(greeting.source, greeting.model) : null;
+
+  return (
+    <header id="overview" className={cn(anchorClass, "flex items-start justify-between gap-4")}>
+      <div className="min-w-0">
+        <p className="text-[13px] text-muted-foreground" suppressHydrationWarning>
+          {weekdayFormatter.format(reference)}
+        </p>
+        {status === "loading" ? (
+          <Skeleton className="mt-2 h-7 w-[28rem] max-w-full" />
+        ) : status === "error" || !greeting || !herkunft ? (
+          <>
+            <h1 className="mt-1 text-[22px] font-semibold leading-8 tracking-tight">
+              Willkommen{username ? `, ${username}` : ""}.
+            </h1>
+            {error ? <p className="mt-1 text-[13px] text-muted-foreground">{error}</p> : null}
+          </>
+        ) : (
+          <>
+            <h1 className="mt-1 max-w-3xl text-[22px] font-semibold leading-8 tracking-tight">{greeting.text}</h1>
+            <p className="mt-1.5 text-xs text-muted-foreground">{herkunft.text}</p>
+          </>
+        )}
+      </div>
+
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="mt-5 shrink-0"
+        onClick={() => void refresh()}
+        disabled={refreshing || status === "loading"}
+        aria-label="Tagessatz neu formulieren"
+        title="Neu formulieren"
+      >
+        <RefreshCw className={cn(refreshing && "animate-spin")} aria-hidden="true" />
+      </Button>
+    </header>
+  );
+}
+
+/**
+ * Vier Zahlen in einer Zeile - ersetzt den frueheren Hero-Block, den
+ * Fortschrittsring und die Nutzungskarte, die alle dieselben Werte zeigten.
+ */
+function StatsStrip({ data, dayProgress }: { data: DashboardData; dayProgress: number }) {
+  const stats = [
+    { label: "Stunden", value: `${data.summary.lessonsCompleted}/${data.summary.lessonsTotal}` },
+    { label: "Lernblöcke", value: `${data.summary.tasksCompleted}/${data.summary.tasksTotal}` },
+    { label: "Offene Hausaufgaben", value: String(data.summary.homeworkPending) },
+  ];
+  return (
+    <section aria-label="Tagesstand" className="grid grid-cols-2 overflow-hidden rounded-lg border border-border sm:grid-cols-4">
+      {stats.map((stat, index) => (
+        <div key={stat.label} className={cn("px-4 py-3.5", index > 0 && "border-l border-border", index === 2 && "max-sm:border-l-0 max-sm:border-t")}>
+          <p className="text-xs text-muted-foreground">{stat.label}</p>
+          <p className="mt-0.5 text-xl font-semibold tabular-nums tracking-tight">{stat.value}</p>
+        </div>
+      ))}
+      <div className="border-l border-border px-4 py-3.5 max-sm:border-t">
+        <p className="text-xs text-muted-foreground">Tag geschafft</p>
+        <div className="mt-0.5 flex items-center gap-3">
+          <p className="text-xl font-semibold tabular-nums tracking-tight">{Math.round(dayProgress)}%</p>
+          <ProgressBar value={dayProgress} label="Tagesfortschritt" className="flex-1" />
+        </div>
+      </div>
+    </section>
   );
 }
 
 function FocusLessonCard({ lesson, reference }: { lesson: DashboardLesson | undefined; reference: Date }) {
   const state = lesson ? getLessonState(lesson, reference) : "upcoming";
-  const isCurrent = state === "current";
-  const title = isCurrent ? "Du bist mittendrin." : lesson ? "Als Nächstes steht an" : "Dein Stundenplan ist frei.";
 
   return (
-    <Card id="focus" className={cn(anchorClass, "relative overflow-hidden border-foreground bg-card")}>
-      <CardHeader className="relative pb-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-primary">
-            <Target className="h-4 w-4" aria-hidden="true" />
-            Tagesfokus
-          </div>
-          {lesson ? <Badge variant={isCurrent ? "success" : "info"}>{isCurrent ? "Jetzt" : "Als Nächstes"}</Badge> : <Badge variant="secondary">Kein Termin</Badge>}
-        </div>
-        <CardTitle className="mt-3 text-2xl sm:text-3xl">{title}</CardTitle>
-        <CardDescription className="text-base">Ein klarer nächster Schritt macht den Unterschied.</CardDescription>
+    <Card id="focus" className={anchorClass}>
+      <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+        <CardTitle>{lesson ? lessonStateLabels[state] : "Unterricht"}</CardTitle>
+        <Link href="#schedule" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+          Stundenplan
+          <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+        </Link>
       </CardHeader>
-      <CardContent className="relative">
+      <CardContent>
         {lesson ? (
-          <div className="flex flex-col gap-5 rounded-2xl border border-border/70 bg-muted/35 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div className="flex items-start gap-4">
+            <div className="w-14 shrink-0 border-r border-border pr-4 text-right tabular-nums">
+              <p className="text-[13px] font-semibold">{formatTime(lesson.startTime)}</p>
+              <p className="text-xs text-muted-foreground">{formatTime(lesson.endTime)}</p>
+            </div>
             <div className="min-w-0">
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <span className="text-sm font-extrabold text-primary">{lesson.subject}</span>
-                <span className="text-xs text-muted-foreground">{lessonStateLabels[state]}</span>
-              </div>
-              <h3 className="truncate text-xl font-bold tracking-tight">{lesson.title}</h3>
-              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
+              <p className="truncate text-base font-semibold tracking-tight">{lesson.subject}</p>
+              {lesson.title && lesson.title !== lesson.subject ? <p className="truncate text-[13px] text-muted-foreground">{lesson.title}</p> : null}
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
-                  <Clock3 className="h-4 w-4" aria-hidden="true" />
+                  <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
                   {formatTime(lesson.startTime)} – {formatTime(lesson.endTime)} Uhr
                 </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <MapPin className="h-4 w-4" aria-hidden="true" />
-                  {lesson.room}
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <UserRound className="h-4 w-4" aria-hidden="true" />
-                  {lesson.teacher}
-                </span>
+                {lesson.room ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                    {lesson.room}
+                  </span>
+                ) : null}
+                {lesson.teacher ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <UserRound className="h-3.5 w-3.5" aria-hidden="true" />
+                    {lesson.teacher}
+                  </span>
+                ) : null}
               </div>
             </div>
-            <Link href="#schedule" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0 self-start sm:self-center")}>
-              Stundenplan
-              <ChevronRight aria-hidden="true" />
-            </Link>
           </div>
         ) : (
-          <EmptyState icon={GraduationCap} title="Keine Unterrichtsstunden" description="Für heute sind keine Stunden eingetragen. Nutze die Zeit für deine offenen Aufgaben." />
+          <EmptyState icon={GraduationCap} title="Heute kein Unterricht mehr" description="Zeit für deine offenen Aufgaben." />
         )}
       </CardContent>
     </Card>
@@ -258,82 +282,13 @@ function mergeStudyAction(task: DashboardStudyTask, result: StudyActionResult, a
   };
 }
 
-/**
- * Die Kopfzeile des Dashboards.
- *
- * Der Satz kommt vom Backend und ist einmal pro Tag von einem KI-Weg erzeugt.
- * Das Badge sagt, **welcher** Weg das war: ein Server auf diesem Rechner, ein
- * Online-Dienst oder - bei `fallback` - gar kein Modell, sondern der Satz aus den
- * Daten. Das wird sichtbar gemacht, damit niemand einen Zufallssatz fuer eine
- * KI-Aussage haelt.
- *
- * Die Herkunft wird ueber `describeSource` beschriftet, damit Dashboard und
- * Dokumentenfrage **eine** Formulierung teilen. Zwei Stellen, die "Lokales
- * Modell" und "Von der KI" unabhaengig voneinander erfinden, waeren genau die
- * zwei Herkunftssysteme, die es nicht geben soll.
- */
-function GreetingHeader({ username }: { username?: string | null }) {
-  const { greeting, error, status, refresh, refreshing } = useGreeting();
-  const herkunft = greeting ? describeSource(greeting.source, greeting.model) : null;
-
-  return (
-    <header id="overview" className={cn(anchorClass, "flex flex-col justify-between gap-4 sm:flex-row sm:items-start")}>
-      <div className="min-w-0">
-        <p className="mb-2 flex items-center gap-1.5 text-sm font-bold uppercase tracking-[0.18em] text-primary">
-          <Sparkles className="h-4 w-4" aria-hidden="true" />
-          Dein Tagesbriefing
-        </p>
-        {status === "loading" ? (
-          <Skeleton className="h-9 w-full max-xl" />
-        ) : status === "error" || !greeting || !herkunft ? (
-          <>
-            <h1 className="text-2xl font-extrabold tracking-[-0.03em] sm:text-3xl">
-              Willkommen{username ? `, ${username}` : ""}.
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {error ?? "Der Willkommenssatz ist gerade nicht verfügbar."}
-            </p>
-          </>
-        ) : (
-          <>
-            <h1 className="max-w-3xl text-2xl font-extrabold leading-snug tracking-[-0.03em] sm:text-3xl">
-              {greeting.text}
-            </h1>
-            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-              <Badge variant={herkunft.fromModel ? "info" : "secondary"}>{herkunft.text}</Badge>
-              {greeting.generatedOn ? (
-                <>
-                  <span className="text-border">·</span>
-                  <span>für {formatDate(new Date(`${greeting.generatedOn}T12:00:00`))}</span>
-                </>
-              ) : null}
-            </p>
-          </>
-        )}
-      </div>
-
-      <div className="flex shrink-0 items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => void refresh()}
-          disabled={refreshing || status === "loading"}
-        >
-          <RefreshCw className={cn(refreshing && "animate-spin")} aria-hidden="true" />
-          Neu formulieren
-        </Button>
-      </div>
-    </header>
-  );
-}
-
 function StudyTasksCard({ tasks, onLernzeitGeaendert }: { tasks: DashboardStudyTask[]; onLernzeitGeaendert?: () => void }) {
   const now = useNow();
   const [taskOverrides, setTaskOverrides] = useState<Record<string, DashboardStudyTask>>({});
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const taskList = tasks.map((task) => taskOverrides[task.id] ?? task);
+  const openCount = taskList.filter((task) => task.status !== "completed").length;
 
   async function handleAction(task: DashboardStudyTask, action: "start" | "stop" | "complete") {
     setActionError(null);
@@ -355,111 +310,80 @@ function StudyTasksCard({ tasks, onLernzeitGeaendert }: { tasks: DashboardStudyT
 
   return (
     <Card id="study-tasks" className={anchorClass}>
-      <CardHeader className="flex-row items-start justify-between space-y-0 pb-4">
-        <div>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Zap className="h-5 w-5 text-primary" aria-hidden="true" />
-            Heute lernen
-          </CardTitle>
-          <CardDescription className="mt-1">Kleine Fokusblöcke, großer Fortschritt.</CardDescription>
+      <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+        <CardTitle>Heute lernen</CardTitle>
+        <div className="flex items-center gap-3">
+          <span className="text-xs tabular-nums text-muted-foreground">{openCount} offen</span>
+          <Link href="/lernen" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+            Lernplan
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </Link>
         </div>
-        <Badge variant="info">{taskList.filter((task) => task.status !== "completed").length} Tasks</Badge>
       </CardHeader>
-      <CardContent>
-        {actionError ? <p className="mb-4 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">{actionError}</p> : null}
+      <CardContent className="px-0 pb-1.5">
+        {actionError ? <p className="mx-5 mb-3 rounded-md border border-foreground/30 bg-muted px-3 py-2 text-[13px]" role="alert">{actionError}</p> : null}
         {taskList.length === 0 ? (
-          <EmptyState icon={Timer} title="Keine Lernaufgaben" description="Deine nächsten Lernschritte werden hier angezeigt, sobald sie geplant sind." />
+          <div className="px-5 pb-3.5">
+            <EmptyState icon={Timer} title="Keine Lernaufgaben" description="Geplante Lernschritte erscheinen hier." />
+          </div>
         ) : (
-          <div className="space-y-3">
-            {taskList.slice(0, 4).map((task) => {
+          <ul className="divide-y divide-border border-t border-border">
+            {taskList.slice(0, 5).map((task) => {
               const active = task.session?.state === "active";
               const completed = task.status === "completed";
               const demo = isDemoTaskId(task.id);
               const busy = busyTaskId === task.id;
               const startedAt = task.session?.startedAt ?? task.startedAt;
               return (
-                <div key={task.id} className={cn("border p-4 transition-colors", active ? "border-foreground bg-muted" : "border-border")}>
-                  <div className="flex items-start gap-3">
-                    <span className={cn("mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center", completed ? "bg-foreground text-background" : "bg-secondary text-secondary-foreground")}>
-                      {completed ? <Check className="h-4 w-4" aria-hidden="true" /> : <BookOpen className="h-4 w-4" aria-hidden="true" />}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className={cn("truncate text-sm font-extrabold", completed && "text-muted-foreground line-through")}>{task.title}</p>
-                        <Badge variant={taskVariant(task.status)}>{taskStatusLabels[task.status]}</Badge>
-                      </div>
-                      <p className="mt-1 text-xs font-semibold text-muted-foreground">{task.subject} · {task.topic}</p>
-                      {active && startedAt ? <p className="mt-1 flex items-center gap-1 text-xs font-bold text-primary"><Timer className="h-3.5 w-3.5" aria-hidden="true" />{elapsedLabel(startedAt, now)} Min.</p> : null}
-                    </div>
-                    <span className="shrink-0 text-xs font-bold text-muted-foreground">{formatDuration(task.durationMinutes)}</span>
-                  </div>
-                  <div className="mt-4 flex items-center gap-3">
-                    <ProgressBar value={task.progress} label={`Fortschritt ${task.title}`} className="h-1.5 flex-1" indicatorClassName={completed ? "bg-foreground" : "bg-primary"} />
-                    <span className="w-9 text-right text-xs font-bold text-muted-foreground">{task.progress}%</span>
-                    {completed ? (
-                      <span className="flex h-8 w-8 items-center justify-center bg-foreground text-background" aria-label="Erledigt">
-                        <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                      </span>
-                    ) : active ? (
-                      <div className="flex items-center gap-2">
-                        <Button type="button" size="sm" variant="outline" onClick={() => void handleAction(task, "complete")} disabled={busy || demo} aria-label={`${task.title} abschließen`}>
-                          <Check aria-hidden="true" />
-                          Fertig
-                        </Button>
-                        <Button type="button" size="sm" variant="secondary" onClick={() => void handleAction(task, "stop")} disabled={busy || demo} aria-label={`${task.title} stoppen`}>
-                          <Timer aria-hidden="true" />
-                          Stopp
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button type="button" size="sm" variant="outline" onClick={() => void handleAction(task, "start")} disabled={busy || demo} aria-label={`${task.title} starten`}>
-                        <Play aria-hidden="true" />
-                        {demo ? "Demo" : "Start"}
-                      </Button>
+                <li key={task.id} className={cn("flex items-center gap-3 px-5 py-3", active && "bg-muted/60")}>
+                  <button
+                    type="button"
+                    onClick={() => void handleAction(task, "complete")}
+                    disabled={completed || busy || demo}
+                    aria-label={completed ? `${task.title} erledigt` : `${task.title} abschließen`}
+                    className={cn(
+                      "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border transition-colors",
+                      completed ? "border-foreground bg-foreground text-background" : "border-input hover:border-foreground",
                     )}
+                  >
+                    {completed ? <Check className="h-3 w-3" strokeWidth={3} aria-hidden="true" /> : null}
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <p className={cn("truncate text-[13px] font-medium", completed && "text-muted-foreground line-through")}>{task.title}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {[task.subject, task.topic].filter(Boolean).join(" · ")}
+                      {!completed && task.status === "in_progress" && !active ? ` · ${taskStatusLabels[task.status]}` : null}
+                    </p>
                   </div>
-                </div>
+                  {active && startedAt ? (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium tabular-nums">
+                      <Timer className="h-3.5 w-3.5" aria-hidden="true" />
+                      {elapsedLabel(startedAt, now)}
+                    </span>
+                  ) : (
+                    <span className="hidden w-14 text-right text-xs tabular-nums text-muted-foreground sm:block">{formatDuration(task.durationMinutes)}</span>
+                  )}
+                  <div className="hidden w-16 sm:block">
+                    <ProgressBar value={task.progress} label={`Fortschritt ${task.title}`} />
+                  </div>
+                  {completed ? (
+                    <span className="w-[72px] text-right text-xs text-muted-foreground">Erledigt</span>
+                  ) : active ? (
+                    <Button type="button" size="sm" variant="outline" className="w-[72px]" onClick={() => void handleAction(task, "stop")} disabled={busy || demo} aria-label={`${task.title} stoppen`}>
+                      <Square className="!size-3 fill-current" aria-hidden="true" />
+                      Stopp
+                    </Button>
+                  ) : (
+                    <Button type="button" size="sm" variant="outline" className="w-[72px]" onClick={() => void handleAction(task, "start")} disabled={busy || demo} aria-label={`${task.title} starten`}>
+                      <Play className="!size-3 fill-current" aria-hidden="true" />
+                      {demo ? "Demo" : "Start"}
+                    </Button>
+                  )}
+                </li>
               );
             })}
-          </div>
+          </ul>
         )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function UsageCard({ data }: { data: DashboardData }) {
-  return (
-    <Card id="usage" className={anchorClass}>
-      <CardHeader className="flex-row items-start justify-between space-y-0 pb-4">
-        <div>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <ShieldCheck className="h-5 w-5 text-primary" aria-hidden="true" />
-            Nutzung & Datenschutz
-          </CardTitle>
-          <CardDescription className="mt-1">Deine Lernaktivität bleibt nachvollziehbar.</CardDescription>
-        </div>
-        <Badge variant="secondary">Privat</Badge>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-3 gap-2">
-          <div className="rounded-xl bg-muted/50 p-3">
-            <p className="text-lg font-extrabold">{data.summary.tasksCompleted}/{data.summary.tasksTotal}</p>
-            <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Fokusblöcke</p>
-          </div>
-          <div className="rounded-xl bg-muted/50 p-3">
-            <p className="text-lg font-extrabold">{data.summary.lessonsCompleted}/{data.summary.lessonsTotal}</p>
-            <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Stunden</p>
-          </div>
-          <div className="rounded-xl bg-muted/50 p-3">
-            <p className="text-lg font-extrabold">{data.summary.homeworkPending}</p>
-            <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Offen</p>
-          </div>
-        </div>
-        <div className="flex gap-3 rounded-xl border border-border/70 p-3">
-          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-          <p className="text-xs leading-5 text-muted-foreground">Private Lerninhalte werden nicht im Browser zwischengespeichert. Die Anmeldung nutzt eine serverseitige Session.</p>
-        </div>
       </CardContent>
     </Card>
   );
@@ -468,10 +392,8 @@ function UsageCard({ data }: { data: DashboardData }) {
 /**
  * Die Herkunft einer Dokumenten-Antwort.
  *
- * Dieselbe Beschriftung wie im Tagesbriefing (`describeSource`), damit die Frage
- * "woher kommt das?" an beiden Stellen dieselbe Antwort bekommt. Der einzige
- * Unterschied ist der Text: hier stammt der Daten-Satz aus den Dokumenten, dort
- * aus dem Tagesstand.
+ * Dieselbe Beschriftung wie im Tagessatz (`describeSource`), damit die Frage
+ * "woher kommt das?" an beiden Stellen dieselbe Antwort bekommt.
  */
 function AnswerBadge({ answer }: { answer: DocumentAnswer }) {
   const herkunft = describeSource(answer.source, answer.model);
@@ -481,17 +403,15 @@ function AnswerBadge({ answer }: { answer: DocumentAnswer }) {
   if (answer.source === "none") {
     return <Badge variant="outline">{herkunft.text}</Badge>;
   }
-  return <Badge variant="info">Aus deinen Dokumenten</Badge>;
+  return <Badge variant="outline">Aus deinen Dokumenten</Badge>;
 }
-
 
 /**
  * Der Hinweis, ob der Notenstand im Prompt stand.
  *
- * Die Frage ist eine andere als die nach dem Modell: eine Lernende, die nach
- * ihrer Note fragt, muss erfahren koennen, ob das Modell ihre Note überhaupt
- * gesehen hat. Bejaht heisst es erst nach einer ausdruecklichen Freigabe, und
- * die steht in der Notenkarte.
+ * Eine Lernende, die nach ihrer Note fragt, muss erfahren koennen, ob das
+ * Modell ihre Note ueberhaupt gesehen hat. Bejaht heisst es erst nach einer
+ * ausdruecklichen Freigabe, und die steht in der Notenkarte.
  */
 function NotenHinweis({ gradesShared }: { gradesShared: boolean }) {
   return gradesShared ? (
@@ -526,91 +446,72 @@ function AssistantCard() {
   }
 
   return (
-    <Card id="assistant" className={cn(anchorClass, "relative overflow-hidden border-foreground bg-card")}>
-      <CardHeader className="relative pb-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center bg-primary text-primary-foreground">
-              <Sparkles className="h-6 w-6" aria-hidden="true" />
-            </span>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <CardTitle className="text-xl">Dein Lernassistent</CardTitle>
-                {answer ? <AnswerBadge answer={answer} /> : <Badge variant="secondary">Antwortet aus deinen Dokumenten</Badge>}
-              </div>
-              <CardDescription className="mt-1">Stelle eine Frage zu deinen Unterlagen – die Antwort kommt mit Quellenangabe.</CardDescription>
-            </div>
-          </div>
-          <span className="hidden items-center gap-1.5 border border-border bg-background px-3 py-1.5 text-xs font-bold text-muted-foreground xl:inline-flex">
-            <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-            Deine Daten, deine Worte
-          </span>
-        </div>
+    <Card id="assistant" className={anchorClass}>
+      <CardHeader className="pb-3">
+        <CardTitle>Frag deine Unterlagen</CardTitle>
+        <CardDescription>Antworten aus deinen Dokumenten, mit Quellenangabe.</CardDescription>
       </CardHeader>
-      <CardContent className="relative space-y-4">
-        <form onSubmit={handleAsk} className="flex gap-2" role="search">
+      <CardContent className="space-y-3">
+        <form onSubmit={handleAsk} className="relative" role="search">
           <label htmlFor="assistant-question" className="sr-only">Frage an deine Dokumente</label>
           <Input
             id="assistant-question"
             type="text"
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
-            placeholder="Zum Beispiel: Was sagt der Satz des Pythagoras?"
+            placeholder="Was sagt der Satz des Pythagoras?"
             disabled={isAsking}
-            className="min-w-0 flex-1"
+            className="pr-10"
           />
-          <Button type="submit" disabled={isAsking || !question.trim()}>
-            {isAsking ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
-            {isAsking ? "Fragt …" : "Fragen"}
-          </Button>
+          <button
+            type="submit"
+            disabled={isAsking || !question.trim()}
+            className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+            aria-label="Fragen"
+          >
+            {isAsking ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CornerDownLeft className="h-4 w-4" aria-hidden="true" />}
+          </button>
         </form>
 
         {error ? (
-          <p className="rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert">
+          <p className="rounded-md border border-foreground/30 bg-muted px-3 py-2 text-[13px]" role="alert">
             {error}
           </p>
         ) : null}
 
         {answer ? (
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="space-y-2.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               <AnswerBadge answer={answer} />
               <NotenHinweis gradesShared={answer.grades_shared} />
             </div>
-            <p className="rounded-2xl border border-border bg-background/60 px-4 py-3 text-sm leading-6">{answer.answer}</p>
+            <p className="text-[13px] leading-6">{answer.answer}</p>
             {answer.sources.length > 0 ? (
-              <ul className="space-y-2">
+              <ul className="space-y-1.5">
                 {answer.sources.map((source) => (
-                  <li key={`${source.document_id}-${source.chunk_index}`} className="rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5">
-                    <p className="text-xs font-bold">
+                  <li key={`${source.document_id}-${source.chunk_index}`} className="rounded-md border border-border px-3 py-2">
+                    <p className="text-xs font-medium">
                       {source.filename}
-                      <span className="ml-2 font-semibold text-muted-foreground">Abschnitt {source.chunk_index + 1}</span>
+                      <span className="ml-2 font-normal text-muted-foreground">Abschnitt {source.chunk_index + 1}</span>
                     </p>
-                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{source.content}</p>
+                    <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">{source.content}</p>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-xs text-muted-foreground">Es wurden keine passenden Stellen in deinen Dokumenten gefunden.</p>
+              <p className="text-xs text-muted-foreground">Keine passenden Stellen in deinen Dokumenten gefunden.</p>
             )}
           </div>
         ) : (
-          <div className="flex min-h-28 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border bg-background/40 px-5 py-8 text-center" role="status">
-            <Sparkles className="h-6 w-6 text-primary" aria-hidden="true" />
-            <p className="text-sm font-bold">Noch keine Frage</p>
-            <p className="max-w-md text-xs leading-5 text-muted-foreground">
-              Indexiere zuerst einen Dokumentordner unter Einstellungen – dann beantwortet der Assistent deine Fragen zu diesen Unterlagen.
-            </p>
-          </div>
+          <p className="text-xs leading-5 text-muted-foreground" role="status">
+            Lege zuerst Dokumente unter <Link href="/dokumente" className="underline underline-offset-2 hover:text-foreground">Dokumente</Link> ab. Ohne verbundenen KI-Dienst wird aus den Treffern zitiert.
+          </p>
         )}
-        <p className="text-xs leading-5 text-muted-foreground">Antworten entstehen aus deinen eigenen Dokumenten; ohne verbundenen KI-Dienst wird aus den Treffern zitiert.</p>
 
         {/*
-          Die Spracheingabe und die Sprachausgabe hängen an **dieser** Karte und
-          nicht an einer eigenen. Der Grund ist derselbe wie bei den Modellen:
-          das Diktat schreibt in genau dieses Fragefeld, und der Vorleseknopf
-          liest genau diese Antwort. Eine eigene Sprachkarte waere ein zweiter
-          Textweg - und der waere nicht derselbe.
+          Spracheingabe und -ausgabe haengen an **dieser** Karte: das Diktat
+          schreibt in genau dieses Fragefeld, und der Vorleseknopf liest genau
+          diese Antwort. Eine eigene Sprachkarte waere ein zweiter Textweg.
         */}
         <SpeechControls onText={setQuestion} antwort={answer?.answer} />
       </CardContent>
@@ -624,15 +525,9 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
   /**
    * Zaehler, keine Zeitangabe: die Fortschritts- und die Belohnungskarte laden
    * neu, wenn sich dieser Wert aendert. Beide brauchen ihn, weil **ein**
-   * Ereignis - eine abgeschlossene Lernsession - beides verschiebt: Tageszeit,
-   * Serie und Wochenziel links, Punkte und Auszeichnungen rechts.
-   *
-   * Bewusst **ein** Zaehler fuer zwei Karten und nicht zwei. Zwei Zaehler
-   * koennten nur etwas anderes beobachten als dasselbe Ereignis - und damit
-   * entweder zu frueh oder zu spaet aktualisieren. Der Zaehler wird genau an der
-   * Stelle hochgezaehlt, an der die Aenderung ausgeloest wird, und die Karten
-   * lesen ihn beide. Das ist derselbe Zaehler, den es schon gibt; es kam kein
-   * zweiter Weg dazu, den Zustand zu aendern.
+   * Ereignis - eine abgeschlossene Lernsession - beides verschiebt. Bewusst
+   * **ein** Zaehler fuer zwei Karten: er wird genau dort hochgezaehlt, wo die
+   * Aenderung ausgeloest wird, und beide Karten lesen ihn.
    */
   const [lernzeitKey, setLernzeitKey] = useState(0);
   const focusLesson = useMemo(() => {
@@ -653,95 +548,57 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
   const dayProgress = data.summary.dayProgress > 0 ? data.summary.dayProgress : getDayProgress(data.lessons, reference);
 
   return (
-    <div className="space-y-6">
-      <GreetingHeader username={username} />
+    <div className="space-y-5">
+      <GreetingHeader username={username} reference={reference} />
 
       {error ? (
-        <div className="flex flex-col gap-3 rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between" role="alert">
+        <div className="flex flex-col gap-3 rounded-md border border-foreground/30 bg-muted px-4 py-2.5 text-[13px] sm:flex-row sm:items-center sm:justify-between" role="alert">
           <span>{error}</span>
           <Button type="button" size="sm" variant="outline" onClick={onRetry}>
             <RefreshCw aria-hidden="true" />
-            Retry
+            Erneut laden
           </Button>
         </div>
       ) : null}
 
-      <Card className="relative overflow-hidden border-primary bg-primary text-primary-foreground">
-        <CardContent className="relative flex flex-col gap-8 p-6 sm:p-8 md:p-10 lg:flex-row lg:items-center lg:justify-between">
-          <div className="max-w-2xl">
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              <Badge className="border-primary-foreground/20 bg-primary-foreground/15 text-primary-foreground">Heute</Badge>
-              <span className="text-xs font-bold uppercase tracking-[0.18em] text-primary-foreground/70">Dein Tagesfortschritt</span>
-            </div>
-            <h2 className="text-2xl font-extrabold tracking-tight sm:text-3xl">Du machst den Unterschied.</h2>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-primary-foreground/75">Halte deinen Rhythmus. Jeder abgeschlossene Fokusblock zählt.</p>
-            <div className="mt-7 grid max-w-xl grid-cols-3 gap-3 sm:gap-6">
-              <div>
-                <p className="text-2xl font-extrabold">{data.summary.lessonsCompleted}/{data.summary.lessonsTotal}</p>
-                <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-primary-foreground/65">Stunden</p>
-              </div>
-              <div>
-                <p className="text-2xl font-extrabold">{data.summary.tasksCompleted}/{data.summary.tasksTotal}</p>
-                <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-primary-foreground/65">Fokusblöcke</p>
-              </div>
-              <div>
-                <p className="text-2xl font-extrabold">{data.summary.homeworkPending}</p>
-                <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-primary-foreground/65">Aufgaben</p>
-              </div>
-            </div>
-            <ProgressBar value={dayProgress} label="Tagesfortschritt" className="mt-7 max-w-xl bg-primary-foreground/15" indicatorClassName="bg-primary-foreground" />
-          </div>
-          <ProgressRing value={dayProgress} label="Tagesfortschritt" />
-        </CardContent>
-      </Card>
+      <StatsStrip data={data} dayProgress={dayProgress} />
 
-      <div className="grid items-start gap-6 xl:grid-cols-2">
-        <FocusLessonCard lesson={focusLesson} reference={reference} />
-        <AssistantCard />
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
+        <div className="space-y-5">
+          <FocusLessonCard lesson={focusLesson} reference={reference} />
+          <StudyTasksCard tasks={data.studyTasks} onLernzeitGeaendert={() => setLernzeitKey((zaehler) => zaehler + 1)} />
+        </div>
+        <div className="space-y-5">
+          <CalendarSection reference={reference} />
+          <AssistantCard />
+        </div>
       </div>
 
       {/*
         Der Stundenplan steht über die volle Breite. Sieben Tage brauchen
-        sieben gleich breite Spalten - in der früheren Zweispalten-Schale blieben
+        sieben gleich breite Spalten - in einer Zweispalten-Schale blieben
         rund 120px je Tag, und die Stundenzeiten waren nicht mehr ausgerichtet.
       */}
       <ScheduleCard />
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-        <div className="space-y-6">
-          <StudyTasksCard tasks={data.studyTasks} onLernzeitGeaendert={() => setLernzeitKey((zaehler) => zaehler + 1)} />
+      <div className="grid items-start gap-5 xl:grid-cols-2">
+        <div className="space-y-5">
+          <HomeworkSection reference={reference} />
+          <ExamsSection reference={reference} />
+        </div>
+        <div className="space-y-5">
           <ProgressCard refreshKey={lernzeitKey} />
           {/*
-            Die Belohnungskarte haengt am selben Zaehler wie die Fortschrittskarte
-            und steht direkt darunter: beide antworten auf dieselbe Frage ("wie
-            stehe ich heute da?") und beide aendern sich in derselben Sekunde. Sie
-            laedt selbst und teilt sich keinen Zustand mit den Karten daneben - ein
-            Zaehler, der in zwei Karten dupliziert waere, koennte nur eins von
-            beiden zu frueh aktualisieren.
-          */}
-          <RewardsCard refreshKey={lernzeitKey} />
-          {/*
-            Die Notenkarte steht neben der Fortschrittskarte, nicht unter
-            `/lernen`: Schnitt, Verlauf und Hochrechnung beantworten die Frage
-            "wie stehe ich?", und das ist eine Frage des Tagesueberblicks. Sie
-            laedt selbst und teilt sich keinen Zustand mit den Karten daneben -
-            eine Notenliste, die eine Aenderung in einer anderen Karte erst
-            bemerkt, waere ein dritter Weg in dieselbe Sache.
+            Noten stehen neben dem Lernfortschritt, nicht unter `/lernen`:
+            Schnitt, Verlauf und Hochrechnung beantworten "wie stehe ich?", und
+            das ist eine Frage des Tagesueberblicks.
           */}
           <GradesCard />
-          <ExamsSection reference={reference} />
-          <HomeworkSection reference={reference} />
-        </div>
-        <div className="space-y-6">
-          <CalendarSection reference={reference} />
-          <UsageCard data={data} />
+          {/* Belohnungen haengen am selben Zaehler wie der Fortschritt - beide
+              aendern sich in derselben Sekunde. */}
+          <RewardsCard refreshKey={lernzeitKey} />
         </div>
       </div>
-
-      <footer className="flex flex-col items-center justify-between gap-2 border-t border-border/70 pt-5 text-center text-xs text-muted-foreground sm:flex-row sm:text-left">
-        <span>Ein ruhiger Ort für deinen nächsten Schritt.</span>
-        <span className="inline-flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />Lernraum</span>
-      </footer>
     </div>
   );
 }

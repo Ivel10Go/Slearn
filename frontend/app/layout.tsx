@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { GeistMono } from "geist/font/mono";
+import { GeistSans } from "geist/font/sans";
 import { AppProviders } from "./providers";
 import "./globals.css";
 
@@ -8,7 +10,7 @@ export const metadata: Metadata = {
     default: "Lernraum",
     template: "%s · Lernraum",
   },
-  description: "Dein ruhiger, intelligenter Lernraum für Schule und Alltag.",
+  description: "Stundenplan, Aufgaben und Lernzeit an einem Ort.",
   applicationName: "Lernraum",
   icons: {
     icon: "/icons/icon-192.svg",
@@ -21,14 +23,14 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#fafafa" },
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
   ],
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="de" suppressHydrationWarning>
+    <html lang="de" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
       <body>
         <AppProviders>{children}</AppProviders>
       </body>

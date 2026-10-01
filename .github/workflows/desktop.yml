@@ -1,0 +1,85 @@
+name: Desktop
+
+# Baut die Installer der Desktop-App (Electron + eingefrorenes Backend).
+#
+# Jeder Installer entsteht auf seinem eigenen System, weil PyInstaller nicht
+# quer kompiliert: Windows auf Windows, macOS auf einem Mac - und zwar je
+# Architektur auf einem eigenen Runner. Ein DMG mit arm64- und x64-Electron,
+# aber nur einem Backend, wuerde auf dem jeweils anderen Mac nicht starten.
+#
+# Die Installer sind **unsigniert**. Windows zeigt beim ersten Start einen
+# SmartScreen-Hinweis ("Weitere Informationen" -> "Trotzdem ausfuehren"),
+# macOS verlangt einmal Rechtsklick -> "Oeffnen". Signieren braucht ein
+# Codesigning-Zertifikat bzw. eine Apple-Developer-Mitgliedschaft; dann
+# kommen CSC_LINK/CSC_KEY_PASSWORD bzw. APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD
+# als Secrets dazu, ohne dass sich an den Schritten etwas aendert.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    name: installer (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            builder: --win --x64
+          - name: macos-arm64
+            os: macos-14
+            builder: --mac --arm64
+          - name: macos-x64
+            os: macos-13
+            builder: --mac --x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            desktop/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install frontend
+        working-directory: frontend
+        run: npm ci
+      - name: install desktop
+        working-directory: desktop
+        run: npm ci
+      - name: check desktop
+        working-directory: desktop
+        run: npm run check
+      - name: build backend (PyInstaller)
+        working-directory: desktop
+        run: npm run build:backend
+      - name: smoke-test frozen backend
+        # Startet das eingefrorene Backend gegen eine leere Datenbank: prueft,
+        # dass Migrationen und alle versteckten Importe im Bundle sind. Ein
+        # fehlendes Modul faellt sonst erst beim Nutzer auf.
+        working-directory: desktop
+        shell: bash
+        run: node scripts/smoke-backend.mjs
+      - name: build frontend (Next standalone)
+        working-directory: desktop
+        run: npm run build:frontend
+      - name: package
+        working-directory: desktop
+        run: npx electron-builder ${{ matrix.builder }} --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lernraum-${{ matrix.name }}
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.dmg
+          if-no-files-found: error

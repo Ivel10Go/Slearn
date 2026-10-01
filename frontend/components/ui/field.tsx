@@ -39,8 +39,8 @@ export function Field({ id, label, hint, error, required, className, children }:
   const describedBy = [hintId, errorId].filter(Boolean).join(" ") || undefined;
 
   return (
-    <div className={cn("space-y-2", className)}>
-      <label htmlFor={controlId} className="block text-sm font-bold">
+    <div className={cn("space-y-1.5", className)}>
+      <label htmlFor={controlId} className="block text-[13px] font-medium">
         {label}
         {required ? (
           <span className="ml-1 text-destructive" aria-hidden="true">
@@ -55,7 +55,7 @@ export function Field({ id, label, hint, error, required, className, children }:
         </p>
       ) : null}
       {error ? (
-        <p id={errorId} className="text-xs font-semibold text-destructive">
+        <p id={errorId} className="text-xs font-medium text-foreground underline decoration-foreground/40 underline-offset-2">
           {error}
         </p>
       ) : null}
@@ -74,7 +74,7 @@ export function FormError({ id, message }: { id?: string; message: string | null
     return null;
   }
   return (
-    <p id={id} className="rounded-xl border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-sm font-medium text-destructive" role="alert">
+    <p id={id} className="rounded-md border border-foreground/30 bg-muted px-3 py-2.5 text-[13px] font-medium text-foreground" role="alert">
       {message}
     </p>
   );

@@ -43,9 +43,8 @@ function LernenBereich() {
   return (
     <div className="space-y-6">
       <header>
-        <p className="mb-2 text-sm font-bold uppercase tracking-[0.18em] text-primary">Dein Lernraum</p>
-        <h1 className="text-3xl font-extrabold tracking-[-0.035em] sm:text-4xl">Lernen</h1>
-        <p className="mt-2 max-w-2xl text-sm font-semibold text-muted-foreground">
+        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Lernen</h1>
+        <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">
           Lernpläne sammeln Aufgaben zu einem Thema. Serien erzeugen daraus wiederkehrende Aufgaben, und eine Prüfung kann ihre Themen
           direkt in Aufgaben umsetzen.
         </p>

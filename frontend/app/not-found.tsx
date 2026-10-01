@@ -18,8 +18,8 @@ export default function NotFound() {
           <span className="mb-5 flex h-14 w-14 items-center justify-center border border-border bg-muted">
             <Compass className="h-7 w-7" aria-hidden="true" />
           </span>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Fehler 404</p>
-          <h1 className="mt-2 text-xl font-extrabold tracking-tight">Diese Seite gibt es nicht</h1>
+          <p className="text-xs font-medium text-muted-foreground">Fehler 404</p>
+          <h1 className="mt-2 text-xl font-semibold tracking-tight">Diese Seite gibt es nicht</h1>
           <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
             Vielleicht wurde sie verschoben oder der Link ist nicht mehr aktuell.
           </p>

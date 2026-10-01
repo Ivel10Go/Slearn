@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -170,10 +170,7 @@ export function BackupStatusCard() {
     <Card className="border-border/80 bg-card/90">
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div>
-          <CardTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-primary" aria-hidden="true" />
-            Sicherung
-          </CardTitle>
+          <CardTitle>Sicherung</CardTitle>
           <CardDescription className="mt-1">
             Der Worker legt regelmäßig einen Dump der Datenbank ab. Ein Backup sichert nicht die hochgeladenen Dateien.
           </CardDescription>
@@ -186,7 +183,7 @@ export function BackupStatusCard() {
 
       <CardContent className="space-y-4">
         {error ? (
-          <div className="rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert">
+          <div className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert">
             <span className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               {error}
@@ -202,7 +199,7 @@ export function BackupStatusCard() {
         ) : null}
 
         {!error && status && !status.available ? (
-          <p className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-200">
+          <p className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-200">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             {status.message}
           </p>
@@ -245,14 +242,14 @@ export function BackupStatusCard() {
             </dl>
 
             {backup.directoryWritable === false ? (
-              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-200">
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-200">
                 Der Worker kann den Sicherungsordner nicht beschreiben. Im Container muss der Backup-Pfad read/write
                 eingebunden sein, sonst schlägt jeder Lauf fehl.
               </p>
             ) : null}
 
             {backup.lastError ? (
-              <p className="rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-xs font-medium text-destructive">
+              <p className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-xs font-medium text-destructive">
                 Letzter Lauf fehlgeschlagen: {backup.lastError}
               </p>
             ) : null}
@@ -274,8 +271,8 @@ interface DetailProps {
 
 function Detail({ label, value }: DetailProps) {
   return (
-    <div className="rounded-xl border border-border/70 bg-muted/40 px-3.5 py-3">
-      <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</dt>
+    <div className="rounded-md border border-border/70 bg-muted/40 px-3.5 py-3">
+      <dt className="text-[11px] font-medium text-muted-foreground">{label}</dt>
       <dd className="mt-1 truncate text-sm font-semibold">{value}</dd>
     </div>
   );

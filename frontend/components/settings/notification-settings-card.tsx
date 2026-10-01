@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, BellRing, CheckCircle2, LoaderCircle, RefreshCw, Trash2 } from "lucide-react";
+import { BellRing, CheckCircle2, LoaderCircle, RefreshCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -136,7 +136,7 @@ export function NotificationSettingsCard({
           <CardTitle>Erinnerungen</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="rounded-xl border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-sm font-medium text-destructive" role="alert">
+          <p className="rounded-md border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-sm font-medium text-destructive" role="alert">
             {error ?? "Die Einstellungen konnten nicht geladen werden."}
           </p>
         </CardContent>
@@ -161,10 +161,7 @@ export function NotificationSettingsCard({
   return (
     <Card className="border-border/80 bg-card/90">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Bell className="h-4 w-4" aria-hidden="true" />
-          Erinnerungen
-        </CardTitle>
+        <CardTitle>Erinnerungen</CardTitle>
         <CardDescription className="mt-1">
           Fällige Lernaufgaben und Prüfungen, einmal am Tag zur gewünschten Uhrzeit.
         </CardDescription>
@@ -173,7 +170,7 @@ export function NotificationSettingsCard({
       <CardContent className="space-y-5">
         <div className="flex items-start justify-between gap-3 border-b border-border/70 pb-4">
           <div className="min-w-0">
-            <p className="text-sm font-bold">Hauptschalter</p>
+            <p className="text-sm font-semibold">Hauptschalter</p>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
               {settings.enabled
                 ? aktive.length > 0
@@ -191,7 +188,7 @@ export function NotificationSettingsCard({
         </div>
 
         <fieldset className="space-y-2" disabled={beschaeftigt || !settings.enabled}>
-          <legend className="text-sm font-bold">Kanäle</legend>
+          <legend className="text-sm font-semibold">Kanäle</legend>
           {kanaele.length === 0 ? (
             <p className="text-xs text-muted-foreground">Der Server kennt keine Kanäle.</p>
           ) : (
@@ -216,7 +213,7 @@ export function NotificationSettingsCard({
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-2">
-            <label className="text-sm font-bold" htmlFor="erinnerung-uhrzeit">
+            <label className="text-sm font-semibold" htmlFor="erinnerung-uhrzeit">
               Uhrzeit
             </label>
             <input
@@ -232,7 +229,7 @@ export function NotificationSettingsCard({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <span className="text-sm font-bold">Ruhezeit</span>
+              <span className="text-sm font-semibold">Ruhezeit</span>
               <Schalter
                 an={settings.quiet_hours.enabled}
                 label="Ruhezeit ein- oder ausschalten"
@@ -296,7 +293,7 @@ export function NotificationSettingsCard({
         </div>
 
         <div className="space-y-3 border-t border-border/70 pt-4">
-          <p className="text-sm font-bold">Web-Push</p>
+          <p className="text-sm font-semibold">Web-Push</p>
           <p className="text-xs leading-5 text-muted-foreground">
             {permission === "unsupported"
               ? "Dieser Browser kennt keine Benachrichtigungen. Erinnerungen erscheinen dann nur, solange die Seite geöffnet ist."
@@ -385,11 +382,11 @@ export function NotificationSettingsCard({
 
         {zuletzt.length > 0 ? (
           <div className="space-y-2 border-t border-border/70 pt-4">
-            <p className="text-sm font-bold">Zuletzt angezeigt</p>
+            <p className="text-sm font-semibold">Zuletzt angezeigt</p>
             <ul className="space-y-2">
               {zuletzt.map((erinnerung) => (
                 <li key={erinnerung.id} className="border border-border/70 bg-muted/40 px-3.5 py-2.5">
-                  <p className="text-sm font-bold">{erinnerung.title}</p>
+                  <p className="text-sm font-semibold">{erinnerung.title}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">{erinnerung.body}</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Badge variant="outline">{bezeichnung(erinnerung.kind)}</Badge>
