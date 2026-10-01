@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import Link from "next/link";
 import { Mic, MicOff, RefreshCw, Square, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { KUERZEL_BEZEICHNUNG, KUERZEL_BEZEICHNUNG_MAC, beschreibeAufnahme, istMac, sprachHinweis } from "@/lib/speech";
@@ -68,11 +69,7 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
   }, [onText, sprache]);
 
   return (
-    <div className="space-y-3 border-t border-border/70 pt-4">
-      <div className="space-y-0.5">
-        <p className="text-xs font-medium">Sprache</p>
-        <p className="text-xs leading-5 text-muted-foreground">{sprachHinweis(sprache.sprechZustand)}</p>
-      </div>
+    <div className="space-y-2.5 border-t border-border/70 pt-3">
 
       {/*
         Die Live-Region steht vor dem Text im DOM, sonst wird er nicht
@@ -160,18 +157,6 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
         </Button>
       </div>
 
-      {/*
-        Das Tastenkuerzel steht sichtbar da, nicht in einem Tooltip: ein
-        Kuerzel, das niemand kennt, ist keines. Gewaehlt ist
-        `Strg`/`Befehl` + `Umschalt` + `L`, weil `Strg+L` das Adressfeld waere,
-        `Esc` und die Leertaste heikel sind und `Alt` in Windows die
-        Menueklammer aendert. `lib/speech.ts` prueft zusaetzlich, ob gerade in
-        einem Eingabefeld getippt wird, und laesst es dann in Ruhe.
-      */}
-      <p id="sprache-kuerzel-hinweis" className="text-[11px] leading-4 text-muted-foreground">
-        Zum Diktieren {tastenname} halten. Aufgezeichnet wird nur, wenn gerade kein Eingabefeld den Fokus hat.
-      </p>
-
       {aufgenommen ? (
         <div className="rounded-md border border-border px-3 py-2.5">
           <p className="text-[11px] font-medium text-muted-foreground">Erkannter Text</p>
@@ -191,31 +176,62 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
       ) : null}
 
       {/*
-        Der Mikrofonhinweis ist ein Satz und kein Dialog. Er steht auch dann da,
-        wenn gar nichts passiert ist - dann sagt er, dass getippt werden kann.
+        Die Hinweise sind eingeklappt: sie erklaeren, warum etwas nicht geht,
+        und das liest man einmal, nicht bei jedem Blick aufs Dashboard. Das
+        Tastenkuerzel bleibt trotzdem im DOM, weil der Aufnahmeknopf per
+        `aria-describedby` darauf zeigt.
       */}
-      <p className="text-[11px] leading-4 text-muted-foreground">{sprache.hinweis}</p>
+      <details className="group text-[11px] leading-4 text-muted-foreground">
+        <summary className="cursor-pointer select-none hover:text-foreground">Hinweise zur Sprache</summary>
+        <div className="mt-2 space-y-1.5">
+          <p>{sprachHinweis(sprache.sprechZustand)}</p>
+          {/*
+            Das Tastenkuerzel steht als Satz da, nicht in einem Tooltip: ein
+            Kuerzel, das niemand kennt, ist keines. Gewaehlt ist
+            `Strg`/`Befehl` + `Umschalt` + `L`, weil `Strg+L` das Adressfeld waere,
+            `Esc` und die Leertaste heikel sind und `Alt` in Windows die
+            Menueklammer aendert. `lib/speech.ts` prueft zusaetzlich, ob gerade in
+            einem Eingabefeld getippt wird, und laesst es dann in Ruhe.
+          */}
+          <p id="sprache-kuerzel-hinweis" className="text-[11px] leading-4 text-muted-foreground">
+            Zum Diktieren {tastenname} halten. Aufgezeichnet wird nur, wenn gerade kein Eingabefeld den Fokus hat.
+          </p>
 
-      {/*
-        Das Formatproblem der Aufnahme, **bevor** es auftritt. Chrome nimmt WebM
-        auf, Safari MP4, und whisper.cpp liest von beidem nichts - der Weg
-        darueber laeuft ueber ffmpeg. Steht das Programm nicht auf dem Server,
-        ist das kein Fehler, sondern eine Angabe, die man kennen sollte, bevor man
-        drei Minuten lang aufnimmt.
-      */}
-      {sprache.faehigkeiten?.speech_to_text.available && sprache.faehigkeiten.runtime.ffmpeg_present === false ? (
-        <p className="text-[11px] leading-4 text-muted-foreground">{sprache.faehigkeiten.runtime.ffmpeg_note}</p>
-      ) : null}
+          {/*
+            Der Mikrofonhinweis ist ein Satz und kein Dialog. Er steht auch dann da,
+            wenn gar nichts passiert ist - dann sagt er, dass getippt werden kann.
+          */}
+          <p className="text-[11px] leading-4 text-muted-foreground">{sprache.hinweis}</p>
 
-      {/*
-        Die beiden Gruende kommen vom Server und sind ebenfalls Saetze. Sie
-        stehen nur da, wenn sie etwas sagen, das der allgemeine Hinweis nicht
-        schon sagt - sonst waere es dieselbe Information zweimal.
-      */}
-      <div className="space-y-1">
-        {!sprache.kannEingabe && sprache.grundEingabe ? <p className="text-[11px] leading-4 text-muted-foreground">Eingabe: {sprache.grundEingabe}</p> : null}
-        {!sprache.kannAusgabe && sprache.grundAusgabe ? <p className="text-[11px] leading-4 text-muted-foreground">Ausgabe: {sprache.grundAusgabe}</p> : null}
-      </div>
+          {/*
+            Das Formatproblem der Aufnahme, **bevor** es auftritt. Chrome nimmt WebM
+            auf, Safari MP4, und whisper.cpp liest von beidem nichts - der Weg
+            darueber laeuft ueber ffmpeg. Steht das Programm nicht auf dem Server,
+            ist das kein Fehler, sondern eine Angabe, die man kennen sollte, bevor man
+            drei Minuten lang aufnimmt.
+          */}
+          {sprache.faehigkeiten?.speech_to_text.available && sprache.faehigkeiten.runtime.ffmpeg_present === false ? (
+            <p className="text-[11px] leading-4 text-muted-foreground">{sprache.faehigkeiten.runtime.ffmpeg_note}</p>
+          ) : null}
+
+          {/*
+            Die beiden Gruende kommen vom Server und sind ebenfalls Saetze. Sie
+            stehen nur da, wenn sie etwas sagen, das der allgemeine Hinweis nicht
+            schon sagt - sonst waere es dieselbe Information zweimal.
+          */}
+          <div className="space-y-1">
+            {!sprache.kannEingabe && sprache.grundEingabe ? <p className="text-[11px] leading-4 text-muted-foreground">Eingabe: {sprache.grundEingabe}</p> : null}
+            {!sprache.kannAusgabe && sprache.grundAusgabe ? <p className="text-[11px] leading-4 text-muted-foreground">Ausgabe: {sprache.grundAusgabe}</p> : null}
+          </div>
+          <p>
+            Modelle und Stimmen richtest du unter{" "}
+            <Link href="/ki" className="underline underline-offset-2 hover:text-foreground">
+              KI &amp; Modelle
+            </Link>{" "}
+            ein.
+          </p>
+        </div>
+      </details>
     </div>
   );
 }

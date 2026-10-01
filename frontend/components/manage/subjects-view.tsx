@@ -90,7 +90,7 @@ export function SubjectsView() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <header>
         <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Fächer</h1>
         <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">

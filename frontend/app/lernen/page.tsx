@@ -41,7 +41,7 @@ function LernenBereich() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <header>
         <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Lernen</h1>
         <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">
@@ -50,8 +50,8 @@ function LernenBereich() {
         </p>
       </header>
 
-      <div className="grid items-start gap-6 xl:grid-cols-2">
-        <div className="space-y-6">
+      <div className="grid items-start gap-4 xl:grid-cols-2">
+        <div className="space-y-4">
           <StudyPlansCard
             plans={plaene.items}
             status={plaene.status}
@@ -66,7 +66,7 @@ function LernenBereich() {
           <StudySeriesCard plans={plaene.items} onChanged={() => void plaene.reload()} refreshKey={planNeu} />
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-4">
           <StudyTasksCard plans={plaene.items} onChanged={() => void plaene.reload()} refreshKey={planNeu} />
         </div>
       </div>

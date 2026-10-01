@@ -113,7 +113,7 @@ export function DocumentsView() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <header>
         <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Dokumente</h1>
         <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">
@@ -122,8 +122,8 @@ export function DocumentsView() {
         </p>
       </header>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
-        <div className="space-y-6">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+        <div className="space-y-4">
           <Card className="border-border/80 bg-card/90">
             <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
               <div>
