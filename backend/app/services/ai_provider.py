@@ -21,6 +21,7 @@ Schlüssel immer mitgeschickt, auch wenn er optional ist.
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from typing import Any, Final
 from urllib.parse import urlparse
@@ -168,6 +169,48 @@ class AiProviderClient:
         nicht in einen Verbindungstest. ``model`` darf ``Auto`` sein, dann wird
         wie beim Test das erste Modell der Liste verwendet.
         """
+        return self._chat(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=max_tokens,
+            temperature=0.4,
+        )
+
+    def generate_from_image(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        image: bytes,
+        mime_type: str,
+        *,
+        max_tokens: int = 1500,
+    ) -> str:
+        """Wie ``generate``, aber mit einem Bild als Teil der Nutzernachricht.
+
+        Das Bild geht als ``data:``-URL im ``image_url``-Teil, dem Format, das
+        OpenAI-kompatible Server mit Bildfaehigkeit erwarten. Ein Modell ohne
+        Bildfaehigkeit antwortet mit einem 4xx und landet in der Meldung von
+        ``_chat``. Die Temperatur ist niedrig: es wird abgelesen, nicht erfunden.
+        """
+        encoded = base64.b64encode(image).decode("ascii")
+        return self._chat(
+            [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": user_prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{encoded}"}},
+                    ],
+                },
+            ],
+            max_tokens=max_tokens,
+            temperature=0.0,
+        )
+
+    def _chat(self, messages: list[dict[str, object]], *, max_tokens: int, temperature: float) -> str:
         model = self._resolve_model()
 
         try:
@@ -176,12 +219,9 @@ class AiProviderClient:
                 headers=self._headers(),
                 json={
                     "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
+                    "messages": messages,
                     "max_tokens": max_tokens,
-                    "temperature": 0.4,
+                    "temperature": temperature,
                 },
             )
         except httpx.TimeoutException as exc:
@@ -413,6 +453,26 @@ def generate_text(
     """
     with AiProviderClient(base_url, model, api_key, timeout_seconds) as client:
         return client.generate(system_prompt, user_prompt, max_tokens=max_tokens)
+
+
+def generate_text_from_image(
+    base_url: str,
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+    image: bytes,
+    mime_type: str,
+    api_key: str = "",
+    timeout_seconds: float = 90.0,
+    max_tokens: int = 1500,
+) -> str:
+    """Bequemlichkeit fuer Aufrufer, die ein Bild auslesen lassen wollen.
+
+    Das Timeout ist grosszuegiger als bei ``generate_text``: Bildeingaben
+    rechnen auf einer lokalen CPU deutlich laenger.
+    """
+    with AiProviderClient(base_url, model, api_key, timeout_seconds) as client:
+        return client.generate_from_image(system_prompt, user_prompt, image, mime_type, max_tokens=max_tokens)
 
 
 def generate_embeddings(

@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.core.time import as_utc, utc_now
 from app.db.entities import Lesson, Room, Subject, SyncSource, Teacher
+from app.services.lesson_choices import excluded_keys, slot_key
 from app.services.webuntis import WebUntisEntity, WebUntisTimetable
 
 SOURCE_NAME: str = "webuntis"
@@ -100,17 +101,24 @@ def import_timetable(
     teacher_cache: dict[int, Teacher] = {}
     room_cache: dict[int, Room] = {}
 
+    excluded = excluded_keys(db, source.user_id)
+
     imported = 0
     for entry in timetable.entries:
         start = _localized(entry.day, entry.start, zone)
         end = _localized(entry.day, entry.end, zone)
         if end <= start:
             continue
+        subject_id = _first_id(_resolve(db, subject_cache, Subject, source, entry.subjects, True))
+        if subject_id is not None and slot_key(subject_id, start, end, zone) in excluded:
+            # Eine Parallelstunde, die die Nutzerin abgewaehlt hat (Wahlfach,
+            # Kurs): sie wird nicht eingetragen. Das Fach selbst bleibt angelegt.
+            continue
         db.add(
             Lesson(
                 user_id=source.user_id,
                 sync_source_id=source.id,
-                subject_id=_first_id(_resolve(db, subject_cache, Subject, source, entry.subjects, True)),
+                subject_id=subject_id,
                 teacher_id=_first_id(_resolve(db, teacher_cache, Teacher, source, entry.teachers, True)),
                 room_id=_first_id(_resolve(db, room_cache, Room, source, entry.rooms, False)),
                 title=entry.lesson_text,

@@ -238,6 +238,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(integrations.router)
     application.include_router(files.router)
     application.include_router(documents.router)
+    # Der Lern-Assistent (/assistent): Chat, bestaetigte Eintraege, Gedaechtnis.
+    from app.api import assistant
+    application.include_router(assistant.router)
+    # Stundenplan aus PDF/Bild: Vorschlag lesen, dann uebernehmen. Ohne diese
+    # Zeile waere der Upload-Dialog auf /faecher ein Formular ins Leere.
+    from app.api import timetable
+    application.include_router(timetable.router)
     return application
 
 
