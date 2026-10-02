@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useTheme } from "next-themes";
 import {
   AlertTriangle,
@@ -27,9 +28,7 @@ import {
 } from "lucide-react";
 import { BackupStatusCard } from "@/components/settings/backup-status-card";
 import { DesktopCard } from "@/components/settings/desktop-card";
-import { ModelCatalogCard } from "@/components/settings/model-catalog-card";
 import { NotificationSettingsCard } from "@/components/settings/notification-settings-card";
-import { VoiceCatalogCard } from "@/components/settings/voice-catalog-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -122,19 +121,15 @@ function configEntries(integration: IntegrationRead) {
 
 function SettingsSkeleton() {
   return (
-    <div className="space-y-6">
-      <div className="space-y-3">
-        <Skeleton className="h-4 w-32" />
-        <Skeleton className="h-10 w-72" />
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Skeleton className="h-7 w-48" />
         <Skeleton className="h-4 w-96 max-w-full" />
       </div>
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
-        <Skeleton className="h-[28rem] rounded-md" />
-<div className="space-y-6">
-            <Skeleton className="h-56 w-full rounded-md" />
-            <Skeleton className="h-64 w-full rounded-md" />
-            <Skeleton className="h-40 w-full rounded-md" />
-          </div>
+      <Skeleton className="h-9 w-full max-w-xl rounded-md" />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Skeleton className="h-56 w-full rounded-md" />
+        <Skeleton className="h-56 w-full rounded-md" />
       </div>
     </div>
   );
@@ -158,24 +153,24 @@ function AccountCard({ user, onLogout, isLoggingOut }: AccountCardProps) {
 
   return (
     <Card className="border-border/80 bg-card/90">
-      <CardHeader className="flex flex-row items-start gap-3.5">
-        <span className="flex h-12 w-12 shrink-0 items-center justify-center border border-border bg-primary text-sm font-semibold text-primary-foreground">
+      <CardHeader className="flex flex-row items-center gap-3 space-y-0">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground">
           {getInitials(displayName)}
         </span>
         <div className="min-w-0 flex-1">
-          <CardTitle className="truncate text-lg">{displayName}</CardTitle>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <CardTitle className="truncate">{displayName}</CardTitle>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <Badge variant={user?.is_admin ? "accent" : "secondary"}>{user?.is_admin ? "Administration" : "Lernkonto"}</Badge>
             {user?.is_active === false ? <Badge variant="warning">Deaktiviert</Badge> : null}
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-5">
-        <dl className="grid gap-3 sm:grid-cols-2">
+      <CardContent className="space-y-3">
+        <dl className="divide-y divide-border border-y border-border text-[13px]">
           {details.map((detail) => (
-            <div key={detail.label} className="rounded-md border border-border/70 bg-muted/40 px-3.5 py-3">
-              <dt className="text-[11px] font-medium text-muted-foreground">{detail.label}</dt>
-              <dd className="mt-1 truncate text-sm font-semibold">{detail.value}</dd>
+            <div key={detail.label} className="flex items-baseline justify-between gap-4 py-1.5">
+              <dt className="text-muted-foreground">{detail.label}</dt>
+              <dd className="truncate font-medium">{detail.value}</dd>
             </div>
           ))}
         </dl>
@@ -186,7 +181,7 @@ function AccountCard({ user, onLogout, isLoggingOut }: AccountCardProps) {
           sonst waere ein Fehlklick der ganze Abmeldevorgang.
         */}
         {user ? (
-          <div className="flex flex-wrap items-center gap-2 border-t border-border/70 pt-4">
+          <div className="flex flex-wrap items-center gap-2">
             {abmeldeOffen ? (
               <>
                 <Button type="button" size="sm" variant="destructive" onClick={onLogout} disabled={isLoggingOut}>
@@ -227,7 +222,7 @@ function ThemeCard() {
       </CardHeader>
       <CardContent>
         {mounted ? (
-          <div className="grid grid-cols-3 gap-2" role="group" aria-label="Farbschema">
+          <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Farbschema">
             {THEME_OPTIONS.map((option) => {
               const Icon = option.icon;
               const active = theme === option.value;
@@ -238,20 +233,20 @@ function ThemeCard() {
                   onClick={() => setTheme(option.value)}
                   aria-pressed={active}
                   className={cn(
-                    "flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-md border text-xs font-medium transition-colors active:opacity-80",
+                    "flex h-9 items-center justify-center gap-1.5 rounded-md border text-xs font-medium transition-colors active:opacity-80",
                     active
                       ? "border-foreground bg-accent text-foreground"
                       : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
-                  <Icon className="h-5 w-5" aria-hidden="true" />
+                  <Icon className="h-4 w-4" aria-hidden="true" />
                   {option.label}
                 </button>
               );
             })}
           </div>
         ) : (
-          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-9 w-full" />
         )}
       </CardContent>
     </Card>
@@ -331,15 +326,15 @@ function IntegrationRow({
   const kiStufen = runtime && kiAdresse ? describeStages(runtime) : [];
 
   return (
-    <li className="rounded-md border border-border/70 bg-card/60 p-4 sm:p-5">
+    <li className="rounded-md border border-border/70 p-3.5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-            <Icon className="h-5 w-5" aria-hidden="true" />
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
+            <Icon className="h-4 w-4" aria-hidden="true" />
           </span>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{integration.name}</p>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
               <Badge variant="outline">{integration.kind}</Badge>
               <Badge variant={status.variant}>{status.label}</Badge>
               {incomplete ? <Badge variant="warning">Unvollständig</Badge> : null}
@@ -376,9 +371,9 @@ function IntegrationRow({
       </div>
 
       {entries.length > 0 ? (
-        <dl className="mt-4 grid gap-2 sm:grid-cols-2">
+        <dl className="mt-3 grid gap-x-6 gap-y-1 sm:grid-cols-2">
           {entries.map((entry) => (
-            <div key={entry.key} className="flex items-baseline justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2">
+            <div key={entry.key} className="flex min-w-0 items-baseline justify-between gap-3 border-b border-border/60 py-1">
               <dt className="text-xs font-medium text-muted-foreground">{entry.label}</dt>
               <dd className="truncate text-xs font-semibold">{entry.value}</dd>
             </div>
@@ -386,7 +381,7 @@ function IntegrationRow({
         </dl>
       ) : null}
 
-      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
           {integration.has_credentials ? `Zugangsdaten gespeichert (${integration.credential_keys.join(", ")})` : "Keine Zugangsdaten"}
@@ -451,7 +446,7 @@ function IntegrationRow({
         Test- und Sync-Ergebnis teilen sich die Box, weil beide dieselbe
         Frage beantworten: hat es geklappt?
       */}
-      <div className="mt-3" role="status" aria-live="polite">
+      <div className={cn(result && "mt-3")} role="status" aria-live="polite">
         {result ? (
           <p
             className={cn(
@@ -467,7 +462,7 @@ function IntegrationRow({
         ) : null}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" variant="outline" onClick={onTest} disabled={isBusy}>
           {isTesting ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
           Verbindung testen
@@ -672,7 +667,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-5 rounded-md border border-primary/20 bg-primary/5 p-4 sm:p-5">
+    <form onSubmit={handleSubmit} noValidate className="space-y-4 rounded-md border border-border bg-muted/30 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold">Neue Verbindung</p>
@@ -810,6 +805,10 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
 }
 
 interface IntegrationsCardProps {
+  title?: string;
+  description?: string;
+  emptyTitle?: string;
+  emptyDescription?: string;
   integrations: IntegrationRead[];
   catalog: IntegrationCatalog[];
   /** Die bekannten lokalen Laufzeiten aus `GET /v1/ai-runtime`. */
@@ -829,7 +828,11 @@ interface IntegrationsCardProps {
   onDelete: (integration: IntegrationRead) => void;
 }
 
-function IntegrationsCard({
+export function IntegrationsCard({
+  title = "Integrationen",
+  description = "Verbinde dein Schulportal, einen Dokumentordner oder einen Kalender.",
+  emptyTitle = "Noch nichts verbunden",
+  emptyDescription = "Stundenplan, Aufgaben und Termine kannst du auch ohne Integration pflegen. Verbundene Dienste liefern sie automatisch.",
   integrations,
   catalog,
   runtime,
@@ -850,13 +853,11 @@ function IntegrationsCard({
   const isSubmitting = pendingAction === "create";
 
   return (
-    <Card className="border-border/80 bg-card/90">
-      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
-        <div>
-          <CardTitle>Integrationen</CardTitle>
-          <CardDescription className="mt-1">
-            Verbinde dein Schulportal, einen KI-Dienst, einen Dokumentordner oder einen Kalender.
-          </CardDescription>
+    <Card>
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+        <div className="min-w-0 space-y-1">
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
         </div>
         <div className="flex items-center gap-2">
           <Button type="button" size="sm" variant="outline" onClick={onRefresh} disabled={isRefreshing}>
@@ -887,16 +888,13 @@ function IntegrationsCard({
         ) : null}
 
         {integrations.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border px-5 py-10 text-center">
-            <Plug className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" />
-            <p className="mt-3 text-sm font-semibold">Noch nichts verbunden</p>
-            <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
-              Stundenplan, Aufgaben und Termine kannst du auch ohne Integration manuell pflegen. Verbundene Dienste
-              liefern später automatisch deine Lerninhalte.
-            </p>
+          <div className="rounded-md border border-dashed border-border px-4 py-5 text-center">
+            <Plug className="mx-auto h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <p className="mt-1.5 text-[13px] font-medium">{emptyTitle}</p>
+            <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-muted-foreground">{emptyDescription}</p>
           </div>
         ) : (
-          <ul className="space-y-4">
+          <ul className="space-y-3">
             {integrations.map((integration) => (
               <IntegrationRow
                 key={integration.id}
@@ -1075,6 +1073,92 @@ function CalendarFeedCard({
   );
 }
 
+/** KI-Verbindungen stehen auf `/ki`, nicht in der Liste hier. */
+function isAiKind(kind: string) {
+  return kind === "ai_provider";
+}
+
+const SETTINGS_TABS = [
+  { id: "verbindungen", label: "Verbindungen" },
+  { id: "kalender", label: "Kalender" },
+  { id: "benachrichtigungen", label: "Benachrichtigungen" },
+  { id: "allgemein", label: "Konto & Darstellung" },
+  { id: "sicherung", label: "Sicherung" },
+] as const;
+
+type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
+
+function isSettingsTab(value: string | null): value is SettingsTab {
+  return SETTINGS_TABS.some((tab) => tab.id === value);
+}
+
+/**
+ * Der gewaehlte Reiter, gespiegelt in `?tab=`.
+ *
+ * Bewusst ein Suchparameter und kein Hash: die Shell liest den Hash fuer den
+ * Aktivzustand der Navigation (`isNavigationHrefActive`), und `#kalender`
+ * liesse "Einstellungen" in der Seitenleiste erlöschen. `replaceState` statt
+ * `push`, damit die Zuruecktaste nicht durch jeden Reiter einzeln laeuft.
+ * "Verbindungen" ist der Start, weil der Rueckweg von Google auf `/settings`
+ * ohne Parameter zeigt - und dort die eben verbundene Zeile stehen soll.
+ */
+function useSettingsTab() {
+  const [tab, setTab] = useState<SettingsTab>("verbindungen");
+
+  useEffect(() => {
+    // Ein Tick spaeter, wie in `ThemeCard`: `react-hooks/set-state-in-effect`
+    // laesst keinen direkten `setState` im Effektkoerper zu.
+    const frame = window.requestAnimationFrame(() => {
+      const gewuenscht = new URLSearchParams(window.location.search).get("tab");
+      if (isSettingsTab(gewuenscht)) {
+        setTab(gewuenscht);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  function waehlen(next: SettingsTab) {
+    setTab(next);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", next);
+    window.history.replaceState(window.history.state, "", url);
+  }
+
+  return [tab, waehlen] as const;
+}
+
+function SettingsTabs({ active, onChange }: { active: SettingsTab; onChange: (tab: SettingsTab) => void }) {
+  return (
+    // Die Haarlinie liegt am aeusseren Element, gescrollt wird im inneren: ein
+    // `-mb-px` der Reiter ueber die Linie liesse die scrollbare Leiste auch
+    // senkrecht ueberlaufen, und daneben stuende ein Mini-Scrollbalken.
+    <div className="-mx-4 border-b border-border px-4 sm:mx-0 sm:px-0">
+      <div role="tablist" aria-label="Bereiche der Einstellungen" className="flex gap-1 overflow-x-auto">
+        {SETTINGS_TABS.map((tab) => {
+          const selected = tab.id === active;
+          return (
+            <button
+              key={tab.id}
+              id={`einstellungen-tab-${tab.id}`}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              aria-controls={`einstellungen-${tab.id}`}
+              onClick={() => onChange(tab.id)}
+              className={cn(
+                "shrink-0 border-b-2 px-3 py-2 text-[13px] transition-colors",
+                selected ? "border-foreground font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export interface SettingsViewProps {
   user: UserResponse | null;
   integrations: IntegrationRead[];
@@ -1131,21 +1215,37 @@ writing,
   onLogout,
   isLoggingOut,
 }: SettingsViewProps) {
+  const [tab, setTab] = useSettingsTab();
+
   if (status === "loading" && integrations.length === 0 && catalog.length === 0) {
     return <SettingsSkeleton />;
   }
 
   const canWriteRemotely = writing?.share_calendar_for_writing ?? false;
+  /*
+    KI-Dienste stehen auf `/ki`, zusammen mit den lokalen Modellen und Stimmen.
+    Hier waeren sie eine zweite Stelle fuer dieselbe Verbindung - deshalb wird
+    die Art aus Liste **und** Katalog genommen, damit das Formular sie hier
+    auch nicht anbietet.
+  */
+  const sonstigeIntegrationen = integrations.filter((integration) => !isAiKind(integration.kind));
+  const sonstigerKatalog = catalog.filter((entry) => !isAiKind(entry.kind));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <header>
         <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Einstellungen</h1>
-        <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">Konto, Erscheinungsbild, Sicherung und deine verbundenen Dienste an einem Ort.</p>
+        <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
+          Konto, Verbindungen, Kalender, Benachrichtigungen und Sicherung. KI-Dienst, Modelle und Stimmen findest du unter{" "}
+          <Link href="/ki" className="underline underline-offset-2 hover:text-foreground">
+            KI &amp; Modelle
+          </Link>
+          .
+        </p>
       </header>
 
       {error ? (
-        <div className="flex flex-col gap-3 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between" role="alert">
+        <div className="flex flex-col gap-3 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between" role="alert">
           <span>{error}</span>
           <Button type="button" size="sm" variant="outline" onClick={onRetry}>
             <RefreshCw aria-hidden="true" />
@@ -1160,72 +1260,81 @@ writing,
         </p>
       ) : null}
 
-      {/*
-        Die Zustimmung steht **über** der Integrationsliste und nicht als Zeile
-        darin: sie haengt an keiner einzelnen Verbindung. Wer sie sucht, soll sie
-        finden, ohne erst eine Kalenderzeile auswaehlen zu muessen.
-      */}
-      <CalendarWritingCard writing={writing} isSaving={pendingAction === "writing"} onToggle={onToggleWriting} />
+      <SettingsTabs active={tab} onChange={setTab} />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
-        <IntegrationsCard
-          integrations={integrations}
-          catalog={catalog}
-          runtime={runtime}
-          pendingAction={pendingAction}
-          testResults={testResults}
-          syncResults={syncResults}
-          isRefreshing={status === "loading"}
-          canWriteRemotely={canWriteRemotely}
-          onRefresh={onRetry}
-          onAdd={onAdd}
-          onToggle={onToggle}
-          onTest={onTest}
-          onSync={onSync}
-          onAuthorize={onAuthorize}
-          onDelete={onDelete}
-        />
-        <div className="space-y-6">
-          <ModelCatalogCard />
-          {/*
-            Die Stimmen stehen **unter** dem Modellkatalog und nicht darin: eine
-            Stimme ist eine Stimme *in einer* Sprache, ein Whisper-Modell hat
-            nur eine Sprache. Zusammengelegt waere genau die Entscheidung unsichtbar,
-            die man hier treffen muss.
-          */}
-          <VoiceCatalogCard />
-          <AccountCard user={user} onLogout={onLogout} isLoggingOut={isLoggingOut} />
-          <CalendarFeedCard
-            feed={feed}
-            isLoading={feed === null}
-            isRotating={pendingAction === "feed"}
-            onCreate={onCreateFeed}
+      <div role="tabpanel" id={`einstellungen-${tab}`} aria-labelledby={`einstellungen-tab-${tab}`}>
+        {tab === "allgemein" ? (
+          <div className="grid items-start gap-4 lg:grid-cols-2">
+            <AccountCard user={user} onLogout={onLogout} isLoggingOut={isLoggingOut} />
+            <div className="space-y-4">
+              <ThemeCard />
+              <DesktopCard />
+            </div>
+          </div>
+        ) : null}
+
+        {tab === "verbindungen" ? (
+          <IntegrationsCard
+            integrations={sonstigeIntegrationen}
+            catalog={sonstigerKatalog}
+            runtime={runtime}
+            pendingAction={pendingAction}
+            testResults={testResults}
+            syncResults={syncResults}
+            isRefreshing={status === "loading"}
+            canWriteRemotely={canWriteRemotely}
+            onRefresh={onRetry}
+            onAdd={onAdd}
+            onToggle={onToggle}
+            onTest={onTest}
+            onSync={onSync}
+            onAuthorize={onAuthorize}
+            onDelete={onDelete}
           />
-          <NotificationSettingsCard
-            settings={notifications.settings}
-            vapid={notifications.vapid}
-            subscriptions={notifications.subscriptions}
-            permission={notifications.permission}
-            pushMoeglich={notifications.pushMoeglich}
-            status={notifications.status}
-            error={notifications.error}
-            actionError={notifications.actionError}
-            pending={notifications.pending}
-            bericht={notifications.pruefbericht}
-            zuletzt={notifications.zuletzt}
-            onSpeichern={notifications.speichern}
-            onErlaubnis={notifications.erlaubnisAnfragen}
-            onPushAnmelden={notifications.pushAnmelden}
-            onPushAbmelden={notifications.pushAbmelden}
-            onPruefen={notifications.pruefen}
-            onQuittieren={notifications.quittieren}
-          />
-          <DesktopCard />
-          <BackupStatusCard />
-          <ThemeCard />
-        </div>
+        ) : null}
+
+        {/*
+          Die Zustimmung zum Schreiben steht neben dem Abo und nicht als Zeile in
+          der Integrationsliste: sie haengt an keiner einzelnen Verbindung. Wer
+          sie sucht, soll sie finden, ohne erst eine Kalenderzeile auszuwaehlen.
+        */}
+        {tab === "kalender" ? (
+          <div className="grid items-start gap-4 lg:grid-cols-2">
+            <CalendarWritingCard writing={writing} isSaving={pendingAction === "writing"} onToggle={onToggleWriting} />
+            <CalendarFeedCard feed={feed} isLoading={feed === null} isRotating={pendingAction === "feed"} onCreate={onCreateFeed} />
+          </div>
+        ) : null}
+
+        {tab === "benachrichtigungen" ? (
+          <div className="max-w-3xl">
+            <NotificationSettingsCard
+              settings={notifications.settings}
+              vapid={notifications.vapid}
+              subscriptions={notifications.subscriptions}
+              permission={notifications.permission}
+              pushMoeglich={notifications.pushMoeglich}
+              status={notifications.status}
+              error={notifications.error}
+              actionError={notifications.actionError}
+              pending={notifications.pending}
+              bericht={notifications.pruefbericht}
+              zuletzt={notifications.zuletzt}
+              onSpeichern={notifications.speichern}
+              onErlaubnis={notifications.erlaubnisAnfragen}
+              onPushAnmelden={notifications.pushAnmelden}
+              onPushAbmelden={notifications.pushAbmelden}
+              onPruefen={notifications.pruefen}
+              onQuittieren={notifications.quittieren}
+            />
+          </div>
+        ) : null}
+
+        {tab === "sicherung" ? (
+          <div className="max-w-3xl">
+            <BackupStatusCard />
+          </div>
+        ) : null}
       </div>
-
     </div>
   );
 }

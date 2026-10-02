@@ -134,7 +134,7 @@ function KartenInhalt({ overview, error }: { overview: RewardOverview; error: st
   const sichtbareEintraege = entries.slice(0, LISTEN_LIMIT);
 
   return (
-    <CardContent className="space-y-6">
+    <CardContent className="space-y-4">
       {error ? (
         <p className="border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
           {error}
@@ -218,7 +218,7 @@ function KartenInhalt({ overview, error }: { overview: RewardOverview; error: st
         Zahlen der Antwort, nach denen das Backend rechnet - nicht aus einem
         zweiten Satz im Frontend.
       */}
-      <p className="border-t border-border pt-4 text-xs leading-5 text-muted-foreground">{regelSatz(rules, rules.subject_day_steps)}</p>
+      <p className="border-t border-border pt-3 text-xs leading-5 text-muted-foreground">{regelSatz(rules, rules.subject_day_steps)}</p>
     </CardContent>
   );
 }

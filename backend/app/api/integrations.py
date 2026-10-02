@@ -63,6 +63,36 @@ def _read(source: SyncSource, settings: AppSettings) -> IntegrationRead:
         ) from exc
 
 
+def _sync_after_connect(
+    db: Session, source: SyncSource, settings: AppSettings, timezone_name: str | None
+) -> IntegrationRead:
+    """Holt den Stundenplan sofort, sobald WebUntis verbunden und aktiv ist.
+
+    Ohne diesen Schritt stuenden Faecher und Stunden erst nach dem ersten
+    Knopfdruck oder dem naechsten Tageslauf da. Der Abruf ist best effort: ein
+    Fehler landet in ``last_error`` (so macht es ``run_integration_sync``
+    selbst) und verhindert nie das Speichern der Zugangsdaten. Nur WebUntis,
+    nur wenn alle Pflichtangaben da sind.
+    """
+    integration = _read(source, settings)
+    if source.source_type != "webuntis" or not source.enabled or integration.missing_fields:
+        return integration
+    try:
+        run_integration_sync(
+            db=db,
+            source=source,
+            config=integration.config,
+            credential_keys=integration.credential_keys,
+            settings=settings,
+            timezone_name=timezone_name or settings.timezone,
+        )
+    except (RuntimeError, SQLAlchemyError):
+        db.rollback()
+        logger.warning("Sofortabruf nach dem Verbinden fehlgeschlagen", exc_info=True)
+    db.refresh(source)
+    return _read(source, settings)
+
+
 def _owned_integration(db: Session, integration_id: int, user_id: int) -> SyncSource:
     source = owned_or_404(db, SyncSource, integration_id, user_id)
     if source.source_type not in INTEGRATION_KINDS:
@@ -141,7 +171,7 @@ def create_integration(
     except SQLAlchemyError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database unavailable") from exc
-    return _read(source, settings)
+    return _sync_after_connect(db, source, settings, current_user.timezone)
 
 
 @router.get("/{integration_id}", response_model=IntegrationRead)
@@ -200,6 +230,8 @@ def update_integration(
     except SQLAlchemyError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database unavailable") from exc
+    if "credentials" in values or "enabled" in values:
+        return _sync_after_connect(db, source, settings, current_user.timezone)
     return _read(source, settings)
 
 

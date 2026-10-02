@@ -528,7 +528,7 @@ def _pg_dump_command(config: BackupConfig) -> list[str]:
     """``pg_dump`` schreibt nach stdout; die Datei schreibt der Worker selbst.
 
     ``--no-owner`` und ``--no-privileges`` sind keine Kosmetik: die Restore-Uebung
-    im README spielt in eine Wegwerf-Datenbank mit einem anderen Benutzer
+    in docs/server.md spielt in eine Wegwerf-Datenbank mit einem anderen Benutzer
     zurueck, und ohne diese Schluessel wuerde ``pg_restore`` an den
     Eigentuemer-Anweisungen scheitern.
     """

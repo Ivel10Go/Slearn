@@ -20,6 +20,23 @@ def alembic_config(database_path: Path) -> Config:
     return config
 
 
+@pytest.fixture(autouse=True)
+def no_connect_sync(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Der Sofortabruf nach dem Verbinden darf in Tests nie ins Netz.
+
+    Viele Tests legen eine WebUntis-Integration mit Fantasiedaten an; ohne
+    diese Attrappe riefe jeder davon ein echtes Schulportal an. Wer den
+    Sofortabruf pruefen will, setzt die echte Funktion selbst wieder ein.
+    """
+    from app.api import integrations as integrations_api
+
+    monkeypatch.setattr(
+        integrations_api,
+        "_sync_after_connect",
+        lambda db, source, settings, timezone_name: integrations_api._read(source, settings),
+    )
+
+
 @pytest.fixture
 def app_context(tmp_path: Path) -> Iterator[tuple[TestClient, Session, User]]:
     database_path = tmp_path / "test.db"

@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { RowActions, SectionBanner } from "@/components/manage/row-actions";
+import { LessonChoicesCard } from "@/components/manage/lesson-choices-card";
+import { TimetableUploadCard } from "@/components/manage/timetable-upload-card";
 import { createSubject, deleteSubject, getSubjects, updateSubject, type SubjectChanges, type SubjectWrite } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { useCollection } from "@/lib/use-collection";
@@ -50,6 +52,8 @@ export function SubjectsView() {
     update: updateSubject,
     remove: deleteSubject,
   });
+  const [uploadOffen, setUploadOffen] = useState<boolean | null>(null);
+  const [planVersion, setPlanVersion] = useState(0);
   const [formularOffen, setFormularOffen] = useState(false);
   const [bearbeitet, setBearbeitet] = useState<number | null>(null);
   const [formular, setFormular] = useState<FachFormular>(leeresFormular);
@@ -90,13 +94,26 @@ export function SubjectsView() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <header>
         <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Fächer</h1>
         <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">
           Jede Hausaufgabe, Prüfung und Lernaufgabe kann einem Fach zugeordnet werden.
         </p>
       </header>
+
+      {/* Ohne Faecher ist der Upload der naechste Schritt und steht offen - aber erst nach dem Laden. */}
+      <TimetableUploadCard
+        open={uploadOffen ?? (sammlung.status !== "loading" && sammlung.items.length === 0)}
+        onToggle={() => setUploadOffen(!(uploadOffen ?? (sammlung.status !== "loading" && sammlung.items.length === 0)))}
+        onApplied={() => {
+          setPlanVersion((wert) => wert + 1);
+          void sammlung.reload();
+        }}
+      />
+
+      {/* Neu laden, wenn ein Upload den Plan veraendert hat: dort koennen neue Parallelstunden entstehen. */}
+      <LessonChoicesCard key={planVersion} onSaved={() => void sammlung.reload()} />
 
       <Card className="border-border/80 bg-card/90">
         <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">

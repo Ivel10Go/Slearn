@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BookOpen,
+  Bot,
   CalendarClock,
   CalendarDays,
   FileText,
@@ -12,6 +13,7 @@ import {
   Layers,
   ListChecks,
   Settings,
+  TrendingUp,
   type LucideIcon,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -40,7 +42,9 @@ interface NavItem {
  * "Heute" sind die Anker des Dashboards - das, was am Lerntag ansteht.
  * "Bibliothek" sind die eigenen Seiten, auf denen angelegt und verwaltet wird.
  * Die Einstellungen stehen getrennt unten, weil sie keine Tagesfrage
- * beantworten. Der fruehere Punkt "Nutzung" ist in die Kennzahlenleiste oben
+ * beantworten. "KI & Modelle" hat eine eigene Seite, weil KI-Dienst, lokale
+ * Modelle und Stimmen zusammen eine Entscheidung sind und in den Einstellungen
+ * die halbe Seite fuellten. Der fruehere Punkt "Nutzung" ist in die Kennzahlenleiste oben
  * im Dashboard aufgegangen - er zeigte dieselben drei Zahlen ein zweites Mal.
  */
 const navigationGroups: { label: string | null; items: NavItem[] }[] = [
@@ -63,7 +67,12 @@ const navigationGroups: { label: string | null; items: NavItem[] }[] = [
       { label: "Lernplan", mobile: "Lernen", href: "/lernen", icon: ListChecks },
       { label: "Fächer", mobile: "Fächer", href: "/faecher", icon: BookOpen },
       { label: "Dokumente", mobile: "Dokumente", href: "/dokumente", icon: FileText },
+      { label: "Fortschritt", mobile: "Fortschritt", href: "/fortschritt", icon: TrendingUp },
     ],
+  },
+  {
+    label: "Werkzeuge",
+    items: [{ label: "KI & Modelle", mobile: "KI", href: "/ki", icon: Bot }],
   },
 ];
 
@@ -145,7 +154,7 @@ export function AppShell({ children, user }: AppShellProps) {
           </Link>
         </div>
 
-        <nav className="flex-1 space-y-5 overflow-y-auto px-2.5 pb-4 pt-3" aria-label="Hauptnavigation">
+        <nav className="flex-1 space-y-4 overflow-y-auto px-2.5 pb-4 pt-2" aria-label="Hauptnavigation">
           {navigationGroups.map((group) => (
             <div key={group.label ?? "start"}>
               {group.label ? <p className="mb-1 px-2.5 text-[11px] font-medium text-muted-foreground/80">{group.label}</p> : null}
@@ -195,14 +204,14 @@ export function AppShell({ children, user }: AppShellProps) {
         <main
           id="main-content"
           tabIndex={-1}
-          className="mx-auto w-full max-w-[1280px] scroll-mt-16 px-4 pb-28 pt-6 outline-none sm:px-6 lg:px-10 lg:pb-12 lg:pt-8 desktop:lg:pt-5"
+          className="mx-auto w-full max-w-[1440px] scroll-mt-16 px-4 pb-28 pt-5 outline-none sm:px-6 lg:px-8 lg:pb-10 lg:pt-6 desktop:lg:pt-4"
         >
           {children}
         </main>
       </div>
 
       {/*
-        Neun Eintraege passen nicht in ein Raster auf 375px. Deshalb waagerecht
+        Elf Eintraege passen nicht in ein Raster auf 375px. Deshalb waagerecht
         scrollbar mit fester Mindestbreite je Eintrag - man sieht, dass es
         weitergeht, statt dass ein Teil der Navigation fehlt.
       */}

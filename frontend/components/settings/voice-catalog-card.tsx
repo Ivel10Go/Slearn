@@ -85,57 +85,61 @@ function VoiceRow({
   const anteil = Math.min(100, Math.max(0, stimme.status.progress_percent));
 
   return (
-    <li className="border border-border/70 p-4 sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold">{stimme.label}</p>
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <Badge variant="outline">{stimme.language_label}</Badge>
-            <Badge variant="secondary">{stimme.speaker_label}</Badge>
-            <Badge variant="secondary">{beschreibeQualitaet(stimme.quality)}</Badge>
-            <Badge variant={geladen ? "success" : "secondary"}>{beschreibeStimmstatus(stimme.status.status)}</Badge>
-            {vorschlag ? <Badge variant="accent">Vorschlag des Lernraums</Badge> : null}
-          </div>
-        </div>
-        <span className="text-xs font-semibold text-muted-foreground tabular-nums">{formatModelBytes(stimme.size_bytes)}</span>
+    <li className="flex flex-col rounded-md border border-border/70 p-3.5">
+      <div className="flex items-start justify-between gap-3">
+        <p className="min-w-0 text-[13px] font-semibold leading-5">{stimme.label}</p>
+        <Badge variant={geladen ? "success" : "secondary"} className="shrink-0">
+          {beschreibeStimmstatus(stimme.status.status)}
+        </Badge>
       </div>
+      <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground">
+        <span>{stimme.speaker_label}</span>
+        <span aria-hidden="true">·</span>
+        <span>{beschreibeQualitaet(stimme.quality)}</span>
+        <span aria-hidden="true">·</span>
+        <span className="tabular-nums">{formatModelBytes(stimme.size_bytes)}</span>
+        {vorschlag ? (
+          <>
+            <span aria-hidden="true">·</span>
+            <span className="font-medium text-foreground">Vorschlag des Lernraums</span>
+          </>
+        ) : null}
+      </p>
 
-      <p className="mt-3 text-xs leading-5 text-muted-foreground">{stimme.description}</p>
-
-      <dl className="mt-4 grid gap-2 sm:grid-cols-3">
-        <div className="border border-border/70 bg-muted/40 px-3.5 py-3">
-          <dt className="text-[11px] font-medium text-muted-foreground">Abtastrate</dt>
-          <dd className="mt-1 text-sm font-semibold tabular-nums">{stimme.sample_rate.toLocaleString("de-DE")} Hz</dd>
-        </div>
-        <div className="border border-border/70 bg-muted/40 px-3.5 py-3">
-          <dt className="text-[11px] font-medium text-muted-foreground">Dateien</dt>
-          <dd className="mt-1 text-sm font-semibold">{stimme.files.length}</dd>
-        </div>
-        <div className="border border-border/70 bg-muted/40 px-3.5 py-3">
-          <dt className="text-[11px] font-medium text-muted-foreground">Lizenz der Stimmdaten</dt>
-          <dd className="mt-1 text-sm font-semibold">{stimme.license}</dd>
-        </div>
-      </dl>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">{stimme.description}</p>
 
       {/*
         Zwei Dateien, nicht eine: das ONNX-Modell und seine JSON-Konfiguration.
         Piper braucht beide - ohne die Konfiguration kennt es weder Abtastrate
-        noch Phoneme. Deshalb wird das auch so benannt, wenn jemand nur eines
-        davon erwartet hat.
+        noch Phoneme. Die technischen Angaben sind eingeklappt: sie sind Beleg,
+        nicht der Grund, eine Stimme zu waehlen.
       */}
-      <ul className="mt-3 space-y-1">
-        {stimme.files.map((datei) => (
-          <li key={datei.name} className="flex items-baseline justify-between gap-3 text-[11px] text-muted-foreground">
-            <span className="truncate font-mono">{datei.name}</span>
-            <span className="shrink-0 tabular-nums">
-              {datei.is_model ? "Modell" : datei.is_config ? "Konfiguration" : "Datei"} · {formatModelBytes(datei.size_bytes)}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <details className="mt-2 text-[11px] text-muted-foreground">
+        <summary className="cursor-pointer select-none hover:text-foreground">Technische Angaben</summary>
+        <dl className="mt-1.5 space-y-0.5">
+          <div className="flex justify-between gap-3">
+            <dt>Abtastrate</dt>
+            <dd className="tabular-nums">{stimme.sample_rate.toLocaleString("de-DE")} Hz</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt>Lizenz der Stimmdaten</dt>
+            <dd className="truncate">{stimme.license}</dd>
+          </div>
+        </dl>
+        <ul className="mt-1.5 space-y-0.5">
+          {stimme.files.map((datei) => (
+            <li key={datei.name} className="flex items-baseline justify-between gap-3">
+              <span className="truncate font-mono">{datei.name}</span>
+              <span className="shrink-0 tabular-nums">
+                {datei.is_model ? "Modell" : datei.is_config ? "Konfiguration" : "Datei"} · {formatModelBytes(datei.size_bytes)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </details>
 
       {laeuft || stimme.status.status !== "not_downloaded" ? (
-        <div className="mt-4">
+        <div className="mt-2.5">
           <div
             className="h-2 w-full border border-border bg-muted"
             role="progressbar"
@@ -151,11 +155,11 @@ function VoiceRow({
       ) : null}
 
       {/* Wie in der Modellkarte: der Container steht immer da, nur sein Inhalt wechselt. */}
-      <div className="mt-3" role="status" aria-live="polite">
+      <div className={cn(stimme.status.message && "mt-2")} role="status" aria-live="polite">
         {stimme.status.message ? <p className="text-xs leading-5 text-muted-foreground">{stimme.status.message}</p> : null}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="mt-auto flex flex-wrap items-center gap-2 pt-3">
         {!laeuft ? (
           <Button type="button" size="sm" onClick={() => onStart(stimme)} disabled={wartet || geladen}>
             {wartet ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
@@ -307,11 +311,11 @@ export function VoiceCatalogCard() {
   const hatDeutsche = brauchtDeutscheStimme(stimmen);
 
   return (
-    <Card className="border-border/80 bg-card/90">
-      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
-        <div>
+    <Card>
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+        <div className="min-w-0 space-y-1">
           <CardTitle>Stimmen für die Sprachausgabe</CardTitle>
-          <CardDescription className="mt-1">
+          <CardDescription>
             Eine Stimme ist immer <strong>eine Stimme in einer Sprache</strong>. Für den Lernraum brauchst du eine deutsche -
             jede Stimme ist eine andere Person. Ohne Stimme bleibt alles andere genau so, wie es ist.
           </CardDescription>
@@ -355,9 +359,9 @@ export function VoiceCatalogCard() {
 
         {!laedt
           ? stimmenNachSprache(stimmen).map((abschnitt) => (
-              <section key={abschnitt.sprache} className="space-y-3">
-                <h3 className="text-[11px] font-medium text-muted-foreground">{abschnitt.sprache}</h3>
-                <ul className="space-y-4">
+              <section key={abschnitt.sprache} className="space-y-2">
+                <h4 className="text-xs font-medium text-muted-foreground">{abschnitt.sprache}</h4>
+                <ul className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
                   {abschnitt.gruppe.map((stimme) => (
                     <VoiceRow
                       key={stimme.id}

@@ -7,8 +7,7 @@ import {
   Check,
   Clock3,
   CornerDownLeft,
-  GraduationCap,
-  LoaderCircle,
+    LoaderCircle,
   MapPin,
   Play,
   RefreshCw,
@@ -38,9 +37,6 @@ import { useNow } from "@/lib/use-now";
 import { useGreeting } from "@/lib/use-greeting";
 import { isDemoTaskId, type DashboardData, type DashboardLesson, type DashboardStudyTask, type DocumentAnswer, type LessonState, type StudyActionResult, type StudyTaskStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { GradesCard } from "./grades-card";
-import { ProgressCard } from "./progress-card";
-import { RewardsCard } from "./rewards-card";
 import { ScheduleCard } from "./schedule-view";
 
 interface DashboardViewProps {
@@ -91,7 +87,7 @@ function ProgressBar({ value, className, indicatorClassName, label }: { value: n
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-6" aria-busy="true" aria-label="Dashboard wird geladen">
+    <div className="space-y-4" aria-busy="true" aria-label="Dashboard wird geladen">
       <div className="space-y-2.5">
         <Skeleton className="h-3.5 w-36" />
         <Skeleton className="h-7 w-[28rem] max-w-full" />
@@ -179,81 +175,82 @@ function GreetingHeader({ username, reference }: { username?: string | null; ref
 }
 
 /**
- * Vier Zahlen in einer Zeile - ersetzt den frueheren Hero-Block, den
- * Fortschrittsring und die Nutzungskarte, die alle dieselben Werte zeigten.
+ * Eine Zeile fuer den Tagesstand: die laufende bzw. naechste Stunde vorn,
+ * dahinter vier Zahlen. Ersetzt den frueheren Hero-Block, den Fortschrittsring,
+ * die Nutzungskarte und die eigene Karte fuer die naechste Stunde - die
+ * standen alle untereinander und belegten den ersten Bildschirm, ohne mehr zu
+ * sagen als diese Zeile.
  */
-function StatsStrip({ data, dayProgress }: { data: DashboardData; dayProgress: number }) {
-  const stats = [
-    { label: "Stunden", value: `${data.summary.lessonsCompleted}/${data.summary.lessonsTotal}` },
-    { label: "Lernblöcke", value: `${data.summary.tasksCompleted}/${data.summary.tasksTotal}` },
-    { label: "Offene Hausaufgaben", value: String(data.summary.homeworkPending) },
-  ];
-  return (
-    <section aria-label="Tagesstand" className="grid grid-cols-2 overflow-hidden rounded-lg border border-border sm:grid-cols-4">
-      {stats.map((stat, index) => (
-        <div key={stat.label} className={cn("px-4 py-3.5", index > 0 && "border-l border-border", index === 2 && "max-sm:border-l-0 max-sm:border-t")}>
-          <p className="text-xs text-muted-foreground">{stat.label}</p>
-          <p className="mt-0.5 text-xl font-semibold tabular-nums tracking-tight">{stat.value}</p>
-        </div>
-      ))}
-      <div className="border-l border-border px-4 py-3.5 max-sm:border-t">
-        <p className="text-xs text-muted-foreground">Tag geschafft</p>
-        <div className="mt-0.5 flex items-center gap-3">
-          <p className="text-xl font-semibold tabular-nums tracking-tight">{Math.round(dayProgress)}%</p>
-          <ProgressBar value={dayProgress} label="Tagesfortschritt" className="flex-1" />
-        </div>
-      </div>
-    </section>
+/** Haarlinien zwischen den Zahlen: 2x2 auf dem Telefon, sonst eine Reihe. */
+function statCellClass(index: number) {
+  return cn(
+    "border-border px-4 py-3 md:border-l",
+    index > 0 && "sm:border-l",
+    index % 2 === 1 && "max-sm:border-l",
+    index >= 2 && "max-sm:border-t",
   );
 }
 
-function FocusLessonCard({ lesson, reference }: { lesson: DashboardLesson | undefined; reference: Date }) {
+function TodayStrip({ data, dayProgress, lesson, reference }: { data: DashboardData; dayProgress: number; lesson: DashboardLesson | undefined; reference: Date }) {
   const state = lesson ? getLessonState(lesson, reference) : "upcoming";
-
+  const stats = [
+    { label: "Stunden", value: `${data.summary.lessonsCompleted}/${data.summary.lessonsTotal}` },
+    { label: "Lernblöcke", value: `${data.summary.tasksCompleted}/${data.summary.tasksTotal}` },
+    { label: "Hausaufgaben offen", value: String(data.summary.homeworkPending) },
+  ];
   return (
-    <Card id="focus" className={anchorClass}>
-      <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
-        <CardTitle>{lesson ? lessonStateLabels[state] : "Unterricht"}</CardTitle>
-        <Link href="#schedule" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-          Stundenplan
-          <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-        </Link>
-      </CardHeader>
-      <CardContent>
-        {lesson ? (
-          <div className="flex items-start gap-4">
-            <div className="w-14 shrink-0 border-r border-border pr-4 text-right tabular-nums">
-              <p className="text-[13px] font-semibold">{formatTime(lesson.startTime)}</p>
-              <p className="text-xs text-muted-foreground">{formatTime(lesson.endTime)}</p>
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-base font-semibold tracking-tight">{lesson.subject}</p>
-              {lesson.title && lesson.title !== lesson.subject ? <p className="truncate text-[13px] text-muted-foreground">{lesson.title}</p> : null}
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1.5">
-                  <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
-                  {formatTime(lesson.startTime)} – {formatTime(lesson.endTime)} Uhr
+    <section aria-label="Tagesstand" className="grid overflow-hidden rounded-lg border border-border md:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))]">
+      <Link
+        id="focus"
+        href="#schedule"
+        className={cn(anchorClass, "group flex min-w-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50 max-md:border-b max-md:border-border")}
+      >
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-muted-foreground">{lesson ? lessonStateLabels[state] : "Unterricht"}</p>
+          {lesson ? (
+            <>
+              <p className="truncate text-[15px] font-semibold tracking-tight">{lesson.subject}</p>
+              <p className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1 tabular-nums">
+                  <Clock3 className="h-3 w-3" aria-hidden="true" />
+                  {formatTime(lesson.startTime)}–{formatTime(lesson.endTime)}
                 </span>
                 {lesson.room ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span className="inline-flex items-center gap-1">
+                    <MapPin className="h-3 w-3" aria-hidden="true" />
                     {lesson.room}
                   </span>
                 ) : null}
                 {lesson.teacher ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <UserRound className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span className="inline-flex min-w-0 items-center gap-1 truncate">
+                    <UserRound className="h-3 w-3" aria-hidden="true" />
                     {lesson.teacher}
                   </span>
                 ) : null}
-              </div>
-            </div>
+              </p>
+            </>
+          ) : (
+            <p className="text-[15px] font-semibold tracking-tight">Heute kein Unterricht mehr</p>
+          )}
+        </div>
+        <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+      </Link>
+      <div className="grid grid-cols-2 sm:grid-cols-4 md:contents">
+        {stats.map((stat, index) => (
+          <div key={stat.label} className={statCellClass(index)}>
+            <p className="text-xs text-muted-foreground">{stat.label}</p>
+            <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight">{stat.value}</p>
           </div>
-        ) : (
-          <EmptyState icon={GraduationCap} title="Heute kein Unterricht mehr" description="Zeit für deine offenen Aufgaben." />
-        )}
-      </CardContent>
-    </Card>
+        ))}
+        <div className={statCellClass(stats.length)}>
+          <p className="text-xs text-muted-foreground">Tag geschafft</p>
+          <div className="mt-0.5 flex items-center gap-3">
+            <p className="text-lg font-semibold tabular-nums tracking-tight">{Math.round(dayProgress)}%</p>
+            <ProgressBar value={dayProgress} label="Tagesfortschritt" className="flex-1" />
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -282,7 +279,7 @@ function mergeStudyAction(task: DashboardStudyTask, result: StudyActionResult, a
   };
 }
 
-function StudyTasksCard({ tasks, onLernzeitGeaendert }: { tasks: DashboardStudyTask[]; onLernzeitGeaendert?: () => void }) {
+function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
   const now = useNow();
   const [taskOverrides, setTaskOverrides] = useState<Record<string, DashboardStudyTask>>({});
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
@@ -296,11 +293,6 @@ function StudyTasksCard({ tasks, onLernzeitGeaendert }: { tasks: DashboardStudyT
     try {
       const result = action === "start" ? await startStudyTask(task.id) : action === "stop" ? await stopStudyTask(task.id) : await completeStudyTask(task.id);
       setTaskOverrides((current) => ({ ...current, [task.id]: mergeStudyAction(task, result, action) }));
-      // Start, Stopp und Abschluss aendern die Lernzeit - und damit Tageswert,
-      // Serie und Wochenziel der Fortschrittskarte. Ohne diesen Hinweis
-      // zeigte sie bis zum naechsten Neuladen einen Stand, den es nicht mehr
-      // gibt.
-      onLernzeitGeaendert?.();
     } catch (error) {
       setActionError(error instanceof ApiError ? error.message : "Die Lernaktion konnte nicht ausgeführt werden.");
     } finally {
@@ -321,9 +313,9 @@ function StudyTasksCard({ tasks, onLernzeitGeaendert }: { tasks: DashboardStudyT
         </div>
       </CardHeader>
       <CardContent className="px-0 pb-1.5">
-        {actionError ? <p className="mx-5 mb-3 rounded-md border border-foreground/30 bg-muted px-3 py-2 text-[13px]" role="alert">{actionError}</p> : null}
+        {actionError ? <p className="mx-4 mb-3 rounded-md border border-foreground/30 bg-muted px-3 py-2 text-[13px]" role="alert">{actionError}</p> : null}
         {taskList.length === 0 ? (
-          <div className="px-5 pb-3.5">
+          <div className="px-4 pb-3">
             <EmptyState icon={Timer} title="Keine Lernaufgaben" description="Geplante Lernschritte erscheinen hier." />
           </div>
         ) : (
@@ -335,7 +327,7 @@ function StudyTasksCard({ tasks, onLernzeitGeaendert }: { tasks: DashboardStudyT
               const busy = busyTaskId === task.id;
               const startedAt = task.session?.startedAt ?? task.startedAt;
               return (
-                <li key={task.id} className={cn("flex items-center gap-3 px-5 py-3", active && "bg-muted/60")}>
+                <li key={task.id} className={cn("flex items-center gap-3 px-4 py-2.5", active && "bg-muted/60")}>
                   <button
                     type="button"
                     onClick={() => void handleAction(task, "complete")}
@@ -522,14 +514,6 @@ function AssistantCard() {
 export function DashboardView({ data, error, isLoading, onRetry, username }: DashboardViewProps) {
   const now = useNow();
   const reference = useMemo(() => now ?? new Date(), [now]);
-  /**
-   * Zaehler, keine Zeitangabe: die Fortschritts- und die Belohnungskarte laden
-   * neu, wenn sich dieser Wert aendert. Beide brauchen ihn, weil **ein**
-   * Ereignis - eine abgeschlossene Lernsession - beides verschiebt. Bewusst
-   * **ein** Zaehler fuer zwei Karten: er wird genau dort hochgezaehlt, wo die
-   * Aenderung ausgeloest wird, und beide Karten lesen ihn.
-   */
-  const [lernzeitKey, setLernzeitKey] = useState(0);
   const focusLesson = useMemo(() => {
     if (!data) {
       return undefined;
@@ -548,7 +532,7 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
   const dayProgress = data.summary.dayProgress > 0 ? data.summary.dayProgress : getDayProgress(data.lessons, reference);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <GreetingHeader username={username} reference={reference} />
 
       {error ? (
@@ -561,42 +545,26 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
         </div>
       ) : null}
 
-      <StatsStrip data={data} dayProgress={dayProgress} />
-
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
-        <div className="space-y-5">
-          <FocusLessonCard lesson={focusLesson} reference={reference} />
-          <StudyTasksCard tasks={data.studyTasks} onLernzeitGeaendert={() => setLernzeitKey((zaehler) => zaehler + 1)} />
-        </div>
-        <div className="space-y-5">
-          <CalendarSection reference={reference} />
-          <AssistantCard />
-        </div>
-      </div>
+      <TodayStrip data={data} dayProgress={dayProgress} lesson={focusLesson} reference={reference} />
 
       {/*
-        Der Stundenplan steht über die volle Breite. Sieben Tage brauchen
-        sieben gleich breite Spalten - in einer Zweispalten-Schale blieben
-        rund 120px je Tag, und die Stundenzeiten waren nicht mehr ausgerichtet.
+        Zwei Spalten: links der Tag - Stundenplan, Lernblöcke, Fälliges -,
+        rechts, was man nachschlägt. Lernfortschritt, Noten und Belohnung
+        stehen auf `/fortschritt`: sie beantworten "wie stehe ich?", nicht "was
+        steht heute an?", und machten das Dashboard zur längsten Seite.
       */}
-      <ScheduleCard />
-
-      <div className="grid items-start gap-5 xl:grid-cols-2">
-        <div className="space-y-5">
-          <HomeworkSection reference={reference} />
-          <ExamsSection reference={reference} />
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
+        <div className="space-y-4">
+          <ScheduleCard />
+          <StudyTasksCard tasks={data.studyTasks} />
+          <div className="grid items-start gap-4 lg:grid-cols-2">
+            <HomeworkSection reference={reference} />
+            <ExamsSection reference={reference} />
+          </div>
         </div>
-        <div className="space-y-5">
-          <ProgressCard refreshKey={lernzeitKey} />
-          {/*
-            Noten stehen neben dem Lernfortschritt, nicht unter `/lernen`:
-            Schnitt, Verlauf und Hochrechnung beantworten "wie stehe ich?", und
-            das ist eine Frage des Tagesueberblicks.
-          */}
-          <GradesCard />
-          {/* Belohnungen haengen am selben Zaehler wie der Fortschritt - beide
-              aendern sich in derselben Sekunde. */}
-          <RewardsCard refreshKey={lernzeitKey} />
+        <div className="space-y-4">
+          <CalendarSection reference={reference} />
+          <AssistantCard />
         </div>
       </div>
     </div>

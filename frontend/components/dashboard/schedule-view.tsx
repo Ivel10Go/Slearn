@@ -48,9 +48,11 @@ const TIME_GUTTER = "4.25rem";
  *
  * Der Raster waechst mit: unterhalb dieser Breite wuerde ein Kuerzel plus Raum
  * umbrechen, also scrollt der Plan auf dem Telefon waagerecht, statt die
- * Information zu zerhacken.
+ * Information zu zerhacken. 6rem reicht, seit eine Stunde in der Uebersicht
+ * einzeilig ist ("Eap 409"), und laesst die Woche in die Hauptspalte des
+ * Dashboards passen.
  */
-const DAY_MIN_WIDTH = "8.75rem";
+const DAY_MIN_WIDTH = "6rem";
 
 function SegmentedControl<T extends string>({
   options,
@@ -87,32 +89,12 @@ function SegmentedControl<T extends string>({
   );
 }
 
-/** Hoehe einer Zelle nach Dauer - eine Doppelstunde soll auch doppelt so hoch sein. */
-function durationHeight(startTime: string, endTime: string) {
-  const start = toDate(startTime)?.getTime();
-  const end = toDate(endTime)?.getTime();
-  if (start === undefined || end === undefined) {
-    return "min-h-14";
-  }
-  const minutes = Math.round((end - start) / 60_000);
-  if (minutes >= 120) {
-    return "min-h-24";
-  }
-  if (minutes >= 80) {
-    return "min-h-20";
-  }
-  if (minutes >= 55) {
-    return "min-h-16";
-  }
-  return "min-h-14";
-}
-
 /**
  * Eine Stunde als Zelle im Raster.
  *
- * Im Uebersichtsmodus - mehr als ein Tag - reichen Kuerzel und Raum. Der
- * ausgeschriebene Fachname, der Titel und die Lehrkraft stehen im Tooltip; die
- * Zelle waere sonst zweizeilig und das Raster verliert seine Hoehe.
+ * Im Uebersichtsmodus - mehr als ein Tag - reichen Kuerzel und Raum; Fachname,
+ * Titel und Lehrkraft stehen im Tooltip. In der Tagesansicht ist Platz fuer
+ * Fach, Raum und Lehrkraft - aber ebenfalls in einer Zeile.
  */
 function LessonCell({ lesson, reference, detailed }: { lesson: DashboardLesson; reference: Date; detailed: boolean }) {
   const state = getLessonState(lesson, reference);
@@ -120,8 +102,9 @@ function LessonCell({ lesson, reference, detailed }: { lesson: DashboardLesson; 
   return (
     <div
       className={cn(
-        "flex h-full flex-col gap-0.5 border-l-2 px-2 py-1.5 leading-tight transition-colors hover:bg-muted/60",
-        durationHeight(lesson.startTime, lesson.endTime),
+        "flex border-l-2 leading-tight transition-colors hover:bg-muted/60",
+        // Immer eine Zeile: sonst stapeln sich parallele Kurse zu Tuermen.
+        detailed ? "items-baseline gap-3 px-2.5 py-1.5" : "items-baseline gap-1.5 px-1.5 py-1",
         isCurrent ? "border-foreground bg-muted" : "border-border/70",
         state === "completed" && !isCurrent && "opacity-50",
         lesson.isCancelled && "opacity-70",
@@ -130,17 +113,18 @@ function LessonCell({ lesson, reference, detailed }: { lesson: DashboardLesson; 
     >
       {detailed ? (
         <>
-          <span className="flex items-baseline justify-between gap-2">
-            <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">
-              {formatTime(lesson.startTime)} – {formatTime(lesson.endTime)}
-            </span>
-            {isCurrent ? <span className="text-[10px] font-medium text-primary">Jetzt</span> : null}
+          {/*
+            Eine Zeile je Stunde: die Uhrzeit steht schon in der Zeitspalte, und
+            der Titel nur, wenn er mehr sagt als das Fach - WebUntis liefert oft
+            beides gleich.
+          */}
+          <span className={cn("min-w-0 flex-1 truncate text-[13px] font-semibold", lesson.isCancelled && "line-through")}>
+            {lesson.subject}
+            {lesson.title && lesson.title !== lesson.subject ? <span className="font-normal text-muted-foreground"> · {lesson.title}</span> : null}
           </span>
-          <span className={cn("truncate text-sm font-semibold", lesson.isCancelled && "line-through")}>{lesson.subject}</span>
-          {lesson.title ? <span className="truncate text-xs text-muted-foreground">{lesson.title}</span> : null}
-          <span className="truncate text-[11px] text-muted-foreground">
-            {[lesson.room, lesson.teacher].filter(Boolean).join(" · ")}
-          </span>
+          <span className="shrink-0 truncate text-xs text-muted-foreground">{[lesson.room, lesson.teacher].filter(Boolean).join(" · ")}</span>
+          {isCurrent ? <span className="shrink-0 text-[11px] font-medium text-foreground">Jetzt</span> : null}
+          {lesson.isCancelled ? <span className="shrink-0 text-[11px] font-medium text-destructive">Entfallen</span> : null}
         </>
       ) : (
         <>
@@ -148,11 +132,9 @@ function LessonCell({ lesson, reference, detailed }: { lesson: DashboardLesson; 
             {lesson.subjectShort ?? lesson.subject}
           </span>
           <span className="truncate text-[10px] text-muted-foreground">{lesson.room}</span>
+          {lesson.isCancelled ? <span className="sr-only">Entfallen</span> : null}
         </>
       )}
-      {lesson.isCancelled ? (
-        <span className="text-[9px] font-medium text-destructive">Entfallen</span>
-      ) : null}
     </div>
   );
 }
@@ -164,6 +146,7 @@ function gridTemplate(dayCount: number) {
 }
 
 interface GridRow {
+  /** Uhrzeit in Ortszeit, "HH:MM" - gemeinsam fuer alle Tage. */
   startTime: string;
   label: string;
   /** Zellen je Tag; parallele Faecher stehen als Liste in derselben Zelle. */
@@ -179,7 +162,9 @@ export function ScheduleCard() {
   // darunter würde bei jedem Ticken des Sekundentakts neu gebaut.
   const reference = useMemo(() => now ?? new Date(), [now]);
 
-  const [rangeId, setRangeId] = useState<RangeId>("week");
+  // Startet mit "Heute": das Dashboard beantwortet, was heute ansteht. Die
+  // Woche ist einen Klick entfernt und haette den Rest der Seite verdraengt.
+  const [rangeId, setRangeId] = useState<RangeId>("today");
   const [offset, setOffset] = useState(0);
 
   const option = RANGE_OPTIONS.find((entry) => entry.id === rangeId) ?? RANGE_OPTIONS[RANGE_OPTIONS.length - 1];
@@ -228,12 +213,18 @@ export function ScheduleCard() {
         // Zeitsprung kann eine Randstunde mitbringen.
         continue;
       }
-      startZeiten.add(lesson.startTime);
-      const vorhanden = spalten.get(lesson.startTime);
+      // Der Zeilenschluessel ist die **Uhrzeit** in der Ortszeit ("07:45"),
+      // nicht der volle Zeitstempel: der traegt das Datum mit, und dann bekam
+      // jeder Tag eigene Zeilen - die Donnerstagsstunden standen unter allen
+      // Mittwochszeilen, und die Donnerstagsspalte sah oben leer aus.
+      // "HH:MM" sortiert als Text richtig.
+      const zeit = formatTime(lesson.startTime);
+      startZeiten.add(zeit);
+      const vorhanden = spalten.get(zeit);
       if (vorhanden) {
         vorhanden.push(lesson);
       } else {
-        spalten.set(lesson.startTime, [lesson]);
+        spalten.set(zeit, [lesson]);
       }
     }
 
@@ -241,7 +232,7 @@ export function ScheduleCard() {
       .sort()
       .map((startTime) => ({
         startTime,
-        label: formatTime(startTime),
+        label: startTime,
         cells: visibleDays.map((day) => {
           const treffer = proTag.get(toIsoDate(day))?.get(startTime);
           if (!treffer) {
@@ -274,7 +265,7 @@ export function ScheduleCard() {
 
   return (
     <Card id="schedule" className="scroll-mt-24">
-      <CardHeader className="gap-3 pb-4">
+      <CardHeader className="gap-2.5 pb-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <CardTitle>Stundenplan</CardTitle>
           <span className="text-xs font-semibold tabular-nums text-muted-foreground">
@@ -318,9 +309,6 @@ export function ScheduleCard() {
           <Button type="button" variant="ghost" size="icon" onClick={reload} disabled={isLoading} aria-label="Stundenplan neu laden">
             <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} aria-hidden="true" />
           </Button>
-          <p className="hidden text-[11px] text-muted-foreground lg:block">
-            Zeilen sind Startzeiten, Spalten sind Tage.
-          </p>
         </div>
       </CardHeader>
 

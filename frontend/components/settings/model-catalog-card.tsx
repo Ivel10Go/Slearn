@@ -105,46 +105,46 @@ function ModelRow({
   const zeigeFortschritt = model.status.status !== "not_downloaded";
 
   return (
-    <li className="border border-border/70 p-4 sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold">{model.label}</p>
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <Badge variant="outline">{describeModelTask(model.task)}</Badge>
-            <Badge variant={model.status.status === "installed" ? "success" : "secondary"}>
-              {describeModelStatus(model.status.status)}
-            </Badge>
-            {model.status.verified ? <Badge variant="accent">Prüfsumme bestätigt</Badge> : null}
-          </div>
-        </div>
+    <li className="flex flex-col rounded-md border border-border/70 p-3.5">
+      <div className="flex items-start justify-between gap-3">
+        <p className="min-w-0 text-[13px] font-semibold leading-5">{model.label}</p>
+        <Badge variant={model.status.status === "installed" ? "success" : "secondary"} className="shrink-0">
+          {describeModelStatus(model.status.status)}
+        </Badge>
       </div>
 
-      <p className="mt-3 text-xs leading-5 text-muted-foreground">{model.description}</p>
+      {/*
+        Die Aufgabe steht als Gruppenueberschrift, nicht in jeder Kachel.
+        Groesse und RAM stehen in einer Zeile statt in zwei Kaesten: sie sind
+        die beiden Zahlen, nach denen man waehlt, und nebeneinander vergleicht
+        man sie ueber die Kacheln hinweg. Die Herleitung der RAM-Schaetzung
+        steht im `title` - sie ist Beleg, nicht Entscheidung.
+      */}
+      <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground">
+        <span className="tabular-nums">{formatModelBytes(model.size_bytes)}</span>
+        <span aria-hidden="true">·</span>
+        <span className="tabular-nums" title={model.ram_basis ? `Gerechnet aus: ${model.ram_basis}.` : undefined}>
+          RAM {model.ram_estimate_bytes > 0 ? `ab ${model.ram_estimate_gib.toFixed(1).replace(".", ",")} GiB` : "unbekannt"} (Schätzung)
+        </span>
+        {model.status.verified ? (
+          <>
+            <span aria-hidden="true">·</span>
+            <span>Prüfsumme bestätigt</span>
+          </>
+        ) : null}
+      </p>
 
-      <dl className="mt-4 grid gap-2 sm:grid-cols-2">
-        <div className="border border-border/70 bg-muted/40 px-3.5 py-3">
-          <dt className="text-[11px] font-medium text-muted-foreground">Größe</dt>
-          <dd className="mt-1 text-sm font-semibold">{formatModelBytes(model.size_bytes)}</dd>
-        </div>
-        <div className="border border-border/70 bg-muted/40 px-3.5 py-3">
-          <dt className="text-[11px] font-medium text-muted-foreground">RAM zur Laufzeit (Schätzung)</dt>
-          <dd className="mt-1 text-sm font-semibold">
-            {model.ram_estimate_bytes > 0 ? `ab ${model.ram_estimate_gib.toFixed(1).replace(".", ",")} GiB` : "unbekannt"}
-          </dd>
-        </div>
-      </dl>
-
-      {model.ram_basis ? <p className="mt-2 text-[11px] leading-4 text-muted-foreground">Gerechnet aus: {model.ram_basis}.</p> : null}
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">{model.description}</p>
 
       {passt === false ? (
-        <p className="mt-3 flex items-start gap-2 text-xs font-semibold">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+        <p className="mt-2 flex items-start gap-2 text-xs font-semibold">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           Der freie Speicher ist kleiner als dieses Modell. Der Download bricht vorher ab und lässt eine Reserve.
         </p>
       ) : null}
 
       {zeigeFortschritt ? (
-        <div className="mt-4">
+        <div className="mt-2.5">
           <ProgressBar model={model} />
         </div>
       ) : null}
@@ -152,12 +152,14 @@ function ModelRow({
       {/*
         Eine Live-Region muss vor dem Text im DOM stehen, sonst wird er nicht
         angesagt. Deshalb ist der Container immer da und nur sein Inhalt wechselt.
+        "Noch nicht geladen" sagt schon das Badge - der Satz steht nur, wenn er
+        mehr sagt.
       */}
-      <div className="mt-3" role="status" aria-live="polite">
-        {model.status.message ? <p className="text-xs leading-5 text-muted-foreground">{model.status.message}</p> : null}
+      <div className={cn(zeigeFortschritt && model.status.message && "mt-2")} role="status" aria-live="polite">
+        {zeigeFortschritt && model.status.message ? <p className="text-xs leading-5 text-muted-foreground">{model.status.message}</p> : null}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="mt-auto flex flex-wrap items-center gap-2 pt-3">
         {!laueft ? (
           <Button type="button" size="sm" onClick={() => onStart(model)} disabled={!canStartModelDownload(model.status) || istAmLaufen}>
             {istAmLaufen ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
@@ -270,15 +272,23 @@ export function ModelCatalogCard() {
 
   const modelle = katalog?.models ?? [];
   const speicher = katalog?.storage;
+  const gruppen = modelle.reduce<{ task: ModelPayload["task"]; modelle: ModelPayload[] }[]>((liste, model) => {
+    const gruppe = liste.find((eintrag) => eintrag.task === model.task);
+    if (gruppe) {
+      gruppe.modelle.push(model);
+    } else {
+      liste.push({ task: model.task, modelle: [model] });
+    }
+    return liste;
+  }, []);
 
   return (
-    <Card className="border-border/80 bg-card/90">
-      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
-        <div>
+    <Card>
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+        <div className="min-w-0 space-y-1">
           <CardTitle>Lokale Modelle</CardTitle>
-          <CardDescription className="mt-1">
-            Lade ein Sprach- oder Spracherkennungsmodell direkt auf den Server. Der Download läuft im Hintergrund und setzt
-            nach einem Abbruch beim Teilstand fort.
+          <CardDescription>
+            Direkt auf den Server laden. Der Download läuft im Hintergrund und setzt nach einem Abbruch beim Teilstand fort.
           </CardDescription>
         </div>
         <Button type="button" size="sm" variant="outline" onClick={() => void laden()} disabled={laedt}>
@@ -312,21 +322,29 @@ export function ModelCatalogCard() {
           <p className="text-sm text-muted-foreground">Der Katalog enthält zurzeit kein Modell.</p>
         ) : null}
 
-        {modelle.length > 0 ? (
-          <ul className="space-y-4">
-            {modelle.map((model) => (
-              <ModelRow
-                key={model.id}
-                model={model}
-                storageFreeBytes={speicher?.free_bytes ?? null}
-                pendingAction={pendingAction}
-                onStart={(ziel) => void aktion(ziel, "download")}
-                onCancel={(ziel) => void aktion(ziel, "cancel")}
-                onDelete={(ziel) => void aktion(ziel, "delete")}
-              />
-            ))}
-          </ul>
-        ) : null}
+        {/*
+          Nach Aufgabe gruppiert und als Kacheln nebeneinander: ein Textmodell
+          und ein Spracherkennungsmodell sind keine Alternativen, und in einer
+          einzigen Liste untereinander musste man die Wahl erst zusammensuchen.
+        */}
+        {gruppen.map((gruppe) => (
+          <section key={gruppe.task} className="space-y-2" aria-label={describeModelTask(gruppe.task)}>
+            <h4 className="text-xs font-medium text-muted-foreground">{describeModelTask(gruppe.task)}</h4>
+            <ul className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+              {gruppe.modelle.map((model) => (
+                <ModelRow
+                  key={model.id}
+                  model={model}
+                  storageFreeBytes={speicher?.free_bytes ?? null}
+                  pendingAction={pendingAction}
+                  onStart={(ziel) => void aktion(ziel, "download")}
+                  onCancel={(ziel) => void aktion(ziel, "cancel")}
+                  onDelete={(ziel) => void aktion(ziel, "delete")}
+                />
+              ))}
+            </ul>
+          </section>
+        ))}
 
         {speicher?.message ? <p className="text-[11px] leading-4 text-muted-foreground">{speicher.message}</p> : null}
       </CardContent>
