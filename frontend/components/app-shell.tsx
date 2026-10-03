@@ -12,6 +12,7 @@ import {
   Home,
   Layers,
   ListChecks,
+  MessageSquareText,
   Settings,
   TrendingUp,
   type LucideIcon,
@@ -72,7 +73,10 @@ const navigationGroups: { label: string | null; items: NavItem[] }[] = [
   },
   {
     label: "Werkzeuge",
-    items: [{ label: "KI & Modelle", mobile: "KI", href: "/ki", icon: Bot }],
+    items: [
+      { label: "Assistent", mobile: "Assistent", href: "/assistent", icon: MessageSquareText },
+      { label: "KI & Modelle", mobile: "KI", href: "/ki", icon: Bot },
+    ],
   },
 ];
 

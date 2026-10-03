@@ -112,6 +112,10 @@ function backendEnv({ dataDir, secrets, timezone }) {
     DEMO_MODE: "false",
     DOCUMENT_STORAGE_PATH: path.join(dataDir, "documents"),
     MODEL_STORAGE_PATH: path.join(dataDir, "models"),
+    // Geladene Modelle laufen ohne Zusatzinstallation: das Backend holt
+    // llama-server, whisper-server und piper (feste Version + Pruefsumme)
+    // und startet sie bei Bedarf.
+    LOCAL_RUNTIMES_ENABLED: "true",
     // Beide Laeufe tun nur etwas, wenn etwas eingerichtet ist: ohne
     // WebUntis-Zugang gibt es keinen Abruf, ohne Termine keine Erinnerung.
     WEBUNTIS_SYNC_ENABLED: "true",

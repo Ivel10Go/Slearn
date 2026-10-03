@@ -214,3 +214,68 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Faultier-Maskottchen (`components/assistant/faultier.tsx`). Graustufen wie
+ * der Rest; im Dunkeln bleibt das Gesicht hell, damit die Maske lesbar ist,
+ * und Ast/Deko nehmen einen mittleren Grauton statt Schwarz auf Schwarz.
+ */
+.faultier {
+  --sloth-fur: #cdcdcd;
+  --sloth-belly: #e9e9e9;
+  --sloth-face: #ffffff;
+  --sloth-cheek: #ececec;
+  --sloth-ink: #0a0a0a;
+  --sloth-branch: #0a0a0a;
+  overflow: visible;
+}
+
+.dark .faultier {
+  --sloth-fur: #5e5e5e;
+  --sloth-belly: #7a7a7a;
+  --sloth-face: #e8e8e8;
+  --sloth-cheek: #d2d2d2;
+  --sloth-ink: #0a0a0a;
+  --sloth-branch: #9a9a9a;
+}
+
+.faultier .f-fell { fill: var(--sloth-fur); stroke: var(--sloth-ink); stroke-width: 2; stroke-linejoin: round; }
+.faultier .f-bauch { fill: var(--sloth-belly); }
+.faultier .f-gesicht,
+.faultier .f-augapfel { fill: var(--sloth-face); }
+.faultier .f-wange { fill: var(--sloth-cheek); }
+.faultier .f-tinte { fill: var(--sloth-ink); }
+.faultier .f-linie { fill: none; stroke: var(--sloth-ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.faultier .f-duenn { stroke-width: 1.5; }
+.faultier .f-linie-rand { stroke: var(--sloth-ink); stroke-width: 1.5; stroke-linejoin: round; }
+.faultier .f-lid { fill: none; stroke: var(--sloth-face); stroke-width: 2; stroke-linecap: round; }
+.faultier .f-ast { fill: none; stroke: var(--sloth-branch); stroke-width: 4; stroke-linecap: round; }
+.faultier .f-blatt { fill: var(--sloth-belly); stroke: var(--sloth-branch); stroke-width: 1.5; }
+.faultier .f-arm-rand { fill: none; stroke: var(--sloth-ink); stroke-width: 12; stroke-linecap: round; }
+.faultier .f-arm { fill: none; stroke: var(--sloth-fur); stroke-width: 8; stroke-linecap: round; }
+.faultier .f-kralle { fill: none; stroke: var(--sloth-ink); stroke-width: 1.8; stroke-linecap: round; }
+.faultier .f-deko { fill: var(--sloth-branch); }
+
+/* Bewegung: Drehpunkt in Nutzerkoordinaten des viewBox (Ast bzw. Kopfmitte). */
+.faultier .f-schwingen { transform-origin: 60px 10px; animation: faultier-schwingen 7s ease-in-out infinite; }
+.faultier .f-wippen { animation: faultier-wippen 6s ease-in-out infinite; }
+.faultier .f-kopf { transform-origin: 60px 62px; transition: transform 400ms cubic-bezier(0.4, 0, 0.2, 1); }
+.faultier[data-zustand="zuhoeren"] .f-kopf { transform: rotate(-7deg); }
+.faultier[data-zustand="freut"] .f-kopf { transform: rotate(5deg); }
+.faultier .f-augen { transform-box: fill-box; transform-origin: center; animation: faultier-blinzeln 6.5s infinite; }
+.faultier .f-blick { transition: transform 250ms ease-out; }
+.faultier .f-blick-oben { transform: translate(1px, -1.2px); }
+.faultier .f-mund-spricht { transform-box: fill-box; transform-origin: center top; animation: faultier-sprechen 380ms ease-in-out infinite alternate; }
+.faultier .f-gedanken circle { animation: faultier-gedanke 1.4s ease-in-out infinite; }
+.faultier .f-gedanken circle:nth-child(2) { animation-delay: 0.2s; }
+.faultier .f-gedanken circle:nth-child(3) { animation-delay: 0.4s; }
+.faultier .f-zzz { animation: faultier-zzz 3s ease-in-out infinite; }
+.faultier-still,
+.faultier-still * { animation: none !important; }
+
+@keyframes faultier-schwingen { 0%, 100% { transform: rotate(-1.8deg); } 50% { transform: rotate(1.8deg); } }
+@keyframes faultier-wippen { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.2px); } }
+@keyframes faultier-blinzeln { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.1); } }
+@keyframes faultier-sprechen { from { transform: scaleY(0.35); } to { transform: scaleY(1.1); } }
+@keyframes faultier-gedanke { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+@keyframes faultier-zzz { 0%, 100% { opacity: 0.4; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }

@@ -71,6 +71,7 @@ from app.services.local_inference import (
     probe_local_runtime,
     route_kind,
 )
+from app.services.local_runtimes import LocalRuntimeError, active_manager
 
 logger = logging.getLogger("school_assistant")
 
@@ -97,6 +98,13 @@ AI_KIND: Final = "ai_provider"
 SOURCE_LOCAL: Final = "local"
 SOURCE_PROVIDER: Final = "provider"
 SOURCE_FALLBACK: Final = "fallback"
+
+#: ``runtime`` des eingebauten Weges: ein im Lernraum geladenes GGUF, das
+#: ``app.services.local_runtimes`` per ``llama-server`` selbst startet. Seine
+#: ``integration_id`` ist 0 - es gibt keine Zeile in ``sync_sources`` dafuer, und
+#: 0 sortiert ihn innerhalb der lokalen Wege nach vorn.
+RUNTIME_BUILTIN: Final = "builtin"
+BUILTIN_INTEGRATION_ID: Final = 0
 
 #: Werte, die ``normalize_source`` kennt. ``ai`` gehoert dazu, weil es der
 #: gespeicherte Altwert des Tagescaches ist.
@@ -127,6 +135,33 @@ class AiRoute:
     @property
     def is_local(self) -> bool:
         return self.source == SOURCE_LOCAL
+
+    @property
+    def is_builtin(self) -> bool:
+        return self.runtime == RUNTIME_BUILTIN
+
+
+def builtin_route(model_id: str | None = None) -> AiRoute | None:
+    """Der eingebaute Weg fuer ein geladenes Textmodell - oder ``None``.
+
+    Ohne ``model_id`` gilt das zuletzt gewaehlte (sonst das groesste) Modell.
+    ``base_url`` bleibt leer: der Server laeuft erst, wenn der Weg versucht wird.
+    """
+    manager = active_manager()
+    if manager is None:
+        return None
+    spec = manager.text_model(model_id) if model_id else manager.preferred_text_model()
+    if spec is None:
+        return None
+    return AiRoute(
+        source=SOURCE_LOCAL,
+        runtime=RUNTIME_BUILTIN,
+        integration_id=BUILTIN_INTEGRATION_ID,
+        name=f"Eingebaut: {spec.label}",
+        base_url="",
+        model=spec.id,
+        api_key="",
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,16 +263,17 @@ def resolve_ai_routes(db: Session, user_id: int, settings: Settings) -> tuple[Ai
     # Verbindungen aussortieren, um die es in dieser Welle geht - und niemand
     # faelle auf, weil `missing_fields` leer bleibt.
     usable = [row for row in rows if _profile_of(row)[0]]
+    eingebaut = builtin_route()
     if not usable:
-        return ()
+        return (eingebaut,) if eingebaut else ()
 
     try:
         key = require_integration_encryption_key(settings)
     except RuntimeError:
         logger.warning("Keine KI-Wege: INTEGRATION_ENCRYPTION_KEY fehlt.")
-        return ()
+        return (eingebaut,) if eingebaut else ()
 
-    routes: list[AiRoute] = []
+    routes: list[AiRoute] = [eingebaut] if eingebaut else []
     for row in usable:
         base_url, model = _profile_of(row)
         try:
@@ -284,7 +320,20 @@ def _try_route(
     ueberhaupt klar ist, dass da nichts ist - und auf einer kaputten
     ``localhost``-Einstellung ist genau das der Normalfall.
     """
-    if route.is_local and probe_before_generate:
+    base_url = route.base_url
+    if route.is_builtin:
+        # Der eingebaute Server wird hier gestartet (oder der laufende benutzt).
+        # Keine Vorab-Probe: ``ensure_text_model`` wartet selbst, bis er antwortet.
+        manager = active_manager()
+        spec = manager.text_model(route.model) if manager else None
+        if manager is None or spec is None:
+            return AiAttempt(source=route.source, runtime=route.runtime, base_url="eingebaut",
+                             message="Das eingebaute Modell ist nicht mehr geladen.")
+        try:
+            base_url = manager.ensure_text_model(spec)
+        except LocalRuntimeError as exc:
+            return AiAttempt(source=route.source, runtime=route.runtime, base_url="eingebaut", message=str(exc))
+    elif route.is_local and probe_before_generate:
         status = probe_local_runtime(
             base_url=route.base_url,
             model=route.model,
@@ -306,7 +355,7 @@ def _try_route(
                 system_prompt,
                 user_prompt,
                 model=route.model,
-                base_url=route.base_url,
+                base_url=base_url,
                 api_key=route.api_key,
                 timeout_seconds=timeout,
                 max_tokens=max_tokens,

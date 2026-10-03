@@ -1,13 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Lernraum">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#818cf8" />
-      <stop offset="1" stop-color="#4f46e5" />
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="128" fill="url(#bg)" />
-  <path d="M139 168c0-20.597 16.703-37.333 37.333-37.333h159.334C356.297 130.667 373 147.403 373 168v176c0 20.597-16.703 37.333-37.333 37.333H176.333C155.703 381.333 139 364.597 139 344V168Z" fill="#fff" fill-opacity=".96" />
-  <path d="M186 200h139M186 251h101M186 302h75" stroke="#4f46e5" stroke-linecap="round" stroke-width="25" />
-  <circle cx="366" cy="316" r="48" fill="#fbbf24" />
-  <path d="m366 290 9.3 18.7 20.7 3-15 14.3 3.5 20.7-18.5-9.7-18.5 9.7 3.5-20.7-15-14.3 20.7-3L366 290Z" fill="#fff" />
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Lernraum"><rect width="192" height="192" fill="#0a0a0a"/><g transform="translate(96 96) scale(3.6 3.6) translate(-60 -62)">
+<path d="M60 43C76 43 85 52 85 63C85 74 74 81 60 81C46 81 35 74 35 63C35 52 44 43 60 43Z" fill="#ffffff"/>
+<path d="M56 56.5C52 51.5 42 54.5 37 63C35 67.5 39 70 43.5 68C50.5 65 58 61.5 56 56.5Z" fill="#0a0a0a"/>
+<path d="M64 56.5C68 51.5 78 54.5 83 63C85 67.5 81 70 76.5 68C69.5 65 62 61.5 64 56.5Z" fill="#0a0a0a"/>
+<circle cx="48.5" cy="60.5" r="3.4" fill="#ffffff"/><circle cx="71.5" cy="60.5" r="3.4" fill="#ffffff"/>
+<circle cx="48.9" cy="60.9" r="2" fill="#0a0a0a"/><circle cx="71.9" cy="60.9" r="2" fill="#0a0a0a"/>
+<ellipse cx="60" cy="66" rx="4.4" ry="2.9" fill="#0a0a0a"/>
+<path d="M54.5 70.5q2.75 3 5.5 0q2.75 3 5.5 0" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round"/></g></svg>

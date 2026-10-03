@@ -1,21 +1,21 @@
 "use client";
 
 import { useCallback, useState, type FormEvent } from "react";
-import { CornerDownLeft, FileText, FolderTree, LoaderCircle, MessageSquareText, RefreshCw, Search, Upload } from "lucide-react";
+import Link from "next/link";
+import { FileText, FolderTree, LoaderCircle, MessageSquareText, RefreshCw, Search, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SectionBanner } from "@/components/manage/row-actions";
-import { askDocuments, getDocuments, searchDocuments, uploadFile, type DocumentAskInput, type DocumentSearchInput } from "@/lib/api";
-import { describeSource } from "@/lib/ai-runtime";
+import { getDocuments, searchDocuments, uploadFile, type DocumentSearchInput } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { useAction, useList } from "@/lib/use-collection";
 import { cn } from "@/lib/utils";
-import type { DocumentAnswer, DocumentRecord, DocumentSearchResult, FileUploadResult } from "@/lib/types";
+import type { DocumentRecord, DocumentSearchResult, FileUploadResult } from "@/lib/types";
 
 /** `POST /v1/files` nimmt eine Datei entgegen. Das Backend kennt keine Größengrenze über HTTP. */
 const MAX_UPLOAD_HINWEIS = 10 * 1024 * 1024;
@@ -43,31 +43,11 @@ function useDocuments() {
   return useList<DocumentRecord>(() => getDocuments());
 }
 
-/**
- * Die Herkunft einer Antwort, in derselben Formulierung wie im Dashboard.
- *
- * `describeSource` kommt aus `lib/ai-runtime` - dieselbe Funktion wie in der
- * Kopfzeile. Zwei Texte fuer dieselbe Frage waeren zwei Herkunftssysteme, und
- * genau die soll es nicht geben.
- */
-function AntwortHerkunft({ antwort }: { antwort: DocumentAnswer }) {
-  const herkunft = describeSource(antwort.source, antwort.model);
-  if (herkunft.fromModel) {
-    return <Badge variant="secondary">{herkunft.text}</Badge>;
-  }
-  if (antwort.source === "none") {
-    return <Badge variant="outline">{herkunft.text}</Badge>;
-  }
-  return <Badge variant="info">Aus deinen Dokumenten</Badge>;
-}
-
 export function DocumentsView() {
   const sammlung = useDocuments();
-  const frage = useAction<DocumentAnswer>();
   const suche = useAction<DocumentSearchResult>();
   const upload = useAction<FileUploadResult>();
 
-  const [frageText, setFrageText] = useState("");
   const [suchText, setSuchText] = useState("");
   const [datei, setDatei] = useState<File | null>(null);
   const [uploadHinweis, setUploadHinweis] = useState<string | null>(null);
@@ -92,16 +72,6 @@ export function DocumentsView() {
     }
   }, [datei, sammlung, upload]);
 
-  async function fragen(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const text = frageText.trim();
-    if (!text) {
-      return;
-    }
-    const eingabe: DocumentAskInput = { question: text };
-    await frage.run(() => askDocuments(eingabe));
-  }
-
   async function suchen(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = suchText.trim();
@@ -117,7 +87,7 @@ export function DocumentsView() {
       <header>
         <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Dokumente</h1>
         <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">
-          Lade Unterlagen hoch, durchsuche sie und stell dem Assistenten Fragen. Ohne verbundenen KI-Dienst wird aus den Treffern
+          Lade Unterlagen hoch und durchsuche sie; Fragen dazu beantwortet der Assistent. Ohne verbundenen KI-Dienst wird aus den Treffern
           zitiert.
         </p>
       </header>
@@ -265,61 +235,14 @@ export function DocumentsView() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Frag deine Unterlagen</CardTitle>
-            <CardDescription className="mt-1">Eine Frage zu deinen Unterlagen, mit Quellenangabe.</CardDescription>
+            <CardTitle>Frag den Assistenten</CardTitle>
+            <CardDescription className="mt-1">Fragen zu deinen Unterlagen beantwortet jetzt der Assistent – mit Quellen, Gedächtnis und Sprache.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <form onSubmit={(event) => void fragen(event)} className="flex gap-2" role="search">
-              <label htmlFor="dokument-frage" className="sr-only">
-                Frage an deine Dokumente
-              </label>
-              <Input
-                id="dokument-frage"
-                type="text"
-                value={frageText}
-                onChange={(event) => setFrageText(event.target.value)}
-                placeholder="Was steht im Skript zum Zellzyklus?"
-                disabled={frage.pending}
-                className="min-w-0 flex-1"
-              />
-              <Button type="submit" disabled={frage.pending || !frageText.trim()}>
-                {frage.pending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CornerDownLeft aria-hidden="true" />}
-                Fragen
-              </Button>
-            </form>
-
-            <FormError message={frage.error} />
-
-            {frage.result ? (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <AntwortHerkunft antwort={frage.result} />
-                  {frage.result.grades_shared ? <Badge variant="info">Noten mitgeschickt</Badge> : <Badge variant="outline">Noten nicht mitgeschickt</Badge>}
-                </div>
-                <p className="border border-border bg-background/60 px-4 py-3 text-sm leading-6">{frage.result.answer}</p>
-                {frage.result.sources.length > 0 ? (
-                  <ul className="space-y-2">
-                    {frage.result.sources.map((quelle) => (
-                      <li key={`${quelle.document_id}-${quelle.chunk_index}`} className="border border-border/70 bg-muted/30 px-3 py-2.5">
-                        <p className="text-xs font-semibold">
-                          {quelle.filename}
-                          <span className="ml-2 font-semibold text-muted-foreground">Abschnitt {quelle.chunk_index + 1}</span>
-                        </p>
-                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{quelle.content}</p>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Es wurden keine passenden Stellen gefunden.</p>
-                )}
-              </div>
-            ) : (
-              <div className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-md border border-dashed border-border px-5 py-8 text-center" role="status">
-                <MessageSquareText className="h-5 w-5 text-muted-foreground" strokeWidth={1.75} aria-hidden="true" />
-                <p className="text-sm font-semibold">Noch keine Frage</p>
-                <p className="max-w-md text-xs leading-5 text-muted-foreground">Der Assistent antwortet aus deinen eigenen Dokumenten.</p>
-              </div>
-            )}
+          <CardContent>
+            <Link href="/assistent" className={buttonVariants({ variant: "outline" })}>
+              <MessageSquareText aria-hidden="true" />
+              Zum Assistenten
+            </Link>
           </CardContent>
         </Card>
       </div>

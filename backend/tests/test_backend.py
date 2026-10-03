@@ -9441,11 +9441,11 @@ def test_ein_webm_wird_zuerst_umgewandelt(app_client: TestClient, tmp_path: Path
     assert antwort.json()["text"] == "Der Satz des Pythagoras"
     assert antwort.json()["transcoded"] is True
 
-    # Der Aufruf nennt den Container, die Abtastrate und die Kanalzahl.
+    # Der Aufruf liest aus der Pipe (ffmpeg erkennt den Container selbst) und nennt Abtastrate und Kanalzahl.
     assert len(aufrufe.aufrufe) == 1
     argv = aufrufe.aufrufe[0][0]
     assert argv[0] == sys.executable
-    assert "pipe:0.webm" in argv
+    assert argv[argv.index("-i") + 1] == "pipe:0"
     assert argv[argv.index("-ar") + 1] == "16000"
     assert argv[argv.index("-ac") + 1] == "1"
 
@@ -9474,7 +9474,7 @@ def test_ein_mp4_von_safari_wird_ebenfalls_angenommen(app_client: TestClient, tm
     )
     assert antwort.status_code == 200
     assert antwort.json()["text"] == "Morgen um acht"
-    assert "pipe:0.m4a" in aufrufe.aufrufe[0][0]
+    assert "pipe:0" in aufrufe.aufrufe[0][0]
 
 
 def test_ohne_ffmpeg_bleibt_es_beim_textmodus(app_client: TestClient, tmp_path: Path) -> None:

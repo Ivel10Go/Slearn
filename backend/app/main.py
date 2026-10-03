@@ -20,13 +20,13 @@ from app.api import (
     health,
     homework,
     lessons,
-local_models,
+    local_models,
     notifications,
     progress,
-rewards,
+    rewards,
     setup,
-speech,
-study,
+    speech,
+    study,
     subjects,
 )
 from app.core.config import Settings, get_settings
@@ -36,6 +36,13 @@ from app.db.session import dispose_engine, session_scope
 from app.services.auth import ensure_bootstrap_user
 from app.services.demo_seed import seed_demo_data_and_commit
 from app.services.integration_scheduler import IntegrationSyncScheduler
+from app.services.local_runtimes import (
+    RUNTIME_LLAMA,
+    RUNTIME_PIPER,
+    RUNTIME_WHISPER,
+    LocalRuntimeManager,
+    set_active_manager,
+)
 from app.services.model_downloads import ModelDownloadManager
 from app.services.notification_scheduler import ReminderScheduler
 from app.services.speech import PiperSynthesizer, SpeechService, WhisperTranscriber
@@ -68,6 +75,10 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     scheduler = _start_scheduler(application, settings)
     downloads: ModelDownloadManager | None = getattr(application.state, "model_downloads", None)
     reminders = _start_reminder_scheduler(application, settings)
+    runtimes: LocalRuntimeManager | None = getattr(application.state, "local_runtimes", None)
+    if runtimes is not None:
+        set_active_manager(runtimes)
+        _prefetch_runtimes(application, runtimes)
     try:
         yield
     finally:
@@ -75,12 +86,33 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             reminders.stop()
         if scheduler is not None:
             scheduler.stop()
+        if runtimes is not None:
+            # llama-server und whisper-server beenden - ein verwaister Server
+            # hielte Gigabytes an RAM und den Port.
+            runtimes.shutdown()
+            set_active_manager(None)
         if downloads is not None:
             # Laedende Threads beenden und die Teilstaende liegen lassen: ein
             # abgebrochener Download ist ein Zustand, aus dem der naechste Start
             # sauber fortsetzt - kein halbes Modell.
             downloads.shutdown()
         dispose_engine()
+
+
+def _prefetch_runtimes(application: FastAPI, runtimes: LocalRuntimeManager) -> None:
+    """Laedt die Programme im Hintergrund vor, fuer die schon ein Modell daliegt.
+
+    Nur das Programm (je rund 10-25 MB), kein Serverstart: der kostet RAM und
+    passiert erst beim ersten Gebrauch. So wartet die erste Frage nicht auf den
+    Download.
+    """
+    speech: SpeechService | None = getattr(application.state, "speech", None)
+    if runtimes.installed_text_models():
+        runtimes.install_in_background(RUNTIME_LLAMA)
+    if speech is not None and speech.installed_stt_specs():
+        runtimes.install_in_background(RUNTIME_WHISPER)
+    if speech is not None and speech.installed_voices():
+        runtimes.install_in_background(RUNTIME_PIPER)
 
 
 def _start_scheduler(application: FastAPI, settings: Settings) -> IntegrationSyncScheduler | None:
@@ -145,6 +177,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         min_free_bytes=active_settings.model_min_free_bytes,
     )
     application.state.model_downloads = downloads
+    # Die eingebauten Laufzeiten (nur Desktop-App). Das Attribut gibt es immer,
+    # auch als `None`; der prozessweite Verweis fuer `ai_routing` wird erst im
+    # Lifespan gesetzt, damit sich zwei Apps im selben Prozess (Tests) nicht
+    # gegenseitig ueberschreiben.
+    runtimes = (
+        LocalRuntimeManager(Path(active_settings.model_storage_path) / "runtimes", downloads=downloads)
+        if active_settings.local_runtimes_enabled
+        else None
+    )
+    application.state.local_runtimes = runtimes
     # Der Sprachdienst **immer**, auch ohne Modell und ohne Laufzeit. Das ist der
     # Normalzustand auf einem frischen Server, und genau dann muss
     # `GET /api/v1/speech/capabilities` koennen sagen, dass nichts geladen ist.
@@ -176,6 +218,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_seconds=active_settings.speech_max_seconds,
         max_text_characters=active_settings.speech_max_text_characters,
         ffmpeg_path=active_settings.ffmpeg_binary_path,
+        runtimes=runtimes,
+        language=active_settings.whisper_language,
+        transcriber_timeout_seconds=active_settings.whisper_server_timeout_seconds,
     )
     if active_settings.cors_origins:
         application.add_middleware(

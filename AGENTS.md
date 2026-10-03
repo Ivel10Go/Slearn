@@ -42,6 +42,44 @@ Vier Planpunkte aus `PLAN.md` sind umgesetzt. Der Branch-Name ist inzwischen His
 - **Ohne `exam.subject_id` oder ohne Themen gibt es 422 mit Klartext**, kein leeres 201. Die Oberfläche zeigt die Meldung an, statt eine leere Liste zu melden.
 - **Der Generator ist beim zweiten Klick idempotent**, solange `only_missing` gilt: übersprungen wird ein Thema, für das im selben Plan für dieselbe Klausur und dasselbe Thema schon eine nicht-stornierte Aufgabe hängt.
 
+## Lern-Assistent (`/assistent`, `/api/v1/assistant`)
+
+Ersetzt die Karte „Frag deine Unterlagen“ (Dashboard und `/dokumente` verweisen jetzt hierher). Logik in `app/services/assistant.py`, Router `app/api/assistant.py`, Tests `tests/test_assistant.py`, Oberflaeche `components/assistant/assistant-view.tsx` + `lib/assistant.ts` (bewusst nicht in `api.ts`/`schemas.ts`).
+
+- **Textprotokoll statt Function-Calling.** Das Modell schreibt `AKTION {json}` (Pruefung/Hausaufgabe/Termin) und `MERKE: …`. `tools` im OpenAI-Format koennen Ollama/LM Studio/llama-server nur fuer manche Modelle und ignorieren es sonst stillschweigend. Eine `AKTION`-Zeile ohne `{` bleibt Text.
+- **`AKTION` ist nur ein Vorschlag.** Eingetragen wird erst ueber `POST /actions` (Knopf „Eintragen“) – kleine lokale Modelle verrechnen sich bei „naechsten Donnerstag“. Der Prompt bekommt deshalb die naechsten 14 Tage mit Wochentag als Tabelle. Ohne Uhrzeit: 08:00 Ortszeit; Termin ohne Uhrzeit = ganztaegig.
+- **„Lernt an dir“ = `assistant_memories` (Migration `0011`)**, kein Feintuning. Saetze stehen bei jeder Anfrage im Prompt, Duplikate (Gross/Klein egal) werden verworfen, alles ist in der Oberflaeche loeschbar.
+- **`integration_id` waehlt genau eine KI-Verbindung** und versucht nur diese – sonst kaeme die Antwort womoeglich vom Online-Provider, obwohl ein lokales Modell gewaehlt war. Ohne Angabe gilt `ai_routing` (lokal zuerst).
+- **Der Verlauf liegt nur im Browser** (`localStorage`), der Server speichert keine Gespraeche. Noten nur mit Freigabe (`grade_context_lines`), wie bei der Dokumentenfrage.
+- **Sprache:** Halten zum Sprechen schickt das Transkript direkt ab; „Antworten vorlesen“ liest neue Antworten mit Piper vor (das Einschalten ist die Nutzergeste fuer die Wiedergabe).
+
+## Eingebaute Laufzeiten (`app/services/local_runtimes.py`, nur Desktop)
+
+Der Modellkatalog laedt nur Dateien. Ohne `llama-server`/`whisper-server`/`piper` zeigt ein Modell „Geladen“, und der Assistent sagt trotzdem „kein KI-Modell“ – genau das war der Fehler nach der Assistenten-Welle.
+
+- **`LOCAL_RUNTIMES_ENABLED=true`** (setzt `desktop/lib/runtime.js` und `desktop_main.py`; Default in `Settings` ist `false`, im Docker-Stack bringt der Betreiber seine Laufzeiten selbst mit). Dann holt das Backend die offiziellen GitHub-Releases mit **fester Version + SHA-256** (`RUNTIME_CATALOG`: llama.cpp `b11349`, whisper.cpp `b5130`, Piper `2023.11.14-2`) nach `<MODEL_STORAGE_PATH>/runtimes/`. Downloads nur von `github.com` und dessen Objektspeicher; ein Paket mit falscher Pruefsumme oder einem Pfad aus dem Ziel heraus wird verworfen.
+- **Vorladen beim Start, Starten bei Bedarf.** Der Lifespan laedt im Hintergrund die Programme (je 10–25 MB) fuer bereits geladene Modelle; `llama-server`/`whisper-server` starten erst beim ersten Gebrauch auf `127.0.0.1:<freier Port>`. Hoechstens ein Textmodell laeuft, ein Wechsel beendet das alte.
+- **Kein verwaister Server.** `shutdown()` im Lifespan; unter Windows haengen die Kindprozesse zusaetzlich an einem Job-Objekt (`KILL_ON_JOB_CLOSE`) – verifiziert: Backend hart beendet ⇒ `llama-server` weg.
+- **Eingebauter KI-Weg:** `ai_routing.builtin_route()` (`runtime="builtin"`, `integration_id=0`, dadurch zuerst unter den lokalen Wegen). Gilt fuer Assistent, Begruessung und Dokumentenfrage. Die Wahl im Assistenten (`local_model_id`) wird in `runtimes/selection.json` gemerkt, sonst das groesste geladene Modell.
+- **Sprache:** `SpeechService(runtimes=…)` nimmt das eingebaute whisper.cpp/Piper nur, wenn **kein** `WHISPER_SERVER_URL`/`PIPER_BINARY_PATH` eingetragen ist. Mit eingebauten Laufzeiten wird das **groesste** Whisper-Modell genommen (base statt tiny). Fuer macOS gibt es kein fertiges whisper-server.
+- **Zwei alte Sprachfehler, die erst gegen echtes ffmpeg auffielen:** `-i pipe:0.webm` ist fuer ffmpeg 8 kein gueltiger Eingang (jetzt `pipe:0`), und ein WAV aus `pipe:1` traegt `0xFFFFFFFF` als Laenge – `repair_streamed_wav()` rechnet sie nach, sonst lehnte die Dauergrenze jede Aufnahme ab („134218 Sekunden“).
+- **Echt geprueft** (Windows x64, 02.10.2026): Qwen2.5 3B antwortet ueber den Assistenten in ~14 s inkl. Modellstart, Piper spricht in <1 s, whisper base erkennt WAV und WebM in ~1 s.
+
+### Gespraechsmodus und Robustheit gegen kleine Modelle
+
+- **„Gespräch starten“** (`lib/use-conversation.ts`, Bausteine in `lib/voice.ts`): Mikrofon dauerhaft offen, Satzende per Pegel (`createVoiceDetector`, ~1,1 s Stille), Aufnahme wird im Browser zu **16-kHz-Mono-WAV** (`encodeWav16k`) – das Backend reicht es ohne ffmpeg an whisper.cpp weiter. Waehrend Erkennen/Nachdenken/Vorlesen ist das Mikrofon taub, sonst antwortet der Assistent seiner eigenen Stimme. `ScriptProcessorNode` statt `AudioWorklet`, weil die CSP keine Blob-Module erlaubt.
+- **`voice: true`** im Chat verlangt hoechstens drei kurze, vorlesbare Saetze und begrenzt die Tokens. Ein gesprochenes „Ja“/„Nein“ auf offene Vorschlaege (`bestaetigung()`) traegt ein bzw. verwirft – ohne Modellaufruf.
+- **Eingebaute Spracherkennung ist fest Deutsch** (`BUILTIN_LANGUAGE`, wenn `WHISPER_LANGUAGE` leer). Mit Auto-Erkennung wurde „Hey, was geht?“ zu „Hey, what's up?“.
+- **Schleifenfalle:** `useSpeech().abbrechen()` leert das Transkript **nicht**. Wer auf ein Transkript per Effekt sendet, muss es vorher mit `uebernehmen("")` leeren – sonst feuert der Effekt bei jeder neuen `senden`-Identitaet erneut (passiert: dieselbe Nachricht zwanzigmal).
+- **Qwen 3B springt auf Protokoll-Anweisungen an.** Deshalb: `ACTION_PROMPT` nur bei Eintragswunsch (`wants_entry()`), `AKTION` ohne Wunsch wird verworfen; `MERKE` nur in Grossbuchstaben, auch als `MERKE ("…")`, aehnliche Notizen (`SequenceMatcher` ≥ 0,8) werden nicht doppelt gespeichert, „Merke: <bekannte Notiz>“ mitten im Satz wird entfernt, weitergedichtete „Person:“-Zeilen fliegen raus.
+- **Datum aus dem Satz schlaegt das Modell** (`date_from_text()`): „übermorgen“, „nächsten Freitag“, „am Dienstag“, „12.11.“ – Qwen machte aus „übermorgen“ an einem Freitag den naechsten Freitag.
+
+### Faultier-Maskottchen
+
+- **Figur** `components/assistant/faultier.tsx` (inline-SVG, CSP-konform), **Zustand** `lib/faultier.ts` (`faultierZustand()`, getestet): `ruhe`, `zuhoeren`, `denken`, `sprechen`, `freut` (2,5 s nach einem Eintrag), `schlaeft` (kein KI-Weg). Gespraechsmodus hat Vorrang vor Senden/Vorlesen.
+- **Graustufen** als `--sloth-*` in `globals.css` mit `.dark`-Variante – keine Farbe, passend zum Design. Ganze Figur (`koerper`) in der Seitenleiste von `/assistent` (unter `lg` im leeren Chat) und in der Dashboard-Karte; nur Kopf neben Antworten, beim Nachdenken und im Gespraechsbalken. Nur die juengste Antwort bewegt sich (`still` fuer aeltere).
+- Augen folgen dem Zeiger (`folgen`) per direktem DOM-Transform, ohne React-Zustand.
+
 ## Desktop-App (`desktop/`)
 
 Electron-Hülle für Verbraucher: kein Docker, kein Server, kein Login. Ablauf und Bauanleitung in `docs/desktop.md`. Was man vor einer Änderung wissen muss:
@@ -122,7 +160,7 @@ Der Browser ruft **ausschließlich** `/api/backend/v1/...` auf. `isValidProxyPat
 - **Strikte CSP in `next.config.ts:4-17`**: `script-src 'self' 'unsafe-inline'` (+ `'unsafe-eval'` nur in Dev), `style-src 'self' 'unsafe-inline'`, `img-src 'self' data: blob:`, `font-src 'self' data:`, `connect-src 'self'` in Produktion. Also: keine Google-Fonts-Link, keine CDN-Bilder/Skripte, keine externen Fonts zur Laufzeit.
 - `viewportFit: "cover"`; die mobile Bottom-Nav braucht `env(safe-area-inset-bottom)`.
 - **Vitest läuft nur mit `include: ["lib/**/*.test.ts"]` und `environment: "node"`** (`vitest.config.mts`). Komponenten-/DOM-Tests werden **stillschweigend nicht ausgeführt** — nicht erwarten, dass sie greifen.
-- Service Worker `public/sw.js` ist network-first mit Fallback auf `/offline/`, `CACHE_NAME = "lernraum-static-v7"`. Bei Änderung der App-Shell den Cache-Namen bumpen, sonst sehen Nutzer eine veraltete Shell.
+- Service Worker `public/sw.js` ist network-first mit Fallback auf `/offline/`, `CACHE_NAME = "lernraum-static-v9"`. Bei Änderung der App-Shell den Cache-Namen bumpen, sonst sehen Nutzer eine veraltete Shell.
 - Navigation: Anker des Dashboards (`/#overview`, `/#schedule`, `/#homework`, `/#exams`, `/#calendar`) in der Gruppe „Heute“, eigene Routen (`/lernen`, `/faecher`, `/dokumente`, `/fortschritt`) in „Bibliothek“, `/ki` („KI & Modelle“: KI-Dienst, lokale Modelle, Stimmen) in „Werkzeuge“, `/settings` unten. `#usage` gibt es nicht mehr – die Zahlen stehen in der Kennzahlenleiste. Aktivzustand über `isNavigationHrefActive` in `lib/navigation.ts` (hash- und pathname-abhängig, `usePathname` + `hashchange`). **Keine Hash-Anker auf Unterseiten**: die Shell liest den Hash für den Aktivzustand, ein `#abschnitt` auf `/settings` oder `/ki` ließe den Navigationspunkt erlöschen. Die Einstellungen merken ihren Reiter deshalb in `?tab=`, die KI-Seite springt per `scrollIntoView`.
 - **KI-Verbindungen (`ai_provider`) stehen nur auf `/ki`.** Die Einstellungen filtern die Art aus Liste *und* Katalog; beide Seiten nutzen dieselbe exportierte `IntegrationsCard` aus `settings-view.tsx`.
 - `@/*` → Wurzel von `frontend/`. `cn()` = `clsx` + `tailwind-merge`.
