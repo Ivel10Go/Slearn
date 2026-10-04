@@ -9,8 +9,9 @@ Sechs Routen, alle auf den Sitzungsnutzer begrenzt:
 * ``POST   /memories``         einen Satz von Hand ergaenzen
 * ``DELETE /memories/{id}``    einen Satz vergessen
 
-Noten gehen wie bei der Dokumentenfrage nur mit Freigabe in den Prompt:
-``grade_context_lines()`` ist ohne Freigabe leer.
+Noten gehen mit Freigabe in den Prompt - oder ohne, wenn nur lokale Modelle
+antworten koennen (dann verlassen sie den Rechner nicht). Die Entscheidung
+faellt in ``assistant_service.chat``.
 """
 
 from typing import Literal, cast
@@ -75,7 +76,8 @@ def chat(
             integration_id=payload.integration_id,
             local_model_id=payload.local_model_id,
             voice=payload.voice,
-            grade_context=grades_service.grade_context_lines(db, current_user.id),
+            grade_context=grades_service.grade_detail_lines(db, current_user.id),
+            grades_shared_online=grades_service.grades_sharing_enabled(db, current_user.id),
         )
     except assistant_service.AssistantActionError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc

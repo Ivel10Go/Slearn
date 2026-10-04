@@ -12,12 +12,26 @@ Die wichtigsten Zusagen:
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
+from app.core.config import get_settings
 from app.core.security import hash_password
-from app.db.entities import AssistantMemory, CalendarEvent, Exam, Homework, Subject, User
+from app.db.entities import (
+    AssistantMemory,
+    CalendarEvent,
+    Document,
+    DocumentChunk,
+    Exam,
+    Grade,
+    Homework,
+    Subject,
+    User,
+)
+from app.services import ai_routing
 from app.services import assistant as assistant_service
+from app.services import grades as grades_service
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -400,3 +414,96 @@ def test_vorschlag_wird_auf_den_genannten_tag_verschoben_und_ausgesprochen(
     erwartet = (datetime.now(UTC).date() + timedelta(days=2)).isoformat()
     assert vorschlag["starts_at"].startswith(f"{erwartet}T10:00")
     assert body["reply"].startswith("Soll ich die Prüfung „Bio-Klausur“ am")
+
+
+# --- Zugriff auf alles, nichts erfinden --------------------------------------
+
+
+def _dokument(db: Session, user: User, filename: str, *abschnitte: str) -> Document:
+    dokument = Document(user_id=user.id, filename=filename, storage_path=f"/tmp/{filename}", status="processed")
+    db.add(dokument)
+    db.flush()
+    for index, inhalt in enumerate(abschnitte):
+        db.add(DocumentChunk(user_id=user.id, document_id=dokument.id, chunk_index=index, content=inhalt))
+    db.commit()
+    db.refresh(dokument)
+    return dokument
+
+
+def _chat_mit_prompt(
+    db: Session, user: User, monkeypatch: pytest.MonkeyPatch, frage: str, *, lokal: bool, **kwargs: object
+) -> str:
+    prompts: list[str] = []
+
+    def fake_generate(routes: object, system_prompt: str, user_prompt: str, **_: object) -> ai_routing.AiOutcome:
+        prompts.append(system_prompt + "\n" + user_prompt)
+        return ai_routing.AiOutcome(text="Antwort.", source="local" if lokal else "provider", model="m")
+
+    monkeypatch.setattr(assistant_service, "_select_routes", lambda *_: (SimpleNamespace(is_local=lokal),))
+    monkeypatch.setattr("app.services.ai_routing.generate_with_routes", fake_generate)
+    assistant_service.chat(
+        db,
+        user,
+        get_settings(),
+        [assistant_service.ChatTurn(role="user", content=frage)],
+        **kwargs,  # type: ignore[arg-type]
+    )
+    return prompts[0]
+
+
+def test_dokument_wird_ueber_den_dateinamen_gefunden() -> None:
+    lebenslauf = SimpleNamespace(filename="Lebenslauf_2026.pdf")
+    zeugnis = SimpleNamespace(filename="Mathezeugnis-scan.jpg")
+    andere = SimpleNamespace(filename="Biologie Skript.pdf")
+    dokumente = [lebenslauf, zeugnis, andere]
+    assert assistant_service.named_documents("hi was steht in meinem Lebenslauf", dokumente) == [lebenslauf]  # type: ignore[arg-type]
+    assert assistant_service.named_documents("Welche Note hat mein Mathe Zeugnis?", dokumente) == [zeugnis]  # type: ignore[arg-type]
+    assert assistant_service.named_documents("Wie geht es dir?", dokumente) == []  # type: ignore[arg-type]
+
+
+def test_genanntes_dokument_steht_vollstaendig_im_prompt_auch_ohne_suchwort(
+    app_context: tuple[TestClient, Session, User], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, db, user = app_context
+    _dokument(db, user, "Lebenslauf.pdf", "Max Muster, geboren 2010 in Karlsruhe.", "Praktikum bei der Stadtbibliothek.")
+    _dokument(db, user, "Leer-Scan.pdf")
+    prompt = _chat_mit_prompt(db, user, monkeypatch, "Was steht in meinem Lebenslauf?", lokal=True)
+    assert "Praktikum bei der Stadtbibliothek." in prompt
+    assert "Max Muster, geboren 2010" in prompt
+    # Der Assistent weiss, welche Dokumente es gibt - auch die ohne Text.
+    assert "Lebenslauf.pdf" in prompt and "Leer-Scan.pdf (kein lesbarer Text)" in prompt
+    assert "Notizen ueber die Person sind KEIN Dokumentinhalt" in prompt
+
+
+def test_ohne_treffer_steht_ausdruecklich_im_prompt_dass_nichts_gefunden_wurde(
+    app_context: tuple[TestClient, Session, User], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, db, user = app_context
+    prompt = _chat_mit_prompt(db, user, monkeypatch, "Was steht in meinem Lebenslauf?", lokal=True)
+    assert "Hochgeladene Dokumente: keine." in prompt
+    assert "Zu dieser Frage wurde in den Dokumenten nichts gefunden." in prompt
+
+
+def test_einzelnoten_gehen_an_lokale_modelle_auch_ohne_freigabe(
+    app_context: tuple[TestClient, Session, User], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, db, user = app_context
+    mathe = _fach(db, user, "Mathematik", "M")
+    db.add(Grade(user_id=user.id, subject_id=mathe.id, grade_value=2.0, kind="written_exam", weight=1,
+                 graded_on=date(2026, 7, 20), comment="Zeugnis"))
+    db.commit()
+    zeilen = grades_service.grade_detail_lines(db, user.id)
+    assert any("20.07.2026 Mathematik: 2,0 (Klassenarbeit) - Zeugnis" == zeile for zeile in zeilen)
+
+    lokal = _chat_mit_prompt(
+        db, user, monkeypatch, "Welche Note habe ich in Mathe?", lokal=True,
+        grade_context=zeilen, grades_shared_online=False,
+    )
+    assert "Mathematik: 2,0 (Klassenarbeit)" in lokal
+
+    online = _chat_mit_prompt(
+        db, user, monkeypatch, "Welche Note habe ich in Mathe?", lokal=False,
+        grade_context=zeilen, grades_shared_online=False,
+    )
+    assert "Mathematik: 2,0" not in online
+    assert "nicht freigegeben" in online

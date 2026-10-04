@@ -50,6 +50,8 @@ from app.db.assistant import MEMORY_MAX_CHARS, MEMORY_SOURCE_ASSISTANT, Assistan
 from app.db.entities import (
     SYNC_STATE_DELETED,
     CalendarEvent,
+    Document,
+    DocumentChunk,
     Exam,
     Homework,
     Lesson,
@@ -93,6 +95,17 @@ MAX_MEMORIES_IN_PROMPT: Final = 40
 MAX_MEMORIES_PER_REPLY: Final = 3
 MAX_ACTIONS_PER_REPLY: Final = 5
 DOCUMENT_HITS: Final = 4
+#: So viele Dateinamen stehen im Prompt - der Assistent soll wissen, was es gibt.
+DOCUMENT_LIST_LIMIT: Final = 40
+#: Zeichenbudget fuer Auszuege. ``llama-server`` laeuft mit 8192 Tokens Kontext;
+#: rund 12 000 Zeichen deutscher Text sind etwa 3500 Tokens und lassen Platz
+#: fuer Schulstand, Verlauf und Antwort.
+EXCERPT_CHAR_BUDGET: Final = 12_000
+#: Woerter in Dateinamen, die nichts ueber den Inhalt sagen ("Scan_final.pdf").
+_GENERIC_NAME_WORDS: Final = frozenset(
+    {"scan", "final", "kopie", "copy", "datei", "dokument", "version", "neu", "seite", "page", "img", "image", "pdf"}
+)
+_NAME_WORD_RE = re.compile(r"[a-zäöüß]+")
 PLAN_HORIZON_DAYS: Final = 21
 _MAX_REPLY_TOKENS: Final = 700
 #: Im Gespraechsmodus wird vorgelesen: kurze Antworten sind schneller erzeugt und angenehmer zu hoeren.
@@ -608,12 +621,150 @@ def build_context(db: Session, user: User, zone: ZoneInfo, now: datetime) -> lis
     return lines
 
 
+# --- Dokumente ---------------------------------------------------------------
+
+
+def list_documents(db: Session, user_id: int) -> list[Document]:
+    return list(
+        db.scalars(
+            select(Document)
+            .where(Document.user_id == user_id)
+            .order_by(Document.created_at.desc(), Document.id.desc())
+            .limit(DOCUMENT_LIST_LIMIT)
+        ).all()
+    )
+
+
+def _name_words(text: str) -> set[str]:
+    """Inhaltswoerter: klein, ohne Endung, ab vier Buchstaben, ohne Allerweltswoerter."""
+    stem = re.sub(r"\.[A-Za-z0-9]{1,5}$", "", text)
+    return {
+        word
+        for word in _NAME_WORD_RE.findall(stem.lower())
+        if len(word) >= 4 and word not in _GENERIC_NAME_WORDS
+    }
+
+
+def named_documents(question: str, documents: Sequence[Document]) -> list[Document]:
+    """Dokumente, die die Frage beim Namen nennt ("Was steht in meinem Lebenslauf?").
+
+    Die Stichwortsuche sucht nur im Text. Ein Lebenslauf enthaelt das Wort
+    "Lebenslauf" oft gar nicht - ohne diesen Abgleich bekam das Modell nichts
+    und erfand eine Antwort aus den Notizen. Verglichen wird tolerant:
+    "Zeugnis" findet "Mathe_Zeugnis_2026.pdf", "Mathezeugnis" und "Zeugnisse".
+    """
+    asked = _name_words(question)
+    if not asked:
+        return []
+    found: list[Document] = []
+    for document in documents:
+        words = _name_words(document.filename)
+        if any(
+            a == w or (min(len(a), len(w)) >= 5 and (a in w or w in a))
+            for a in asked
+            for w in words
+        ):
+            found.append(document)
+    return found
+
+
+def document_excerpts(
+    db: Session,
+    user_id: int,
+    named: Sequence[Document],
+    hits: Sequence[DocumentSource],
+    budget: int = EXCERPT_CHAR_BUDGET,
+) -> list[DocumentSource]:
+    """Erst die genannten Dokumente vom Anfang an, dann die Suchtreffer - bis zum Budget.
+
+    Ein genanntes Dokument teilt sich das Budget mit den anderen genannten, damit
+    bei "Lebenslauf und Zeugnis" nicht der Lebenslauf alles verbraucht.
+    """
+    result: list[DocumentSource] = []
+    seen: set[tuple[int, int]] = set()
+    remaining = budget
+    if named:
+        share = max(budget // len(named), 1500)
+        for document in named:
+            chunks = db.scalars(
+                select(DocumentChunk)
+                .where(DocumentChunk.user_id == user_id, DocumentChunk.document_id == document.id)
+                .order_by(DocumentChunk.chunk_index)
+            ).all()
+            used = 0
+            for chunk in chunks:
+                if used >= share or remaining <= 0:
+                    break
+                content = chunk.content[: min(share - used, remaining)]
+                result.append(
+                    DocumentSource(
+                        document_id=document.id,
+                        filename=document.filename,
+                        chunk_index=chunk.chunk_index,
+                        content=content,
+                    )
+                )
+                seen.add((document.id, chunk.chunk_index))
+                used += len(content)
+                remaining -= len(content)
+    for hit in hits:
+        if remaining <= 0:
+            break
+        if (hit.document_id, hit.chunk_index) in seen:
+            continue
+        content = hit.content[:remaining]
+        result.append(
+            DocumentSource(
+                document_id=hit.document_id, filename=hit.filename, chunk_index=hit.chunk_index, content=content
+            )
+        )
+        seen.add((hit.document_id, hit.chunk_index))
+        remaining -= len(content)
+    return result
+
+
+def document_overview_lines(
+    db: Session, documents: Sequence[Document], named: Sequence[Document]
+) -> list[str]:
+    """Welche Dokumente es gibt - und ob ein genanntes ueberhaupt lesbaren Text hat."""
+    if not documents:
+        return ["Hochgeladene Dokumente: keine."]
+    counts = dict(
+        db.execute(
+            select(DocumentChunk.document_id, func.count())
+            .where(DocumentChunk.document_id.in_([d.id for d in documents]))
+            .group_by(DocumentChunk.document_id)
+        )
+        .tuples()
+        .all()
+    )
+    lines = [
+        "Hochgeladene Dokumente: "
+        + "; ".join(
+            document.filename + ("" if counts.get(document.id) else " (kein lesbarer Text)") for document in documents
+        )
+    ]
+    for document in named:
+        if not counts.get(document.id):
+            lines.append(
+                f"Hinweis: Aus {document.filename} konnte kein Text gelesen werden (z. B. ein Foto oder Scan ohne "
+                "Texterkennung). Sag das der Person, statt den Inhalt zu raten."
+            )
+    return lines
+
+
 SYSTEM_PROMPT: Final = (
     "Du bist der persoenliche Lern-Assistent einer Schuelerin oder eines Schuelers. "
     "Antworte auf Deutsch, freundlich, knapp und konkret, und sprich die Person immer mit einem "
-    "normalen Satz direkt an. Nutze den mitgelieferten Schulstand, die Dokumentauszuege und die "
-    "Notizen ueber die Person. Erfinde keine Fakten aus den Unterlagen; wenn etwas nicht in den "
-    "Auszuegen steht, sag das.\n\n"
+    "normalen Satz direkt an.\n\n"
+    "Du hast Zugriff auf alles, was unten mitgeliefert wird: Schulstand, Liste der Dokumente, "
+    "Dokumentauszuege, Noten und Notizen ueber die Person. Halte dich streng daran:\n"
+    "- Nenne nur Fakten, die woertlich oder eindeutig in diesen Bloecken stehen. Erfinde nichts, "
+    "auch keine Noten, Daten oder Inhalte.\n"
+    "- Die Notizen ueber die Person sind KEIN Dokumentinhalt. Gib sie nie als Inhalt eines Dokuments aus.\n"
+    "- Fragt die Person nach einem Dokument und es gibt keinen Auszug daraus, sag ehrlich, dass du den "
+    "Inhalt nicht siehst, und nenne die Dokumente, die du hast.\n"
+    "- Fehlt eine Information, sag genau, was fehlt, statt zu raten.\n\n"
     "Wenn du etwas Dauerhaftes und NEUES ueber die Person erfaehrst, weil sie es dir gerade selbst "
     "erzaehlt (Vorlieben, Ziele, Schwaechen, wie sie gern lernt), schreibe am Ende zusaetzlich eine Zeile:\n"
     "MERKE: <ein kurzer Satz ohne Subjekt, z. B. 'Lernt am liebsten abends.'>\n"
@@ -667,14 +818,16 @@ def build_user_prompt(
         parts.append("")
         parts.append("--- Notizen ueber die Person ---")
         parts.extend(f"- {memory.content}" for memory in memories)
+    parts.append("")
+    parts.append("--- Dokumentauszuege ---")
     if hits:
-        parts.append("")
-        parts.append("--- Dokumentauszuege ---")
         for index, hit in enumerate(hits, start=1):
             parts.append(f"[{index}] {hit.filename} (Abschnitt {hit.chunk_index + 1}): {hit.content}")
+    else:
+        parts.append("Zu dieser Frage wurde in den Dokumenten nichts gefunden.")
     if grade_context:
         parts.append("")
-        parts.append("--- Notenstand (freigegeben) ---")
+        parts.append("--- Noten ---")
         parts.extend(grade_context)
     parts.append("")
     parts.append("--- Gespraech ---")
@@ -760,6 +913,7 @@ def chat(
     integration_id: int | None = None,
     local_model_id: str | None = None,
     grade_context: Sequence[str] = (),
+    grades_shared_online: bool = True,
     voice: bool = False,
     now: datetime | None = None,
 ) -> AssistantReply:
@@ -767,6 +921,11 @@ def chat(
 
     Gemerkte Saetze werden hier schon gespeichert (``commit``), Vorschlaege
     nicht - die gehen erst ueber ``apply_action`` in die Datenbank.
+
+    ``grade_context`` sind alle Notenzeilen. Sie gehen in den Prompt, wenn die
+    Freigabe erteilt ist (``grades_shared_online``) **oder** jeder moegliche Weg
+    ein lokales Modell ist - dann verlassen die Noten den Rechner nicht, und
+    eine Freigabe fuer einen Online-Dienst waere eine Frage ohne Gegenstand.
     """
     history = _clean_history(messages)
     if not history or history[-1].role != ROLE_USER:
@@ -776,11 +935,23 @@ def chat(
     today = _local(moment, zone).date()
 
     question = history[-1].content
-    hits = [hit.source() for hit in search_chunks(db, user.id, settings, question, limit=DOCUMENT_HITS)]
-    context = build_context(db, user, zone, moment)
+    documents = list_documents(db, user.id)
+    named = named_documents(question, documents)
+    search = [hit.source() for hit in search_chunks(db, user.id, settings, question, limit=DOCUMENT_HITS)]
+    hits = document_excerpts(db, user.id, named, search)
+    context = build_context(db, user, zone, moment) + document_overview_lines(db, documents, named)
     memories = list_memories(db, user.id)[:MAX_MEMORIES_IN_PROMPT]
 
     routes = _select_routes(ai_routing.resolve_ai_routes(db, user.id, settings), integration_id, local_model_id)
+    grades_allowed = grades_shared_online or (bool(routes) and all(route.is_local for route in routes))
+    if not grade_context:
+        context.append("Noten: keine eingetragen.")
+    elif not grades_allowed:
+        context.append(
+            "Noten: vorhanden, aber fuer den Online-KI-Dienst nicht freigegeben (Freigabe auf der Seite "
+            "„Fortschritt“ bei den Noten, oder ein lokales Modell waehlen)."
+        )
+    grade_context = list(grade_context) if grades_allowed else []
     entry_wanted = wants_entry(question)
     outcome = (
         ai_routing.generate_with_routes(
@@ -835,6 +1006,7 @@ def chat(
         elif added:
             reply_text = "Alles klar, das merke ich mir."
         else:
+            logger.warning("Assistent: leere Antwort nach dem Bereinigen, Rohtext: %r", outcome.text[:500])
             reply_text = "Entschuldige, darauf habe ich gerade keine gute Antwort. Frag mich bitte noch einmal anders."
     return AssistantReply(
         reply=reply_text,

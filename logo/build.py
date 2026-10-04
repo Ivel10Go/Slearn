@@ -10,6 +10,7 @@ def kopf(line, fell=True):
     pelz = (f'<ellipse cx="60" cy="58" rx="31" ry="27" fill="{FUR}" stroke="{line}" stroke-width="2.4"/>' if fell else "")
     return pelz + f'''
 <path d="M60 43C76 43 85 52 85 63C85 74 74 81 60 81C46 81 35 74 35 63C35 52 44 43 60 43Z" fill="{FACE}"/>
+<ellipse cx="41" cy="71" rx="4" ry="2.5" fill="#ececec"/><ellipse cx="79" cy="71" rx="4" ry="2.5" fill="#ececec"/>
 <path d="M56 56.5C52 51.5 42 54.5 37 63C35 67.5 39 70 43.5 68C50.5 65 58 61.5 56 56.5Z" fill="{INK}"/>
 <path d="M64 56.5C68 51.5 78 54.5 83 63C85 67.5 81 70 76.5 68C69.5 65 62 61.5 64 56.5Z" fill="{INK}"/>
 <circle cx="48.5" cy="60.5" r="3.4" fill="{FACE}"/><circle cx="71.5" cy="60.5" r="3.4" fill="{FACE}"/>
@@ -37,7 +38,7 @@ def variants():
             arme += f'<path d="{d}" fill="none" stroke="{rand}" stroke-width="62" stroke-linecap="round"/>'
             arme += f'<path d="{d}" fill="none" stroke="{FUR}" stroke-width="44" stroke-linecap="round"/>'
         yield f"B{i}", svg(bg, f'<path d="M20 70H492" stroke="{ast}" stroke-width="30" stroke-linecap="round"/>' + arme + place(256, 345, 5.6, mirror, kopf(INK)))
-        yield f"C{i}", svg(INK if dark else FUR, place(256, 256, 9.4, mirror, kopf(INK, fell=False), oy=62))
+        yield f"C{i}", svg(INK if dark else LIGHT, place(256, 262, 6.6, False, kopf(INK)))
 
 for name, content in variants():
     (OUT / f"faultier-logo-{name}.svg").write_text(content, encoding="utf-8")

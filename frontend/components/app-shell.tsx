@@ -86,18 +86,22 @@ const mobileNavigation = [...navigationGroups.flatMap((group) => group.items), s
 /** Die Anker, die das Dashboard verlinkt, in Dokumentreihenfolge. */
 const sectionIds = ["overview", "focus", "study-tasks", "schedule", "homework", "exams", "calendar"] as const;
 
-/** Das Zeichen der App: ein schlichtes Monogramm statt eines Symbols. */
+/**
+ * Das Zeichen der App: der Kopf des Faultiers (Entwurf C1 hell / C2 dunkel,
+ * siehe `logo/`). Der Hintergrund folgt dem Theme, der Hairline-Ring haelt das
+ * Quadrat auf dem Seitenhintergrund sichtbar.
+ */
 export function BrandMark({ className }: { className?: string }) {
   return (
-    <span
-      className={cn(
-        "flex h-6 w-6 shrink-0 items-center justify-center rounded-[5px] bg-foreground text-[13px] font-semibold leading-none text-background",
-        className,
-      )}
+    <svg
+      viewBox="0 0 120 120"
+      className={cn("h-6 w-6 shrink-0 rounded-[6px] ring-1 ring-foreground/15", className)}
       aria-hidden="true"
+      focusable="false"
     >
-      L
-    </span>
+      <rect width="120" height="120" className="fill-[#e9e9e9] dark:fill-[#0a0a0a]" />
+      <g transform="translate(60 60) scale(1.5) translate(-60 -58)"><ellipse cx="60" cy="58" rx="31" ry="27" fill="#cdcdcd" stroke="#0a0a0a" strokeWidth="2.4"/><path d="M60 43C76 43 85 52 85 63C85 74 74 81 60 81C46 81 35 74 35 63C35 52 44 43 60 43Z" fill="#fff"/><ellipse cx="41" cy="71" rx="4" ry="2.5" fill="#ececec"/><ellipse cx="79" cy="71" rx="4" ry="2.5" fill="#ececec"/><path d="M56 56.5C52 51.5 42 54.5 37 63C35 67.5 39 70 43.5 68C50.5 65 58 61.5 56 56.5Z" fill="#0a0a0a"/><path d="M64 56.5C68 51.5 78 54.5 83 63C85 67.5 81 70 76.5 68C69.5 65 62 61.5 64 56.5Z" fill="#0a0a0a"/><circle cx="48.5" cy="60.5" r="3.4" fill="#fff"/><circle cx="71.5" cy="60.5" r="3.4" fill="#fff"/><circle cx="48.9" cy="60.9" r="2" fill="#0a0a0a"/><circle cx="71.9" cy="60.9" r="2" fill="#0a0a0a"/><ellipse cx="60" cy="66" rx="4.4" ry="2.9" fill="#0a0a0a"/><path d="M54.5 70.5q2.75 3 5.5 0q2.75 3 5.5 0" fill="none" stroke="#0a0a0a" strokeWidth="2" strokeLinecap="round"/></g>
+    </svg>
   );
 }
 

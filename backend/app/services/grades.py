@@ -565,6 +565,52 @@ def grade_context_lines(db: Session, user_id: int) -> list[str]:
     return zeilen
 
 
+GRADE_KIND_LABELS: Final[dict[str, str]] = {"written_exam": "Klassenarbeit", "test": "Test", "oral": "mündlich"}
+MAX_GRADE_DETAIL_LINES: Final = 60
+
+
+def grade_detail_lines(db: Session, user_id: int) -> list[str]:
+    """Alle Noten einzeln fuer den Assistenten - **ohne** Freigabepruefung.
+
+    Der Aufrufer entscheidet, ob die Zeilen in den Prompt duerfen
+    (``assistant.chat``: Freigabe oder ausschliesslich lokale Modelle). Ohne
+    Einzelnoten antwortete der Assistent auf "Welche Note hatte ich in Mathe?"
+    nur mit einem Schnitt oder gar nicht. Leer heisst hier: keine Noten.
+    """
+    zusammenfassung = grade_summary(db, user_id)
+    if zusammenfassung.total_count == 0:
+        return []
+    zeilen = [
+        f"Gesamtschnitt: {_zahl(zusammenfassung.overall.average)} aus {zusammenfassung.total_count} "
+        f"{'Note' if zusammenfassung.total_count == 1 else 'Noten'}"
+    ]
+    zeilen.extend(
+        f"Schnitt {eintrag.subject_name}: {_zahl(eintrag.average)} aus {eintrag.count} "
+        f"{'Note' if eintrag.count == 1 else 'Noten'}"
+        for eintrag in zusammenfassung.by_subject
+    )
+    noten = db.scalars(
+        select(Grade)
+        .options(joinedload(Grade.subject), joinedload(Grade.document))
+        .where(Grade.user_id == user_id)
+        .order_by(Grade.graded_on.desc(), Grade.id.desc())
+        .limit(MAX_GRADE_DETAIL_LINES)
+    ).all()
+    for note in noten:
+        zeile = (
+            f"{note.graded_on:%d.%m.%Y} {note.subject.name if note.subject else 'ohne Fach'}: "
+            f"{_zahl(note.grade_value)} ({GRADE_KIND_LABELS.get(note.kind, note.kind)}"
+            + (f", Gewicht {note.weight}" if note.weight != 1 else "")
+            + ")"
+        )
+        if note.document is not None:
+            zeile += f" aus Dokument {note.document.filename}"
+        if note.comment:
+            zeile += f" - {note.comment.strip()}"
+        zeilen.append(zeile)
+    return zeilen
+
+
 # --- Die Freigabe ------------------------------------------------------------
 
 
