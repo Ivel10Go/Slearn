@@ -9,7 +9,7 @@ from .academic import (
     Homework,
     Lesson,
 )
-from .assistant import AssistantMemory
+from .assistant import AssistantMemory, TrainingExample
 from .base import Base
 from .content import Document, DocumentChunk, GreetingCache, LearningProgress, Topic, TopicDocument
 from .identity import Room, Subject, SyncSource, Teacher, User, UserSettings
@@ -63,6 +63,7 @@ __all__ = [
     "SyncSource",
     "Teacher",
     "Topic",
+    "TrainingExample",
     "TopicDocument",
     "User",
     "UserSettings",

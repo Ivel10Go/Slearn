@@ -59,6 +59,7 @@ from app.db.entities import (
     User,
 )
 from app.services import ai_routing
+from app.services import training as training_service
 from app.services.documents import DocumentSource, search_chunks
 from app.services.local_runtimes import active_manager
 
@@ -197,6 +198,9 @@ class AssistantReply:
     proposals: list[ActionProposal] = field(default_factory=list)
     memories_added: list[AssistantMemory] = field(default_factory=list)
     grades_shared: bool = False
+    #: Nur mit Trainingsfreigabe: das abgelegte Beispiel, damit Eintragen,
+    #: Verwerfen und Daumen spaeter darauf zeigen koennen.
+    training_example_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -915,6 +919,7 @@ def chat(
     grade_context: Sequence[str] = (),
     grades_shared_online: bool = True,
     voice: bool = False,
+    record_training: bool = False,
     now: datetime | None = None,
 ) -> AssistantReply:
     """Eine Antwort des Assistenten auf den bisherigen Verlauf.
@@ -926,6 +931,10 @@ def chat(
     Freigabe erteilt ist (``grades_shared_online``) **oder** jeder moegliche Weg
     ein lokales Modell ist - dann verlassen die Noten den Rechner nicht, und
     eine Freigabe fuer einen Online-Dienst waere eine Frage ohne Gegenstand.
+
+    ``record_training`` (die Trainingsfreigabe) legt jede echte Modellantwort
+    mit Prompt als Trainingsbeispiel ab - die Ersatzantwort ohne Modell nicht,
+    an ihr gibt es nichts zu lernen.
     """
     history = _clean_history(messages)
     if not history or history[-1].role != ROLE_USER:
@@ -953,11 +962,13 @@ def chat(
         )
     grade_context = list(grade_context) if grades_allowed else []
     entry_wanted = wants_entry(question)
+    system_prompt = SYSTEM_PROMPT + (ACTION_PROMPT if entry_wanted else "") + (VOICE_PROMPT if voice else "")
+    user_prompt = build_user_prompt(history, context, memories, hits, grade_context)
     outcome = (
         ai_routing.generate_with_routes(
             routes,
-            SYSTEM_PROMPT + (ACTION_PROMPT if entry_wanted else "") + (VOICE_PROMPT if voice else ""),
-            build_user_prompt(history, context, memories, hits, grade_context),
+            system_prompt,
+            user_prompt,
             max_tokens=_MAX_VOICE_REPLY_TOKENS if voice else _MAX_REPLY_TOKENS,
             local_timeout=settings.ai_local_timeout_seconds,
             local_fast_timeout=settings.ai_local_fast_timeout_seconds,
@@ -982,8 +993,25 @@ def chat(
         proposal for proposal in (build_proposal(raw, subjects, zone, today) for raw in actions) if proposal is not None
     ]
     genannt = date_from_text(question, today) if proposals else None
+    adjusted = False
     if genannt is not None:
-        proposals = [with_day(proposal, genannt, zone) for proposal in proposals]
+        korrigiert = [with_day(proposal, genannt, zone) for proposal in proposals]
+        adjusted = korrigiert != proposals
+        proposals = korrigiert
+    example = (
+        training_service.record_example(
+            db,
+            user.id,
+            system_prompt=system_prompt,
+            prompt=user_prompt,
+            completion=outcome.text,
+            source=outcome.source,
+            model=outcome.model,
+            server_adjusted=adjusted,
+        )
+        if record_training
+        else None
+    )
     known = [memory.content for memory in memories]
     added: list[AssistantMemory] = []
     for text in parsed.memories[:MAX_MEMORIES_PER_REPLY]:
@@ -991,9 +1019,11 @@ def chat(
             continue
         memory = add_memory(db, user.id, text)
         if memory is not None:
+            if example is not None:
+                memory.training_example_id = example.id
             added.append(memory)
             known.append(memory.content)
-    if added:
+    if added or example is not None:
         db.commit()
 
     # Qwen haengt bekannte Notizen gern als "Merke: ..." mitten in den Satz.
@@ -1016,6 +1046,7 @@ def chat(
         proposals=proposals,
         memories_added=added,
         grades_shared=bool(grade_context),
+        training_example_id=example.id if example is not None else None,
     )
 
 

@@ -11,8 +11,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Several feature waves have been merged since AGENTS.md was last updated: grades, calendar sync, notifications, rewards, local models, speech, and AI routing. Before quoting any of these points, check them against the code:
 
 - **The worker is not healthcheck-only any more.** It also runs the `pg_dump` backup runner (`worker/backup.py`, `worker/env.py`, `worker/tests/test_backup.py`). The CI compile check covers all four files: `python -m py_compile worker/main.py worker/healthcheck.py worker/env.py worker/backup.py`.
-- **There are 11 Alembic revisions, not 6** (`0007` grades through `0010` rewards, `0011` assistant memories). Run `Get-ChildItem backend/alembic/versions`.
-- **Backend tests now span** `tests/test_backend.py`, `tests/test_rewards.py` and `tests/test_assistant.py`.
+- **There are 12 Alembic revisions, not 6** (`0007` grades through `0010` rewards, `0011` assistant memories, `0012` training examples). Run `Get-ChildItem backend/alembic/versions`.
+- **Backend tests now span** `tests/test_backend.py`, `tests/test_rewards.py`, `tests/test_assistant.py` and `tests/test_training.py`.
 - **The baseline test and lint counts are not stable.** The source of truth is `.github/ci/known-failures.mjs`, which records the accepted failing test ID and the per-file `any` ceilings. Change it whenever the real output changes.
 - **The backend lifespan starts two independent threads:** `IntegrationSyncScheduler` (WebUntis, opt-in via `WEBUNTIS_SYNC_ENABLED`) and `ReminderScheduler` (`app/services/notification_scheduler.py`). `create_app()` also always builds `app.state.model_downloads` (`ModelDownloadManager`) and `app.state.speech` (`SpeechService`). Both exist even when no model or runtime is present.
 - **The frontend has real routes in addition to the dashboard anchors:** `/lernen`, `/faecher`, `/dokumente`, `/assistent`, `/settings`, and `/offline`.

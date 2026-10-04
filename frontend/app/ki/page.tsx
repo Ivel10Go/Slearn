@@ -4,6 +4,7 @@ import { RefreshCw } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { ModelCatalogCard } from "@/components/settings/model-catalog-card";
 import { IntegrationsCard } from "@/components/settings/settings-view";
+import { TrainingCard } from "@/components/settings/training-card";
 import { VoiceCatalogCard } from "@/components/settings/voice-catalog-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +20,7 @@ const ABSCHNITTE = [
   { id: "ki-dienst", label: "KI-Dienst" },
   { id: "ki-modelle", label: "Lokale Modelle" },
   { id: "ki-stimmen", label: "Stimmen" },
+  { id: "ki-training", label: "Training" },
 ] as const;
 
 /**
@@ -154,6 +156,10 @@ function KiBereich() {
       */}
       <div id="ki-stimmen" className="scroll-mt-20">
         <VoiceCatalogCard />
+      </div>
+
+      <div id="ki-training" className="scroll-mt-20">
+        <TrainingCard />
       </div>
     </div>
   );

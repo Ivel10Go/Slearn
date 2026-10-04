@@ -54,6 +54,14 @@ Ersetzt die Karte „Frag deine Unterlagen“ (Dashboard und `/dokumente` verwei
 - **Zugriff auf alles, nichts erfinden.** Der Prompt enthaelt die Liste aller Dokumente (mit „kein lesbarer Text“), die **Einzelnoten** (`grade_detail_lines`) und ausdruecklich „nichts gefunden“, wenn kein Auszug passt. Nennt die Frage ein Dokument beim Namen („Lebenslauf“, „Mathe Zeugnis“), wird es per `named_documents()` ueber den **Dateinamen** gefunden und vom Anfang an geladen (`EXCERPT_CHAR_BUDGET` 12 000 Zeichen, passend zu 8192 Tokens Kontext) – die Stichwortsuche sucht nur im Text, und ein Lebenslauf enthaelt das Wort selten; vorher erfand Qwen den Inhalt aus den Notizen. Noten gehen mit Freigabe **oder** ohne, wenn alle Wege lokal sind (`grades_shared_online` in `chat()`); die Dokumentenfrage bleibt bei `grade_context_lines` mit Freigabe.
 - **Sprache:** Halten zum Sprechen schickt das Transkript direkt ab; „Antworten vorlesen“ liest neue Antworten mit Piper vor (das Einschalten ist die Nutzergeste fuer die Wiedergabe).
 
+### Trainingsbeispiele (Vorstufe zum Feintuning je Nutzer)
+
+- **Nur mit Freigabe** `settings.preferences["train_on_conversations"]` (Standard aus, unlesbar = aus). Dann legt `chat()` jede *echte* Modellantwort als `TrainingExample` ab (Migration `0012`): Systemprompt, Nutzerprompt, **Rohtext vor `parse_reply()`**. Die Ersatzantwort ohne Modell nicht. Widerruf löscht nichts; dafür gibt es „Alle löschen“ auf `/ki`.
+- **Signale sind Tatsachen, das Urteil wird gerechnet** (`example_label()`): `applied_actions` (Zielwerte aus `POST /actions` mit `training_example_id`), `rejected_actions`, `memory_deleted` (über `assistant_memories.training_example_id`, nur bei `source="assistant"`), `user_rating` (Daumen). Daumen schlägt alles; ein Fehlerhinweis schlägt einen Eintrag; hat `date_from_text()` das Datum korrigiert (`server_adjusted`), ist ein eingetragenes Beispiel `corrected`, nicht `good`.
+- Ein fremdes `training_example_id` an `/actions` wird **still übergangen** (der Eintrag selbst gelingt), an den eigenen Routen ist es 404. Höchstens `MAX_EXAMPLES_PER_USER = 2000` je Nutzer, die ältesten fallen heraus.
+- **Fakten gehören nicht ins Feintuning**, sondern bleiben im Prompt. Trainiert werden soll das Verhalten (Protokoll, Datum, Ton). Ein Trainer existiert noch nicht; `export_rows()` ist die Schnittstelle für ihn.
+- `training_hardware.py`: Phase 1 nur Apple Silicon ab 16 GB (MLX) oder NVIDIA ab 6 GB (`nvidia-smi`), gemessen ohne `psutil` und per `lru_cache` einmal je Prozess.
+
 ## Eingebaute Laufzeiten (`app/services/local_runtimes.py`, nur Desktop)
 
 Der Modellkatalog laedt nur Dateien. Ohne `llama-server`/`whisper-server`/`piper` zeigt ein Modell „Geladen“, und der Assistent sagt trotzdem „kein KI-Modell“ – genau das war der Fehler nach der Assistenten-Welle.

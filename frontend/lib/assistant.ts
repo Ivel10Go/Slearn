@@ -48,6 +48,7 @@ const chatResponseSchema = z.object({
   proposals: z.array(proposalSchema),
   memories_added: z.array(memorySchema),
   grades_shared: z.boolean().default(false),
+  training_example_id: z.number().int().nullable().optional().default(null),
 });
 
 const routeSchema = z.object({
@@ -115,8 +116,12 @@ export async function getAssistantRoutes(): Promise<AssistantRoute[]> {
   return z.array(routeSchema).parse(await apiRequest("/v1/assistant/routes"));
 }
 
-export async function applyAssistantProposal(proposal: AssistantProposal): Promise<AppliedAction> {
-  const payload = await apiRequest("/v1/assistant/actions", { method: "POST", body: JSON.stringify(proposal) });
+/** `trainingExampleId` aus der Chat-Antwort: der Eintrag wird dort als Signal vermerkt (nur mit Trainingsfreigabe). */
+export async function applyAssistantProposal(proposal: AssistantProposal, trainingExampleId: number | null = null): Promise<AppliedAction> {
+  const payload = await apiRequest("/v1/assistant/actions", {
+    method: "POST",
+    body: JSON.stringify({ ...proposal, training_example_id: trainingExampleId }),
+  });
   return appliedSchema.parse(payload);
 }
 
@@ -214,4 +219,97 @@ export function clearHistory(): void {
   } catch {
     // siehe saveHistory
   }
+}
+
+// --- Trainingsbeispiele (Vorstufe zum Feintuning je Nutzer) -----------------
+
+const trainingHardwareSchema = z.object({
+  eligible: z.boolean(),
+  backend: z.enum(["mlx", "cuda"]).nullable().optional().default(null),
+  reason: z.string(),
+  system: z.string(),
+  machine: z.string(),
+  ram_gb: z.number().nullable().optional().default(null),
+  gpu_name: z.string().nullable().optional().default(null),
+  vram_gb: z.number().nullable().optional().default(null),
+});
+
+const trainingStatusSchema = z.object({
+  enabled: z.boolean(),
+  max_examples: z.number().int(),
+  stats: z.object({
+    total: z.number().int(),
+    good: z.number().int(),
+    bad: z.number().int(),
+    corrected: z.number().int(),
+    unlabeled: z.number().int(),
+  }),
+  hardware: trainingHardwareSchema,
+});
+
+const trainingLabelSchema = z.enum(["good", "bad", "corrected"]);
+
+const trainingExampleSchema = z.object({
+  id: z.number().int(),
+  created_at: z.string(),
+  question: z.string(),
+  completion: z.string(),
+  source: z.string(),
+  model: z.string().nullable().optional().default(null),
+  label: trainingLabelSchema.nullable(),
+  user_rating: z.enum(["good", "bad"]).nullable(),
+  applied_actions: z.number().int(),
+  rejected_actions: z.number().int(),
+  memory_deleted: z.boolean(),
+  server_adjusted: z.boolean(),
+});
+
+export type TrainingStatus = z.infer<typeof trainingStatusSchema>;
+export type TrainingExample = z.infer<typeof trainingExampleSchema>;
+export type TrainingLabel = z.infer<typeof trainingLabelSchema>;
+export type TrainingFeedbackEvent = "rejected" | "good" | "bad" | "cleared";
+
+export const TRAINING_LABELS: Record<TrainingLabel, string> = {
+  good: "Gut",
+  bad: "Daneben",
+  corrected: "Korrigiert",
+};
+
+export async function getTrainingStatus(): Promise<TrainingStatus> {
+  return trainingStatusSchema.parse(await apiRequest("/v1/assistant/training"));
+}
+
+export async function setTrainingConsent(enabled: boolean): Promise<TrainingStatus> {
+  const payload = await apiRequest("/v1/assistant/training/consent", { method: "PUT", body: JSON.stringify({ enabled }) });
+  return trainingStatusSchema.parse(payload);
+}
+
+export async function getTrainingExamples(limit = 20): Promise<TrainingExample[]> {
+  return z.array(trainingExampleSchema).parse(await apiRequest(`/v1/assistant/training/examples?limit=${limit}`));
+}
+
+export async function sendTrainingFeedback(exampleId: number, event: TrainingFeedbackEvent): Promise<void> {
+  await apiRequest(`/v1/assistant/training/examples/${encodeURIComponent(String(exampleId))}/feedback`, {
+    method: "POST",
+    body: JSON.stringify({ event }),
+  });
+}
+
+export async function deleteTrainingExample(exampleId: number): Promise<void> {
+  await apiRequest(`/v1/assistant/training/examples/${encodeURIComponent(String(exampleId))}`, { method: "DELETE" });
+}
+
+export async function deleteAllTrainingExamples(): Promise<void> {
+  await apiRequest("/v1/assistant/training/examples", { method: "DELETE" });
+}
+
+/**
+ * Ein Signal, das nur eine Zugabe ist: scheitert es, merkt die Person nichts
+ * davon - der Eintrag oder das Verwerfen selbst ist ja passiert.
+ */
+export function feedbackNebenbei(exampleId: number | null | undefined, event: TrainingFeedbackEvent): void {
+  if (exampleId == null) {
+    return;
+  }
+  void sendTrainingFeedback(exampleId, event).catch(() => undefined);
 }

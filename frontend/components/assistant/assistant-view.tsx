@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import Link from "next/link";
-import { AudioLines, Check, CornerDownLeft, LoaderCircle, Mic, PhoneOff, Plus, RotateCcw, Square, Trash2, Volume2, VolumeX, X } from "lucide-react";
+import { AudioLines, Check, CornerDownLeft, LoaderCircle, Mic, PhoneOff, Plus, RotateCcw, Square, ThumbsDown, ThumbsUp, Trash2, Volume2, VolumeX, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +20,7 @@ import {
   clearHistory,
   deleteAssistantMemory,
   describeProposalTime,
+  feedbackNebenbei,
   getAssistantMemories,
   getAssistantRoutes,
   historyForRequest,
@@ -65,6 +66,8 @@ interface ViewMessage extends ChatMessage {
   reply?: AssistantReply;
   proposalStates?: ProposalState[];
   proposalNotes?: (string | null)[];
+  /** Der Daumen zu dieser Antwort - nur mit Trainingsfreigabe sichtbar. */
+  bewertung?: "good" | "bad" | null;
 }
 
 const AUTO = "auto";
@@ -179,7 +182,8 @@ export function AssistantView() {
         let text: string;
         const states = [...(letzte.proposalStates ?? [])];
         if (entscheidung === "ja") {
-          const ergebnisse = await Promise.allSettled(offen.map((proposal) => applyAssistantProposal(proposal)));
+          const beispiel = letzte.reply?.training_example_id ?? null;
+          const ergebnisse = await Promise.allSettled(offen.map((proposal) => applyAssistantProposal(proposal, beispiel)));
           const fehlgeschlagen = ergebnisse.filter((ergebnis) => ergebnis.status === "rejected").length;
           letzte.reply?.proposals.forEach((_, index) => {
             if ((states[index] ?? "offen") === "offen") {
@@ -198,6 +202,7 @@ export function AssistantView() {
               states[index] = "verworfen";
             }
           });
+          feedbackNebenbei(letzte.reply?.training_example_id, "rejected");
           text = "Okay, ich trage nichts ein.";
         }
         const aktualisiert = verlauf.map((message) => (message.id === letzte.id ? { ...message, proposalStates: states } : message));
@@ -304,15 +309,27 @@ export function AssistantView() {
     );
   }
 
-  async function eintragen(messageId: number, index: number, proposal: AssistantProposal) {
+  async function eintragen(messageId: number, index: number, proposal: AssistantProposal, beispiel: number | null) {
     vorschlagSetzen(messageId, index, "laeuft");
     try {
-      const ergebnis = await applyAssistantProposal(proposal);
+      const ergebnis = await applyAssistantProposal(proposal, beispiel);
       vorschlagSetzen(messageId, index, "eingetragen", ergebnis.message);
       freuen();
     } catch (ursache) {
       vorschlagSetzen(messageId, index, "offen", fehlertext(ursache, "Der Eintrag ist fehlgeschlagen."));
     }
+  }
+
+  function verwerfen(message: ViewMessage, index: number) {
+    vorschlagSetzen(message.id, index, "verworfen");
+    feedbackNebenbei(message.reply?.training_example_id, "rejected");
+  }
+
+  /** Noch einmal derselbe Daumen nimmt ihn zurueck. */
+  function bewerten(message: ViewMessage, wert: "good" | "bad") {
+    const neu = message.bewertung === wert ? null : wert;
+    setMessages((aktuell) => aktuell.map((m) => (m.id === message.id ? { ...m, bewertung: neu } : m)));
+    feedbackNebenbei(message.reply?.training_example_id, neu ?? "cleared");
   }
 
   const laeuftAufnahme = sprache.aufnahmeZustand === "nimmt_auf";
@@ -377,8 +394,9 @@ export function AssistantView() {
                     spielt={sprache.spielt}
                     onVorlesen={() => sprache.sprechen(message.content)}
                     onStopp={sprache.schweigen}
-                    onEintragen={(index, proposal) => void eintragen(message.id, index, proposal)}
-                    onVerwerfen={(index) => vorschlagSetzen(message.id, index, "verworfen")}
+                    onEintragen={(index, proposal) => void eintragen(message.id, index, proposal, message.reply?.training_example_id ?? null)}
+                    onVerwerfen={(index) => verwerfen(message, index)}
+                    onBewerten={(wert) => bewerten(message, wert)}
                   />
                 ),
               )}
@@ -591,9 +609,10 @@ interface AssistentNachrichtProps {
   onStopp: () => void;
   onEintragen: (index: number, proposal: AssistantProposal) => void;
   onVerwerfen: (index: number) => void;
+  onBewerten: (wert: "good" | "bad") => void;
 }
 
-function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen, onStopp, onEintragen, onVerwerfen }: AssistentNachrichtProps) {
+function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen, onStopp, onEintragen, onVerwerfen, onBewerten }: AssistentNachrichtProps) {
   const reply = message.reply;
   const herkunft = reply ? describeSource(reply.source, reply.model) : null;
   return (
@@ -666,6 +685,30 @@ function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen
               {spielt ? <VolumeX className="h-3.5 w-3.5" aria-hidden="true" /> : <Volume2 className="h-3.5 w-3.5" aria-hidden="true" />}
               {spielt ? "Stopp" : "Vorlesen"}
             </button>
+          ) : null}
+          {reply?.training_example_id != null ? (
+            <span className="inline-flex items-center gap-0.5" role="group" aria-label="Antwort bewerten (fürs Training)">
+              {(["good", "bad"] as const).map((wert) => {
+                const aktiv = message.bewertung === wert;
+                const Icon = wert === "good" ? ThumbsUp : ThumbsDown;
+                return (
+                  <button
+                    key={wert}
+                    type="button"
+                    onClick={() => onBewerten(wert)}
+                    aria-pressed={aktiv}
+                    title={wert === "good" ? "Gute Antwort" : "Antwort lag daneben"}
+                    className={cn(
+                      "inline-flex items-center rounded-[5px] px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground",
+                      aktiv && "bg-muted text-foreground",
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" fill={aktiv ? "currentColor" : "none"} aria-hidden="true" />
+                    <span className="sr-only">{wert === "good" ? "Gute Antwort" : "Antwort lag daneben"}</span>
+                  </button>
+                );
+              })}
+            </span>
           ) : null}
         </div>
 
