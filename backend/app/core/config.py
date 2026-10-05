@@ -244,6 +244,14 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("PIPER_BINARY_PATH", "piper_binary_path"),
     )
+    # Eingebaute Laufzeiten (app/services/local_runtimes.py): llama-server,
+    # whisper-server und piper werden bei Bedarf von GitHub geladen und als
+    # Kindprozesse gestartet. Die Desktop-App schaltet das ein; im Docker-Stack
+    # bringt der Betreiber seine Laufzeiten selbst mit, deshalb Default aus.
+    local_runtimes_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("LOCAL_RUNTIMES_ENABLED", "local_runtimes_enabled"),
+    )
     # ffmpeg wird nur fuer alles gebraucht, was **nicht** bereits ein
     # 16-kHz-Mono-WAV ist - also praktisch immer, weil Chrome WebM und Safari
     # MP4 aufnehmen. Fehlt es, bleibt der Textmodus und eine WAV-Datei moeglich.

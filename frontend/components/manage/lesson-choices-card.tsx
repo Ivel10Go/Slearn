@@ -1,14 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, LoaderCircle } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormError } from "@/components/ui/field";
-import { getLessonChoices, saveLessonChoices, type LessonChoiceGroup } from "@/lib/lesson-choices";
+import {
+  bundleLessonChoices,
+  getLessonChoices,
+  saveLessonChoices,
+  type LessonChoiceBundle,
+  type LessonChoiceWindow,
+} from "@/lib/lesson-choices";
+import { cn } from "@/lib/utils";
 
-const WOCHENTAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+const WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
 interface LessonChoicesCardProps {
   /** Nach dem Speichern: Faecher und Stunden neu laden. */
@@ -19,20 +25,21 @@ function fehlertext(error: unknown): string {
   return error instanceof Error ? error.message : "Das hat nicht geklappt.";
 }
 
-function auswahlAus(groups: LessonChoiceGroup[]): Record<string, number[]> {
-  return Object.fromEntries(groups.map((group) => [group.key, group.options.filter((o) => o.selected).map((o) => o.subject_id)]));
+function zeitfenster(fenster: LessonChoiceWindow): string {
+  return `${WOCHENTAGE[fenster.weekday] ?? "?"} ${fenster.start}–${fenster.end}`;
 }
 
 /**
  * Parallele Stunden: mehrere Faecher liegen im Plan zur selben Zeit, besucht
- * wird davon nur ein Teil (Wahlfach, Kurs). Die Karte erscheint nur, wenn es
- * solche Zeitfenster gibt. Gespeichert wird je Zeitfenster; die abgewaehlten
- * Stunden fallen aus dem Plan und kommen auch beim naechsten Abruf nicht zurueck.
+ * wird eines davon (Wahlfach, Kurs). Der Server liefert je Stunde eine Gruppe;
+ * die Karte fasst alle Gruppen mit denselben Faechern zu einer Frage zusammen
+ * („NBT oder Spanisch?“) - eine Doppelstunde oder derselbe Kurs an zwei Tagen
+ * ist dieselbe Entscheidung. Ein Klick speichert sofort fuer alle diese Stunden;
+ * die abgewaehlten fallen aus dem Plan und kommen beim naechsten Abruf nicht zurueck.
  */
 export function LessonChoicesCard({ onSaved }: LessonChoicesCardProps) {
-  const [gruppen, setGruppen] = useState<LessonChoiceGroup[]>([]);
-  const [auswahl, setAuswahl] = useState<Record<string, number[]>>({});
-  const [speichert, setSpeichert] = useState(false);
+  const [buendel, setBuendel] = useState<LessonChoiceBundle[]>([]);
+  const [speichert, setSpeichert] = useState<string | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [hinweis, setHinweis] = useState<string | null>(null);
 
@@ -40,9 +47,7 @@ export function LessonChoicesCard({ onSaved }: LessonChoicesCardProps) {
     let abgebrochen = false;
     void getLessonChoices()
       .then((geladen) => {
-        if (abgebrochen) return;
-        setGruppen(geladen);
-        setAuswahl(auswahlAus(geladen));
+        if (!abgebrochen) setBuendel(bundleLessonChoices(geladen));
       })
       // Ohne Parallelstunden ist die Karte nur nicht da; ein Ladefehler ist hier kein Grund, die Seite zu stoeren.
       .catch(() => undefined);
@@ -51,46 +56,24 @@ export function LessonChoicesCard({ onSaved }: LessonChoicesCardProps) {
     };
   }, []);
 
-  if (gruppen.length === 0) return null;
+  if (buendel.length === 0) return null;
 
-  const offen = gruppen.filter((gruppe) => !gruppe.decided).length;
-  const unvollstaendig = gruppen.some((gruppe) => (auswahl[gruppe.key] ?? []).length === 0);
+  const offen = buendel.filter((eintrag) => !eintrag.decided).length;
 
-  /**
-   * Gruppen mit denselben Faechern (Doppelstunden, mehrere Tage) werden
-   * gemeinsam umgeschaltet: wer Latein statt Franzoesisch besucht, besucht es
-   * in jedem dieser Zeitfenster, und niemand will dieselbe Frage zehnmal beantworten.
-   */
-  function umschalten(gruppe: LessonChoiceGroup, fachId: number) {
-    setHinweis(null);
-    const faecher = gruppe.options.map((o) => o.subject_id).sort().join(",");
-    setAuswahl((aktuell) => {
-      const besucht = aktuell[gruppe.key] ?? [];
-      const hinzu = !besucht.includes(fachId);
-      const naechste = { ...aktuell };
-      for (const andere of gruppen) {
-        if (andere.options.map((o) => o.subject_id).sort().join(",") !== faecher) continue;
-        const liste = (aktuell[andere.key] ?? []).filter((id) => id !== fachId);
-        naechste[andere.key] = hinzu ? [...liste, fachId] : liste;
-      }
-      return naechste;
-    });
-  }
-
-  async function speichern() {
-    setSpeichert(true);
+  async function waehlen(eintrag: LessonChoiceBundle, fachId: number) {
+    if (eintrag.decided && eintrag.selected.length === 1 && eintrag.selected[0] === fachId) return;
+    setSpeichert(eintrag.id);
     setFehler(null);
     setHinweis(null);
     try {
-      const ergebnis = await saveLessonChoices(auswahl);
-      setGruppen(ergebnis.groups);
-      setAuswahl(auswahlAus(ergebnis.groups));
-      setHinweis(ergebnis.resynced ? "Gespeichert. Der Stundenplan wurde neu abgerufen." : "Gespeichert. Nicht besuchte Stunden sind aus dem Plan entfernt.");
+      const ergebnis = await saveLessonChoices(Object.fromEntries(eintrag.keys.map((key) => [key, [fachId]])));
+      setBuendel(bundleLessonChoices(ergebnis.groups));
+      if (ergebnis.resynced) setHinweis("Gespeichert. Der Stundenplan wurde neu abgerufen.");
       onSaved();
     } catch (error) {
       setFehler(fehlertext(error));
     } finally {
-      setSpeichert(false);
+      setSpeichert(null);
     }
   }
 
@@ -100,48 +83,60 @@ export function LessonChoicesCard({ onSaved }: LessonChoicesCardProps) {
         <div>
           <CardTitle>Parallele Stunden</CardTitle>
           <CardDescription className="mt-1">
-            Diese Fächer liegen im Plan zur selben Zeit. Hake an, was du besuchst – nur das wird eingetragen.
+            Diese Fächer liegen im Plan zur selben Zeit. Wähle einmal, was du besuchst – das gilt für alle diese Stunden.
           </CardDescription>
         </div>
         {offen > 0 ? <Badge variant="secondary">{offen} offen</Badge> : null}
       </CardHeader>
-      <CardContent className="space-y-4">
-        <ul className="space-y-3">
-          {gruppen.map((gruppe) => (
-            <li key={gruppe.key} className="border border-border p-3">
-              <p className="text-xs font-semibold text-muted-foreground">
-                {WOCHENTAGE[gruppe.weekday] ?? "Tag"}, {gruppe.start}–{gruppe.end}
-                {gruppe.decided ? null : <span className="ml-2 font-medium">· noch nicht gewählt</span>}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1.5">
-                {gruppe.options.map((option) => (
-                  <label key={option.subject_id} className="flex items-center gap-2 text-[13px]">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 accent-foreground"
-                      checked={(auswahl[gruppe.key] ?? []).includes(option.subject_id)}
-                      onChange={() => umschalten(gruppe, option.subject_id)}
-                      disabled={speichert}
-                    />
-                    <span className="font-medium">{option.name}</span>
-                  </label>
-                ))}
-              </div>
-            </li>
-          ))}
+      <CardContent className="space-y-3">
+        <ul className="divide-y divide-border border-y border-border">
+          {buendel.map((eintrag) => {
+            const titel = eintrag.options.map((option) => option.name).join(" oder ");
+            return (
+              <li key={eintrag.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                <div className="min-w-0">
+                  <p className="text-[13px] font-medium">
+                    {titel}
+                    {eintrag.decided ? null : <span className="ml-2 text-xs font-normal text-muted-foreground">noch offen</span>}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{eintrag.windows.map(zeitfenster).join(" · ")}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {speichert === eintrag.id ? (
+                    <LoaderCircle className="size-4 animate-spin text-muted-foreground" aria-label="Wird gespeichert" />
+                  ) : null}
+                  <div role="group" aria-label={`Besuchtes Fach: ${titel}`} className="inline-flex rounded-md border border-border p-0.5">
+                    {eintrag.options.map((option) => {
+                      const aktiv = eintrag.selected.includes(option.subject_id);
+                      return (
+                        <button
+                          key={option.subject_id}
+                          type="button"
+                          aria-pressed={aktiv}
+                          disabled={speichert !== null}
+                          onClick={() => void waehlen(eintrag, option.subject_id)}
+                          className={cn(
+                            "h-7 rounded-[4px] px-3 text-[13px] font-medium transition-colors disabled:opacity-60",
+                            aktiv ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                          )}
+                        >
+                          {option.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
         </ul>
 
-        <FormError message={unvollstaendig ? "Wähle in jedem Zeitfenster mindestens ein Fach." : fehler} />
+        <FormError message={fehler} />
         {hinweis ? (
           <p className="text-[13px] text-muted-foreground" role="status">
             {hinweis}
           </p>
         ) : null}
-
-        <Button type="button" onClick={() => void speichern()} disabled={speichert || unvollstaendig}>
-          {speichert ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
-          {speichert ? "Wird gespeichert …" : "Auswahl speichern"}
-        </Button>
       </CardContent>
     </Card>
   );

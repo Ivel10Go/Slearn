@@ -9,6 +9,7 @@ from .academic import (
     Homework,
     Lesson,
 )
+from .assistant import AssistantMemory, TrainingExample
 from .base import Base
 from .content import Document, DocumentChunk, GreetingCache, LearningProgress, Topic, TopicDocument
 from .identity import Room, Subject, SyncSource, Teacher, User, UserSettings
@@ -33,6 +34,7 @@ __all__ = [
     "SYNC_STATE_DELETED",
     "SYNC_STATE_EDITED",
     "SYNC_STATE_SYNCED",
+    "AssistantMemory",
     "Base",
     "CalendarEvent",
     "Document",
@@ -61,6 +63,7 @@ __all__ = [
     "SyncSource",
     "Teacher",
     "Topic",
+    "TrainingExample",
     "TopicDocument",
     "User",
     "UserSettings",

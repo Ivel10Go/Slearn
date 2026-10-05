@@ -41,7 +41,12 @@
 - [ ] Fine-Tuning-Pipeline für Lernplan-Modelle (lokal feinabgestimmt)
 - [ ] Lernplan-Erstellung: Stundenplan + offene Aufgaben + Klausuren → Lernplan
 - [x] Fallback auf Online-Provider, Herkunft im UI (`local`/`provider`) — Reihenfolge **lokal → online → der Aufrufer baut aus den Daten**, mit gestuftem Budget (15 s wenn ein Provider im Rückgrat ist, sonst 60 s); `source` bleibt `ai` gültig und wird über `normalize_source` zu `provider`
-- [ ] „Modelle lernen am Nutzer": persönlicher Trainingsdatensatz je Nutzer (eigene Noten, Aufgaben, hochgeladene Materialien), feinabgestimmtes Modell pro Nutzer statt geteiltem Prompt
+- [ ] „Modelle lernen am Nutzer": feinabgestimmtes Modell (LoRA-Adapter) pro Nutzer statt geteiltem Prompt. Fakten bleiben im Prompt (Notizen, Dokumente, Noten); das Feintuning soll das *Verhalten* verbessern (AKTION/MERKE-Protokoll, Datumsangaben, Ton)
+  - [x] Trainingsbeispiele sammeln, nur mit Freigabe (`train_on_conversations`, Standard aus) — Migration `0012`, `app/services/training.py`; Signale: eingetragen, verworfen, gemerkte Notiz gelöscht, Daumen. Das Urteil wird aus den Signalen gerechnet, nicht gespeichert
+  - [x] Hardware-Prüfung: Phase 1 nur auf Apple Silicon ab 16 GB (MLX) oder NVIDIA ab 6 GB (CUDA) — `app/services/training_hardware.py`
+  - [ ] Trainer als optionaler Download (eigenständiges Python + venv, feste Version und SHA-256), LoRA-SFT + DPO, Export nach `adapter.gguf`
+  - [ ] Prüfung gegen zurückgehaltene Beispiele, `llama-server --lora`, Zurückwechseln auf den alten Adapter
+  - [ ] Später: Training in der Cloud als Abo (eigene Freigabe, EU-Standort, Einwilligung der Eltern unter 16)
 - [x] Custom-KI ohne Docker: lokale OpenAI-kompatible Server (Ollama, LM Studio) als erste Klasse in `ai_provider`, inkl. `host.docker.internal`-Hinweis im UI (siehe AGENTS.md) — `optional_config: ["runtime"]`, kein zweiter Adapterpfad; der Hinweis steht an vier sichtbaren Stellen
 
 ## Sprach-Assistent (STT + TTS)

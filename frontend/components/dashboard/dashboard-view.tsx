@@ -2,12 +2,12 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   Check,
   Clock3,
   CornerDownLeft,
-    LoaderCircle,
   MapPin,
   Play,
   RefreshCw,
@@ -15,16 +15,15 @@ import {
   Timer,
   UserRound,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Faultier } from "@/components/assistant/faultier";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { CalendarSection } from "@/components/manage/calendar-section";
 import { ExamsSection } from "@/components/manage/exams-section";
 import { HomeworkSection } from "@/components/manage/homework-section";
-import { SpeechControls } from "@/components/speech/speech-controls";
-import { ApiError, askDocuments, completeStudyTask, startStudyTask, stopStudyTask } from "@/lib/api";
+import { ApiError, completeStudyTask, startStudyTask, stopStudyTask } from "@/lib/api";
 import { describeSource } from "@/lib/ai-runtime";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -35,7 +34,7 @@ import {
 } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 import { useGreeting } from "@/lib/use-greeting";
-import { isDemoTaskId, type DashboardData, type DashboardLesson, type DashboardStudyTask, type DocumentAnswer, type LessonState, type StudyActionResult, type StudyTaskStatus } from "@/lib/types";
+import { isDemoTaskId, type DashboardData, type DashboardLesson, type DashboardStudyTask, type LessonState, type StudyActionResult, type StudyTaskStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ScheduleCard } from "./schedule-view";
 
@@ -382,130 +381,53 @@ function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
 }
 
 /**
- * Die Herkunft einer Dokumenten-Antwort.
- *
- * Dieselbe Beschriftung wie im Tagessatz (`describeSource`), damit die Frage
- * "woher kommt das?" an beiden Stellen dieselbe Antwort bekommt.
+ * Der Einstieg in den Assistenten. Frueher stand hier „Frag deine Unterlagen“
+ * mit eigener Antwortflaeche; jetzt fuehrt die Frage auf `/assistent`, wo sie
+ * sofort gestellt wird und das Gespraech weitergeht.
  */
-function AnswerBadge({ answer }: { answer: DocumentAnswer }) {
-  const herkunft = describeSource(answer.source, answer.model);
-  if (herkunft.fromModel) {
-    return <Badge variant="secondary">{herkunft.text}</Badge>;
-  }
-  if (answer.source === "none") {
-    return <Badge variant="outline">{herkunft.text}</Badge>;
-  }
-  return <Badge variant="outline">Aus deinen Dokumenten</Badge>;
-}
-
-/**
- * Der Hinweis, ob der Notenstand im Prompt stand.
- *
- * Eine Lernende, die nach ihrer Note fragt, muss erfahren koennen, ob das
- * Modell ihre Note ueberhaupt gesehen hat. Bejaht heisst es erst nach einer
- * ausdruecklichen Freigabe, und die steht in der Notenkarte.
- */
-function NotenHinweis({ gradesShared }: { gradesShared: boolean }) {
-  return gradesShared ? (
-    <Badge variant="info">Noten mitgeschickt</Badge>
-  ) : (
-    <Badge variant="outline">Noten nicht mitgeschickt</Badge>
-  );
-}
-
 function AssistantCard() {
+  const router = useRouter();
   const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState<DocumentAnswer | null>(null);
-  const [isAsking, setIsAsking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  async function handleAsk(event: FormEvent<HTMLFormElement>) {
+  function handleAsk(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const questionText = question.trim();
-    if (!questionText || isAsking) {
-      return;
-    }
-    setIsAsking(true);
-    setError(null);
-    try {
-      setAnswer(await askDocuments({ question: questionText }));
-    } catch (askError) {
-      setAnswer(null);
-      setError(askError instanceof ApiError ? askError.message : "Die Frage konnte nicht beantwortet werden.");
-    } finally {
-      setIsAsking(false);
-    }
+    router.push(questionText ? `/assistent?frage=${encodeURIComponent(questionText)}` : "/assistent");
   }
 
   return (
     <Card id="assistant" className={anchorClass}>
-      <CardHeader className="pb-3">
-        <CardTitle>Frag deine Unterlagen</CardTitle>
-        <CardDescription>Antworten aus deinen Dokumenten, mit Quellenangabe.</CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-3">
+        <div className="space-y-1.5">
+          <CardTitle>Assistent</CardTitle>
+          <CardDescription>Fragen zu deinen Unterlagen, Planung und Einträge – auch per Sprache.</CardDescription>
+        </div>
+        <Link href="/assistent" aria-label="Zum Assistenten" className="-mt-1 shrink-0">
+          <Faultier groesse={48} koerper />
+        </Link>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <form onSubmit={handleAsk} className="relative" role="search">
-          <label htmlFor="assistant-question" className="sr-only">Frage an deine Dokumente</label>
+      <CardContent className="space-y-2">
+        <form onSubmit={handleAsk} className="relative">
+          <label htmlFor="assistant-question" className="sr-only">Frage an den Assistenten</label>
           <Input
             id="assistant-question"
             type="text"
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
-            placeholder="Was sagt der Satz des Pythagoras?"
-            disabled={isAsking}
+            placeholder="Was steht diese Woche an?"
             className="pr-10"
           />
           <button
             type="submit"
-            disabled={isAsking || !question.trim()}
-            className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+            className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             aria-label="Fragen"
           >
-            {isAsking ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CornerDownLeft className="h-4 w-4" aria-hidden="true" />}
+            <CornerDownLeft className="h-4 w-4" aria-hidden="true" />
           </button>
         </form>
-
-        {error ? (
-          <p className="rounded-md border border-foreground/30 bg-muted px-3 py-2 text-[13px]" role="alert">
-            {error}
-          </p>
-        ) : null}
-
-        {answer ? (
-          <div className="space-y-2.5">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <AnswerBadge answer={answer} />
-              <NotenHinweis gradesShared={answer.grades_shared} />
-            </div>
-            <p className="text-[13px] leading-6">{answer.answer}</p>
-            {answer.sources.length > 0 ? (
-              <ul className="space-y-1.5">
-                {answer.sources.map((source) => (
-                  <li key={`${source.document_id}-${source.chunk_index}`} className="rounded-md border border-border px-3 py-2">
-                    <p className="text-xs font-medium">
-                      {source.filename}
-                      <span className="ml-2 font-normal text-muted-foreground">Abschnitt {source.chunk_index + 1}</span>
-                    </p>
-                    <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">{source.content}</p>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-xs text-muted-foreground">Keine passenden Stellen in deinen Dokumenten gefunden.</p>
-            )}
-          </div>
-        ) : (
-          <p className="text-xs leading-5 text-muted-foreground" role="status">
-            Lege zuerst Dokumente unter <Link href="/dokumente" className="underline underline-offset-2 hover:text-foreground">Dokumente</Link> ab. Ohne verbundenen KI-Dienst wird aus den Treffern zitiert.
-          </p>
-        )}
-
-        {/*
-          Spracheingabe und -ausgabe haengen an **dieser** Karte: das Diktat
-          schreibt in genau dieses Fragefeld, und der Vorleseknopf liest genau
-          diese Antwort. Eine eigene Sprachkarte waere ein zweiter Textweg.
-        */}
-        <SpeechControls onText={setQuestion} antwort={answer?.answer} />
+        <Link href="/assistent" className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">
+          Zum Assistenten
+        </Link>
       </CardContent>
     </Card>
   );

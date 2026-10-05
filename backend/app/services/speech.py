@@ -51,7 +51,8 @@ from typing import Final, Protocol
 
 import httpx
 
-from app.services.model_catalog import catalog_models
+from app.services.local_runtimes import RUNTIME_PIPER, RUNTIME_WHISPER, LocalRuntimeError, LocalRuntimeManager
+from app.services.model_catalog import ModelSpec, catalog_models
 from app.services.model_downloads import ModelDownloadManager
 from app.services.piper_voices import (
     PiperVoice,
@@ -123,6 +124,10 @@ PROBE_TIMEOUT_SECONDS: Final[float] = 2.0
 
 #: Wie lange ein Lauf von Piper und ffmpeg hoechstens dauern darf.
 RUNTIME_TIMEOUT_SECONDS: Final[float] = 60.0
+
+
+#: Sprache der eingebauten Spracherkennung, wenn ``WHISPER_LANGUAGE`` leer ist.
+BUILTIN_LANGUAGE: Final = "de"
 
 
 class SpeechRuntimeError(RuntimeError):
@@ -217,6 +222,27 @@ def program_exists(path: str) -> bool:
 def looks_like_wav(payload: bytes) -> bool:
     """Erste vier und achte Byte - genug, um WAV von allem anderen zu trennen."""
     return len(payload) >= 12 and payload[:4] == _WAV_MAGIC and payload[8:12] == _WAVE_MAGIC
+
+
+def repair_streamed_wav(payload: bytes) -> bytes:
+    """Traegt die echten Laengen in einen WAV-Kopf ein, den ffmpeg in eine Pipe schrieb.
+
+    Schreibt ffmpeg nach ``pipe:1``, kann es nicht zurueckspulen und laesst die
+    Groessenfelder von ``RIFF`` und ``data`` auf dem Platzhalter ``0xFFFFFFFF``
+    stehen. ``wave`` liest daraus eine Laenge von rund 37 Stunden, und die
+    Dauergrenze lehnte jede umgewandelte Aufnahme ab. Hier werden beide Felder
+    aus der tatsaechlichen Laenge neu berechnet.
+    """
+    if not looks_like_wav(payload):
+        return payload
+    position = payload.find(b"data", 12)
+    if position < 0 or position + 8 > len(payload):
+        return payload
+    data_size = len(payload) - (position + 8)
+    repaired = bytearray(payload)
+    repaired[4:8] = (len(payload) - 8).to_bytes(4, "little")
+    repaired[position + 4 : position + 8] = data_size.to_bytes(4, "little")
+    return bytes(repaired)
 
 
 def _wav_duration_seconds(payload: bytes) -> float:
@@ -336,7 +362,10 @@ def prepare_wav(
         "-nostdin",
         "-y",
         "-i",
-        f"pipe:0{endung}",
+        # Nur ``pipe:0``: ffmpeg erkennt den Container am Inhalt. Ein Name wie
+        # ``pipe:0.webm`` ist kein gueltiger Eingang - ffmpeg 8 bricht damit mit
+        # "Invalid argument" ab. Die Endung bleibt fuer die Pruefung oben.
+        "pipe:0",
         "-ar",
         str(WHISPER_SAMPLE_RATE),
         "-ac",
@@ -354,13 +383,14 @@ def prepare_wav(
         )
     if not looks_like_wav(ergebnis.stdout):
         raise SpeechInputError("Die Umwandlung hat keine brauchbare WAV-Datei ergeben.")
-    dauer = _wav_duration_seconds(ergebnis.stdout)
+    umgewandelt = repair_streamed_wav(ergebnis.stdout)
+    dauer = _wav_duration_seconds(umgewandelt)
     if dauer > max_seconds:
         raise SpeechAudioTooLargeError(
             f"Die Aufnahme dauert {dauer:.0f} Sekunden; erlaubt sind {max_seconds}. "
             "Sie wurde nicht an das Spracherkennungsmodell geschickt."
         )
-    return ergebnis.stdout
+    return umgewandelt
 
 
 @dataclass(frozen=True, slots=True)
@@ -685,8 +715,17 @@ class SpeechService:
         max_seconds: int = DEFAULT_MAX_SECONDS,
         max_text_characters: int = DEFAULT_MAX_TEXT_CHARACTERS,
         ffmpeg_path: str = "",
+        runtimes: LocalRuntimeManager | None = None,
+        language: str | None = None,
+        transcriber_timeout_seconds: float = 120.0,
     ) -> None:
         self._downloads = downloads
+        # Die eingebauten Laufzeiten (Desktop-App): sind weder Dienst noch
+        # Programm eingetragen, holt und startet ``runtimes`` sie beim ersten
+        # Gebrauch selbst. Ein eingetragener Dienst hat immer Vorrang.
+        self._runtimes = runtimes
+        self._language = language
+        self._transcriber_timeout_seconds = transcriber_timeout_seconds
         self._transcriber = transcriber
         self._synthesizer = synthesizer
         self._enabled = enabled
@@ -698,6 +737,42 @@ class SpeechService:
         self._ffmpeg_path = ffmpeg_path.strip()
 
     # ------------------------------------------------------------- Faehigkeiten
+
+    def _builtin_stt(self) -> bool:
+        return self._transcriber is None and self._runtimes is not None and self._runtimes.supports(RUNTIME_WHISPER)
+
+    def _builtin_tts(self) -> bool:
+        return self._synthesizer is None and self._runtimes is not None and self._runtimes.supports(RUNTIME_PIPER)
+
+    def _builtin_transcriber(self, spec: object) -> WhisperTranscriber:
+        """Startet whisper-server fuer das gewaehlte Modell (oder nutzt den laufenden)."""
+        if self._runtimes is None or not isinstance(spec, ModelSpec) or not spec.files:
+            raise SpeechUnavailableError("Fuer dieses Spracherkennungsmodell gibt es keine eingebaute Laufzeit.")
+        model_path = self._downloads.model_directory(spec) / spec.files[0].name
+        # Deutsch fest statt Spracherkennung: bei kurzen Saetzen ("Was steht
+        # morgen an?") raet Whisper sonst gern Englisch und uebersetzt dann.
+        sprache = self._language or BUILTIN_LANGUAGE
+        try:
+            base_url = self._runtimes.ensure_whisper_server(spec.id, model_path, sprache)
+        except LocalRuntimeError as error:
+            raise SpeechUnavailableError(str(error)) from error
+        return WhisperTranscriber(base_url, language=sprache, timeout_seconds=self._transcriber_timeout_seconds)
+
+    def _builtin_synthesizer(self) -> PiperSynthesizer:
+        if self._runtimes is None:
+            raise SpeechUnavailableError("Es ist kein Piper-Programm eingetragen.")
+        try:
+            return PiperSynthesizer(str(self._runtimes.ensure_installed(RUNTIME_PIPER)))
+        except LocalRuntimeError as error:
+            raise SpeechUnavailableError(str(error)) from error
+
+    def _builtin_note(self, runtime_id: str) -> str:
+        if self._runtimes is None:
+            return ""
+        if self._runtimes.executable(runtime_id) is not None:
+            return "startet beim ersten Gebrauch"
+        size_mib = self._runtimes.status(runtime_id).size_bytes / (1024 * 1024)
+        return f"das Programm (rund {size_mib:.0f} MiB) wird beim ersten Gebrauch geladen"
 
     def installed_stt_specs(self) -> tuple[str, ...]:
         """Die Kennungen der geladenen Spracherkennungs-Modelle, kleinstes zuerst.
@@ -715,7 +790,10 @@ class SpeechService:
         kandidaten = self.installed_stt_specs()
         if not kandidaten:
             return None
-        gewaehlt = self._stt_model_id or kandidaten[0]
+        # Auf einem Server das kleinste (RAM), in der Desktop-App mit eingebauten
+        # Laufzeiten das groesste geladene: base erkennt deutlich genauer als tiny
+        # und kostet nur rund 0,1 GiB mehr.
+        gewaehlt = self._stt_model_id or (kandidaten[-1] if self._runtimes is not None else kandidaten[0])
         for spec in catalog_models():
             if spec.id != gewaehlt or spec.task != "speech_to_text":
                 continue
@@ -792,7 +870,7 @@ class SpeechService:
                 available=False,
                 reason="Die Sprachfunktionen sind auf diesem Server abgeschaltet. Der Textmodus laeuft.",
             )
-        if self._transcriber is None:
+        if self._transcriber is None and not self._builtin_stt():
             return SpeechTask(
                 available=False,
                 reason=(
@@ -818,6 +896,13 @@ class SpeechService:
                     "Ohne Eintrag wird das kleinste geladene Modell genommen."
                 ),
             )
+        if self._transcriber is None:
+            return SpeechTask(
+                available=True,
+                reason=f"Spracherkennung ist bereit: Modell geladen, whisper.cpp {self._builtin_note(RUNTIME_WHISPER)}.",
+                model_id=getattr(gewaehlt, "id", None),
+                label=getattr(gewaehlt, "label", ""),
+            )
         erreichbar, notiz = self._transcriber.is_reachable()
         if not erreichbar:
             # Zwei unabhaengige Bedingungen, zwei Saetze. Der erste gilt fuer
@@ -842,7 +927,7 @@ class SpeechService:
                 available=False,
                 reason="Die Sprachfunktionen sind auf diesem Server abgeschaltet. Der Textmodus laeuft.",
             )
-        if self._synthesizer is None:
+        if self._synthesizer is None and not self._builtin_tts():
             return SpeechTask(
                 available=False,
                 reason=(
@@ -850,9 +935,10 @@ class SpeechService:
                     "Auf einem Docker-Server gehoert dafuer das piper-Kommandozeilenprogramm hin."
                 ),
             )
-        vorhanden, notiz = self._synthesizer.is_available()
-        if not vorhanden:
-            return SpeechTask(available=False, reason=notiz)
+        if self._synthesizer is not None:
+            vorhanden, notiz = self._synthesizer.is_available()
+            if not vorhanden:
+                return SpeechTask(available=False, reason=notiz)
         geladen = self.installed_voices()
         if not geladen:
             return SpeechTask(
@@ -917,11 +1003,15 @@ class SpeechService:
         )
 
     def _runtime_info(self) -> SpeechRuntimeInfo:
-        if self._transcriber is None:
+        if self._builtin_stt():
+            transkription = (True, f"Eingebautes whisper.cpp: {self._builtin_note(RUNTIME_WHISPER)}.")
+        elif self._transcriber is None:
             transkription = (False, "Kein Spracherkennungsdienst eingetragen.")
         else:
             transkription = self._transcriber.is_reachable()
-        if self._synthesizer is None:
+        if self._builtin_tts():
+            sprache = (True, f"Eingebautes Piper: {self._builtin_note(RUNTIME_PIPER)}.")
+        elif self._synthesizer is None:
             sprache = (False, "Kein Piper-Programm eingetragen.")
         else:
             sprache = self._synthesizer.is_available()
@@ -968,7 +1058,7 @@ class SpeechService:
             max_seconds=self._max_seconds,
             size_bytes=len(payload),
         )
-        if self._transcriber is None:
+        if self._transcriber is None and not self._builtin_stt():
             raise SpeechUnavailableError(
                 "Es ist kein Spracherkennungsdienst eingetragen. Auf einem Docker-Server "
                 "gehoert dafuer whisper-server aus whisper.cpp hin."
@@ -983,9 +1073,10 @@ class SpeechService:
             raise SpeechUnavailableError(
                 f"Das eingetragene Modell {self._stt_model_id!r} liegt nicht geladen und geprueft da."
             )
-        erreichbar, notiz = self._transcriber.is_reachable()
-        if not erreichbar:
-            raise SpeechUnavailableError(notiz)
+        if self._transcriber is not None:
+            erreichbar, notiz = self._transcriber.is_reachable()
+            if not erreichbar:
+                raise SpeechUnavailableError(notiz)
         war_umgewandelt = not (looks_like_wav(payload) and _is_plain_wav(payload))
         wav = prepare_wav(
             payload,
@@ -994,7 +1085,8 @@ class SpeechService:
             runner=tool,
             max_seconds=self._max_seconds,
         )
-        return self._transcriber.transcribe(
+        transcriber = self._transcriber or self._builtin_transcriber(gewaehlt)
+        return transcriber.transcribe(
             wav,
             model_id=getattr(gewaehlt, "id", "unbekannt"),
             transcoded=war_umgewandelt,
@@ -1011,11 +1103,12 @@ class SpeechService:
                 f"Der Text hat {len(text)} Zeichen; vorgesehen sind {self._max_text_characters}. "
                 "Ein Vorlesetext wird gekuerzt, nicht in mehreren Teilen gesprochen."
             )
-        if self._synthesizer is None:
+        if self._synthesizer is None and not self._builtin_tts():
             raise SpeechUnavailableError("Es ist kein Piper-Programm eingetragen.")
-        vorhanden, notiz = self._synthesizer.is_available()
-        if not vorhanden:
-            raise SpeechUnavailableError(notiz)
+        if self._synthesizer is not None:
+            vorhanden, notiz = self._synthesizer.is_available()
+            if not vorhanden:
+                raise SpeechUnavailableError(notiz)
         stimme: PiperVoice | None = None
         if voice_id:
             stimme = voice_by_id(voice_id)
@@ -1051,8 +1144,9 @@ class SpeechService:
                 f"Die geladene Stimme meldet {konfiguration.language}, der Katalog fuehrt sie als "
                 f"{stimme.language_label}. Sie wird nicht benutzt, bis die Dateien neu geladen sind."
             )
+        synthesizer = self._synthesizer or self._builtin_synthesizer()
         return (
-            self._synthesizer.synthesize(
+            synthesizer.synthesize(
                 text,
                 verzeichnis / stimme.onnx_name,
                 verzeichnis / stimme.config_name,

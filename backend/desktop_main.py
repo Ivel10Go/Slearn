@@ -70,6 +70,10 @@ def main() -> None:
     if args.watch_parent:
         watch_parent()
 
+    # In der Desktop-App holt und startet das Backend llama-server,
+    # whisper-server und piper selbst (app/services/local_runtimes.py).
+    os.environ.setdefault("LOCAL_RUNTIMES_ENABLED", "true")
+
     run_migrations(database_url)
 
     import uvicorn
