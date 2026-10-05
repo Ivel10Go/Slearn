@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TrainingRunPanel } from "@/components/settings/training-run-panel";
 import { ApiError } from "@/lib/api";
 import {
   TRAINING_LABELS,
@@ -19,11 +20,9 @@ import {
 } from "@/lib/assistant";
 
 /*
- * Persoenliches Training: die Freigabe zum Sammeln, was gesammelt wurde und ob
- * dieser Rechner spaeter selbst trainieren kann.
- *
- * Das Training selbst gibt es noch nicht. Die Karte sagt das ausdruecklich -
- * eine Freigabe, deren Zweck man nicht sieht, waere keine informierte.
+ * Persoenliches Training: die Freigabe zum Sammeln, was gesammelt wurde, ob
+ * dieser Rechner trainieren kann - und, wenn ja, die Runden und Versionen
+ * (``TrainingRunPanel``). Sammeln und Trainieren sind zwei Freigaben.
  */
 
 function fehlertext(ursache: unknown, ersatz: string) {
@@ -104,8 +103,8 @@ export function TrainingCard() {
         <CardTitle>Persönliches Training</CardTitle>
         <CardDescription>
           Mit deiner Freigabe hebt der Lernraum Antworten des Assistenten auf – zusammen mit dem, was du daraus gemacht hast: eingetragen, verworfen,
-          Notiz gelöscht, Daumen. Daraus soll später ein Modell entstehen, das nur auf dich abgestimmt ist. Das Training selbst kommt in einem
-          späteren Schritt; die Beispiele bleiben auf diesem Rechner.
+          Notiz gelöscht, Daumen. Auf einem Rechner mit passender Grafikkarte entsteht daraus eine Ergänzung zum Modell, die nur auf dich abgestimmt
+          ist. Beispiele und Training bleiben auf diesem Rechner.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -142,6 +141,8 @@ export function TrainingCard() {
                 <p className="mt-1 text-muted-foreground">Sammeln geht trotzdem – die Beispiele lassen sich später auf einem stärkeren Weg nutzen.</p>
               ) : null}
             </div>
+
+            {status.hardware.eligible ? <TrainingRunPanel status={status} onStatus={setStatus} /> : null}
 
             <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-border bg-border text-[13px] sm:grid-cols-5">
               <div className="bg-card px-3 py-2">

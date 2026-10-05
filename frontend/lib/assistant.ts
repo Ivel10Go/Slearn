@@ -236,6 +236,7 @@ const trainingHardwareSchema = z.object({
 
 const trainingStatusSchema = z.object({
   enabled: z.boolean(),
+  auto: z.boolean().optional().default(false),
   max_examples: z.number().int(),
   stats: z.object({
     total: z.number().int(),
@@ -301,6 +302,93 @@ export async function deleteTrainingExample(exampleId: number): Promise<void> {
 
 export async function deleteAllTrainingExamples(): Promise<void> {
   await apiRequest("/v1/assistant/training/examples", { method: "DELETE" });
+}
+
+export async function setAutoTraining(enabled: boolean): Promise<TrainingStatus> {
+  const payload = await apiRequest("/v1/assistant/training/auto", { method: "PUT", body: JSON.stringify({ enabled }) });
+  return trainingStatusSchema.parse(payload);
+}
+
+// --- Trainingsrunden und Adapter --------------------------------------------
+
+const trainingRunSchema = z.object({
+  run_id: z.string(),
+  base_model_id: z.string(),
+  status: z.enum(["pending", "loading", "running", "paused", "converting", "done", "failed"]),
+  active: z.boolean(),
+  step: z.number().int(),
+  total_steps: z.number().int(),
+  example_count: z.number().int(),
+  loss: z.number().nullable().optional().default(null),
+  eval_loss_base: z.number().nullable().optional().default(null),
+  eval_loss: z.number().nullable().optional().default(null),
+  eval_score_base: z.number().nullable().optional().default(null),
+  eval_score: z.number().nullable().optional().default(null),
+  seconds_per_step: z.number().nullable().optional().default(null),
+  skipped_too_long: z.number().int().optional().default(0),
+  error: z.string().nullable().optional().default(null),
+  adapter_version: z.number().int().nullable().optional().default(null),
+  activated: z.boolean().optional().default(false),
+  created_at: z.string().nullable().optional().default(null),
+  updated_at: z.string().nullable().optional().default(null),
+});
+
+const adaptersSchema = z.object({
+  model_id: z.string(),
+  active_version: z.number().int().nullable(),
+  versions: z.array(
+    z.object({
+      version: z.number().int(),
+      example_count: z.number().int(),
+      eval_score: z.number().nullable().optional().default(null),
+      eval_loss: z.number().nullable().optional().default(null),
+      eval_loss_base: z.number().nullable().optional().default(null),
+      created_at: z.string(),
+      active: z.boolean(),
+    }),
+  ),
+});
+
+export type TrainingRun = z.infer<typeof trainingRunSchema>;
+export type TrainingAdapters = z.infer<typeof adaptersSchema>;
+
+export const TRAINING_RUN_STATUS: Record<TrainingRun["status"], string> = {
+  pending: "Wartet auf den Start",
+  loading: "Lädt das Modell",
+  running: "Trainiert",
+  paused: "Pausiert",
+  converting: "Prüft und speichert",
+  done: "Fertig",
+  failed: "Abgebrochen",
+};
+
+export async function getTrainingRun(): Promise<TrainingRun | null> {
+  return trainingRunSchema.nullable().parse(await apiRequest("/v1/assistant/training/run"));
+}
+
+export async function startTrainingRun(): Promise<TrainingRun> {
+  return trainingRunSchema.parse(await apiRequest("/v1/assistant/training/run", { method: "POST", body: "{}" }));
+}
+
+export async function pauseTrainingRun(): Promise<TrainingRun | null> {
+  return trainingRunSchema.nullable().parse(await apiRequest("/v1/assistant/training/run/pause", { method: "POST" }));
+}
+
+export async function discardTrainingRun(): Promise<void> {
+  await apiRequest("/v1/assistant/training/run", { method: "DELETE" });
+}
+
+export async function getTrainingAdapters(): Promise<TrainingAdapters> {
+  return adaptersSchema.parse(await apiRequest("/v1/assistant/training/adapters"));
+}
+
+export async function rollbackTrainingAdapter(): Promise<TrainingAdapters> {
+  return adaptersSchema.parse(await apiRequest("/v1/assistant/training/adapters/rollback", { method: "POST" }));
+}
+
+/** Anteil als ganze Prozent, `null` als Gedankenstrich. */
+export function prozent(wert: number | null): string {
+  return wert === null ? "–" : `${Math.round(wert * 100)} %`;
 }
 
 /**

@@ -10,6 +10,9 @@ Alle Routen sind auf den Sitzungsnutzer begrenzt:
 * ``DELETE /memories/{id}``    einen Satz vergessen
 * ``/training/...``            Trainingsbeispiele (Freigabe, Liste, Signale,
                                Hardware), siehe ``app/services/training.py``
+* ``/training/run``, ``/training/adapters``
+                               Trainingsrunden und LoRA-Adapter, siehe
+                               ``app/services/training_jobs.py``
 
 Noten gehen mit Freigabe in den Prompt - oder ohne, wenn nur lokale Modelle
 antworten koennen (dann verlassen sie den Rechner nicht). Die Entscheidung
@@ -21,27 +24,34 @@ from typing import Literal, cast
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.api.deps import AppSettings, CurrentUser, DatabaseSession
+from app.api.deps import AppSettings, CurrentUser, DatabaseSession, TrainingJobs
 from app.api.helpers import owned_or_404
 from app.db.assistant import MEMORY_SOURCE_MANUAL, AssistantMemory
 from app.schemas.assistant import (
     ActionApplyRequest,
     ActionApplyResponse,
     ActionProposalOut,
+    AdaptersRead,
+    AdapterVersionRead,
     AssistantChatRequest,
     AssistantChatResponse,
     AssistantRouteRead,
     MemoryCreate,
     MemoryRead,
+    TrainingAutoUpdate,
+    TrainingConditions,
     TrainingConsentUpdate,
     TrainingExampleRead,
     TrainingFeedback,
     TrainingHardwareRead,
+    TrainingRunRead,
+    TrainingRunStart,
     TrainingStatsRead,
     TrainingStatusRead,
 )
 from app.schemas.common import MessageResponse
 from app.schemas.documents import DocumentSourceOut
+from app.services import adapter_store, training_jobs
 from app.services import assistant as assistant_service
 from app.services import grades as grades_service
 from app.services import training as training_service
@@ -184,6 +194,7 @@ def delete_memory(memory_id: int, current_user: CurrentUser, db: DatabaseSession
 def _training_status(db: DatabaseSession, user_id: int) -> TrainingStatusRead:
     return TrainingStatusRead(
         enabled=training_service.training_enabled(db, user_id),
+        auto=training_service.auto_training_enabled(db, user_id),
         max_examples=training_service.MAX_EXAMPLES_PER_USER,
         stats=TrainingStatsRead(**asdict(training_service.training_stats(db, user_id))),
         hardware=TrainingHardwareRead(**asdict(detect_training_hardware())),
@@ -260,3 +271,123 @@ def delete_all_training_examples(current_user: CurrentUser, db: DatabaseSession)
     anzahl = training_service.delete_all_examples(db, current_user.id)
     db.commit()
     return MessageResponse(message=f"{anzahl} Beispiele gelöscht.")
+
+
+# --- Trainingsrunden ---------------------------------------------------------
+
+
+def _run_read(run: training_jobs.RunStatus | None) -> TrainingRunRead | None:
+    return TrainingRunRead(**asdict(run)) if run is not None else None
+
+
+@router.get("/training/run", response_model=TrainingRunRead | None)
+def training_run(current_user: CurrentUser, runner: TrainingJobs) -> TrainingRunRead | None:
+    return _run_read(runner.status(current_user.id))
+
+
+@router.post("/training/run", response_model=TrainingRunRead)
+def start_training_run(
+    payload: TrainingRunStart,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    settings: AppSettings,
+    runner: TrainingJobs,
+) -> TrainingRunRead:
+    """Setzt die offene Runde fort oder beginnt eine neue mit den bewerteten Beispielen."""
+    try:
+        run = runner.start(
+            db, current_user.id, assistant_service.user_zone(current_user, settings), payload.model_id
+        )
+    except training_jobs.TrainingUnavailableError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except training_jobs.TrainingJobError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return TrainingRunRead(**asdict(run))
+
+
+@router.post("/training/run/pause", response_model=TrainingRunRead | None)
+def pause_training_run(current_user: CurrentUser, runner: TrainingJobs) -> TrainingRunRead | None:
+    return _run_read(runner.pause(current_user.id))
+
+
+@router.delete("/training/run", response_model=MessageResponse)
+def discard_training_run(current_user: CurrentUser, runner: TrainingJobs) -> MessageResponse:
+    try:
+        verworfen = runner.discard(current_user.id)
+    except training_jobs.TrainingJobError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return MessageResponse(message="Runde verworfen." if verworfen else "Keine offene Runde.")
+
+
+def _adapters(runner: training_jobs.TrainingRunner, user_id: int, model_id: str | None) -> AdaptersRead:
+    try:
+        resolved, root = runner.adapter_root(user_id, model_id)
+    except training_jobs.TrainingJobError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    active = adapter_store.active_version(root)
+    return AdaptersRead(
+        model_id=resolved,
+        active_version=active,
+        versions=[
+            AdapterVersionRead(
+                version=m.version,
+                example_count=m.example_count,
+                eval_loss=m.eval_loss,
+                eval_loss_base=m.eval_loss_base,
+                eval_score=m.eval_score,
+                created_at=m.created_at,
+                active=m.version == active,
+            )
+            for m in reversed(adapter_store.list_versions(root))
+        ],
+    )
+
+
+@router.get("/training/adapters", response_model=AdaptersRead)
+def training_adapters(
+    current_user: CurrentUser, runner: TrainingJobs, model_id: str | None = Query(default=None)
+) -> AdaptersRead:
+    return _adapters(runner, current_user.id, model_id)
+
+
+@router.post("/training/adapters/rollback", response_model=AdaptersRead)
+def rollback_training_adapter(
+    current_user: CurrentUser, runner: TrainingJobs, model_id: str | None = Query(default=None)
+) -> AdaptersRead:
+    """Eine Version zurueck - vor der ersten laeuft wieder das reine Basismodell."""
+    try:
+        runner.rollback(current_user.id, model_id)
+    except training_jobs.TrainingJobError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return _adapters(runner, current_user.id, model_id)
+
+
+@router.put("/training/auto", response_model=TrainingStatusRead)
+def update_training_auto(
+    payload: TrainingAutoUpdate, current_user: CurrentUser, db: DatabaseSession
+) -> TrainingStatusRead:
+    """Im Hintergrund trainieren - eigene Freigabe neben dem Sammeln, Standard aus."""
+    training_service.set_auto_training(db, current_user.id, payload.enabled)
+    db.commit()
+    return _training_status(db, current_user.id)
+
+
+@router.post("/training/conditions", response_model=TrainingRunRead | None)
+def training_conditions(
+    payload: TrainingConditions,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    settings: AppSettings,
+    runner: TrainingJobs,
+) -> TrainingRunRead | None:
+    """Die Desktop-App meldet alle 30 s, ob gerade trainiert werden darf (am Netz, Rechner ruht)."""
+    return _run_read(
+        runner.on_conditions(
+            db,
+            current_user.id,
+            assistant_service.user_zone(current_user, settings),
+            allowed=payload.allowed,
+            auto=training_service.auto_training_enabled(db, current_user.id)
+            and training_service.training_enabled(db, current_user.id),
+        )
+    )
