@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Check, LoaderCircle, Pencil, Trash2 } from "lucide-react";
+import { Check, LoaderCircle, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 interface RowActionsProps {
   /** Bezeichnung des Eintrags, fuer die Screenreader-Beschriftung der Knoepfe. */
@@ -59,6 +61,51 @@ export function RowActions({ label, onEdit, onDelete, busy }: RowActionsProps) {
         </Button>
       )}
     </div>
+  );
+}
+
+interface SectionHeaderProps {
+  title: string;
+  /** Kurze Zahl rechts, etwa "2 offen". Bewusst Text, kein Badge. */
+  count: string;
+  loading: boolean;
+  onReload: () => void;
+  formOpen: boolean;
+  onToggleForm: () => void;
+  /** Beschriftung des Plus-Knopfs fuer Screenreader und Tooltip. */
+  newLabel: string;
+}
+
+/**
+ * Der Kopf der Dashboard-Listen (Hausaufgaben, Pruefungen, Termine).
+ *
+ * Frueher hatte jede Karte ein farbiges Badge und einen gefuellten
+ * "Neu"-Knopf - drei weisse Knoepfe nebeneinander waren das Lauteste auf der
+ * Seite, obwohl Anlegen die seltenste Handlung ist. Jetzt: Zahl als grauer
+ * Text wie bei "Heute lernen", Neuladen und Anlegen als ruhige Symbolknoepfe.
+ */
+export function SectionHeader({ title, count, loading, onReload, formOpen, onToggleForm, newLabel }: SectionHeaderProps) {
+  return (
+    <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 py-3">
+      <CardTitle>{title}</CardTitle>
+      <div className="-mr-1.5 flex items-center gap-0.5">
+        <span className="mr-1.5 text-xs tabular-nums text-muted-foreground">{count}</span>
+        <Button type="button" size="icon" variant="ghost" onClick={onReload} aria-label={`${title} neu laden`} title="Neu laden" disabled={loading}>
+          <RefreshCw className={cn(loading && "animate-spin")} aria-hidden="true" />
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant={formOpen ? "secondary" : "ghost"}
+          onClick={onToggleForm}
+          aria-expanded={formOpen}
+          aria-label={formOpen ? "Formular schließen" : newLabel}
+          title={formOpen ? "Schließen" : newLabel}
+        >
+          {formOpen ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
+        </Button>
+      </div>
+    </CardHeader>
   );
 }
 
