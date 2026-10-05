@@ -1,17 +1,16 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { CalendarDays, CheckCircle2, ListPlus, LoaderCircle, Plus, RefreshCw, X } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { CheckCircle2, ListPlus, LoaderCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, FormError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { RowActions, SectionBanner } from "@/components/manage/row-actions";
+import { RowActions, SectionBanner, SectionHeader } from "@/components/manage/row-actions";
 import { createExam, deleteExam, generateExamTasks, getExams, getStudyPlans, updateExam, type ExamChanges, type ExamWrite } from "@/lib/api";
 import { toDateTimeLocal, toUtcIso } from "@/lib/datetime";
 import { formatDate, getCountdown } from "@/lib/format";
@@ -161,25 +160,68 @@ export function ExamsSection({ reference }: { reference: Date }) {
   const vergangen = sammlung.items.filter((pruefung) => new Date(pruefung.date).getTime() < reference.getTime());
   const kommend = sammlung.items.filter((pruefung) => new Date(pruefung.date).getTime() >= reference.getTime());
 
-  return (
-    <Card id="exams" className={anchorClass}>
-      <CardHeader className="flex-row flex-wrap items-start justify-between space-y-0 pb-3">
-        <div>
-          <CardTitle>Prüfungen</CardTitle>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant={kommend.length ? "warning" : "success"}>{kommend.length} anstehend</Badge>
-          <Button type="button" size="icon" variant="ghost" onClick={() => void sammlung.reload()} aria-label="Prüfungen neu laden" disabled={sammlung.status === "loading"}>
-            <RefreshCw className={cn(sammlung.status === "loading" && "animate-spin")} aria-hidden="true" />
-          </Button>
-          <Button type="button" size="sm" onClick={() => (formularOffen && bearbeitet === null ? schliessen() : oeffnen())} aria-expanded={formularOffen && bearbeitet === null}>
-            {formularOffen && bearbeitet === null ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
-            {formularOffen && bearbeitet === null ? "Schließen" : "Neu"}
-          </Button>
-        </div>
-      </CardHeader>
+  /**
+   * Warum der Generator fuer diese Pruefung nicht geht - oder `null`.
+   *
+   * Frueher stand der Grund dauerhaft unter jeder Pruefung und zusaetzlich
+   * als gestrichelter Kasten ueber der Liste. Jetzt erscheint er erst, wenn
+   * man den Knopf drueckt: ein deaktivierter Knopf zeigt keinen Tooltip, und
+   * ein Grund, den niemand gefragt hat, ist nur Rauschen.
+   */
+  function generatorGrund(pruefung: Exam) {
+    if (pruefung.subject_id === null) {
+      return "Diese Prüfung hat kein Fach – ohne Themen gibt es nichts zu erzeugen. Trag über den Stift ein Fach ein.";
+    }
+    if (plaene.items.length === 0) {
+      return "Für den Generator braucht es einen Lernplan. Leg ihn unter „Lernplan“ an.";
+    }
+    return null;
+  }
 
-      <CardContent className="space-y-4">
+  function generatorUmschalten(pruefung: Exam) {
+    setPlanErgebnis(null);
+    const grund = generatorGrund(pruefung);
+    if (grund) {
+      setZielPruefung(null);
+      setPlanFehler(grund);
+      return;
+    }
+    setPlanFehler(null);
+    setZielPruefung((aktuell) => (aktuell === pruefung.id ? null : pruefung.id));
+    setZielPlan("");
+  }
+
+  function zeile(pruefung: Exam) {
+    return (
+      <PruefungsZeile
+        key={pruefung.id}
+        pruefung={pruefung}
+        fachname={pruefung.subject_name}
+        reference={reference}
+        busy={sammlung.pending !== null}
+        generatorOffen={zielPruefung === pruefung.id}
+        generatorMoeglich={generatorGrund(pruefung) === null}
+        laueft={laueftAuf === pruefung.id}
+        onGenerator={() => generatorUmschalten(pruefung)}
+        onEdit={() => oeffnen(pruefung)}
+        onDelete={() => sammlung.remove(pruefung.id)}
+      />
+    );
+  }
+
+  return (
+    <Card id="exams" className={cn(anchorClass, "@container")}>
+      <SectionHeader
+        title="Prüfungen"
+        count={`${kommend.length} anstehend`}
+        loading={sammlung.status === "loading"}
+        onReload={() => void sammlung.reload()}
+        formOpen={formularOffen && bearbeitet === null}
+        onToggleForm={() => (formularOffen && bearbeitet === null ? schliessen() : oeffnen())}
+        newLabel="Neue Prüfung"
+      />
+
+      <CardContent className="space-y-3 pb-0">
         <SectionBanner error={sammlung.error} actionError={sammlung.actionError} onRetry={() => void sammlung.reload()} />
 
         {/*
@@ -187,26 +229,19 @@ export function ExamsSection({ reference }: { reference: Date }) {
           Dashboard die Themen nur; jetzt entsteht daraus eine Aufgabe je Thema.
         */}
         {planErgebnis ? (
-          <p className="rounded-md border border-foreground/20 bg-foreground/5 px-4 py-3 text-sm font-semibold" role="status">
+          <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-[13px]" role="status">
             {planErgebnis.created_count} Aufgaben angelegt
             {planErgebnis.skipped_count > 0 ? `, ${planErgebnis.skipped_count} Thema übersprungen` : ""}
-            {planErgebnis.last_due_on ? ` · bis ${formatDate(planErgebnis.last_due_on)}` : ""}. Sie stehen in der Kachel{" "}
-            <span className="font-semibold">Lernaufgaben</span>.
+            {planErgebnis.last_due_on ? ` · bis ${formatDate(planErgebnis.last_due_on)}` : ""}. Sie stehen unter{" "}
+            <span className="font-medium">Heute lernen</span>.
           </p>
         ) : null}
         <FormError message={planFehler} />
 
-        {plaene.items.length === 0 && sammlung.items.length > 0 ? (
-          <p className="border border-dashed border-border px-4 py-3 text-xs leading-5 text-muted-foreground">
-            Für den Generator braucht es einen Lernplan. Lege in der Kachel{" "}
-            <span className="font-semibold">Lernaufgaben</span> einen an.
-          </p>
-        ) : null}
-
         {zielPruefung !== null ? (
-          <div className="space-y-4 border border-primary/20 bg-primary/5 p-4">
+          <div className="space-y-4 rounded-md border border-border bg-muted/40 p-4">
             <p className="text-sm font-semibold">Lernplan aus den Themen erzeugen</p>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 @md:grid-cols-2">
               <Field id="generator-plan" label="Lernplan" required>
                 {(props) => (
                   <Select {...props} value={zielPlan} onChange={(event) => setZielPlan(event.target.value)} disabled={laueftAuf !== null}>
@@ -251,7 +286,7 @@ export function ExamsSection({ reference }: { reference: Date }) {
         ) : null}
 
         {formularOffen ? (
-          <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
+          <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-border bg-muted/40 p-4">
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-semibold">{bearbeitet === null ? "Neue Prüfung" : "Prüfung bearbeiten"}</p>
               <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
@@ -271,7 +306,7 @@ export function ExamsSection({ reference }: { reference: Date }) {
               )}
             </Field>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 @md:grid-cols-2">
               <Field id="pruefung-datum" label="Datum und Uhrzeit" required>
                 {(props) => (
                   <Input
@@ -330,64 +365,28 @@ export function ExamsSection({ reference }: { reference: Date }) {
         ) : null}
 
         {sammlung.status === "loading" && sammlung.items.length === 0 ? (
-          <div className="space-y-3" aria-busy="true" aria-label="Prüfungen werden geladen">
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
+          <div className="space-y-2 pb-4" aria-busy="true" aria-label="Prüfungen werden geladen">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
           </div>
         ) : sammlung.items.length === 0 ? (
-          <EmptyState icon={CheckCircle2} title="Keine Prüfungstermine" description="Trag einen Termin ein, damit du ihn nicht verpasst." />
+          <div className="pb-4">
+            <EmptyState icon={CheckCircle2} title="Keine Prüfungstermine" description="Trag einen Termin ein, damit du ihn nicht verpasst." />
+          </div>
         ) : (
-          <div className="space-y-4">
-            <ul className="space-y-2.5">
-              {kommend.map((pruefung) => (
-                <PruefungsZeile
-                  key={pruefung.id}
-                  pruefung={pruefung}
-                  fachname={pruefung.subject_name}
-                  reference={reference}
-                  busy={sammlung.pending !== null}
-                  generatorOffen={zielPruefung === pruefung.id}
-                  generatorMoeglich={plaene.items.length > 0 && pruefung.subject_id !== null}
-                  laueft={laueftAuf === pruefung.id}
-                  onGenerator={() => {
-                    setPlanFehler(null);
-                    setPlanErgebnis(null);
-                    setZielPruefung((aktuell) => (aktuell === pruefung.id ? null : pruefung.id));
-                    setZielPlan("");
-                  }}
-                  onEdit={() => oeffnen(pruefung)}
-                  onDelete={() => sammlung.remove(pruefung.id)}
-                />
-              ))}
-            </ul>
+          <div className="-mx-4 border-t border-border">
+            {kommend.length > 0 ? <ul className="divide-y divide-border">{kommend.map(zeile)}</ul> : null}
 
             {vergangen.length > 0 ? (
-              <details open={vergangenOffen} onToggle={(event) => setVergangenOffen(event.currentTarget.open)}>
-                <summary className="cursor-pointer list-none text-xs font-medium text-muted-foreground">
+              <details
+                open={vergangenOffen}
+                onToggle={(event) => setVergangenOffen(event.currentTarget.open)}
+                className="border-t border-border first:border-t-0"
+              >
+                <summary className="cursor-pointer list-none px-4 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground">
                   {vergangen.length} vorbei
                 </summary>
-                <ul className="mt-3 space-y-2.5">
-                  {vergangen.map((pruefung) => (
-                    <PruefungsZeile
-                      key={pruefung.id}
-                      pruefung={pruefung}
-                      fachname={pruefung.subject_name}
-                      reference={reference}
-                      busy={sammlung.pending !== null}
-                      generatorOffen={zielPruefung === pruefung.id}
-                      generatorMoeglich={plaene.items.length > 0 && pruefung.subject_id !== null}
-                      laueft={laueftAuf === pruefung.id}
-                      onGenerator={() => {
-                        setPlanFehler(null);
-                        setPlanErgebnis(null);
-                        setZielPruefung((aktuell) => (aktuell === pruefung.id ? null : pruefung.id));
-                        setZielPlan("");
-                      }}
-                      onEdit={() => oeffnen(pruefung)}
-                      onDelete={() => sammlung.remove(pruefung.id)}
-                    />
-                  ))}
-                </ul>
+                <ul className="divide-y divide-border border-t border-border">{vergangen.map(zeile)}</ul>
               </details>
             ) : null}
           </div>
@@ -421,67 +420,64 @@ function PruefungsZeile({
   onDelete: () => void;
 }) {
   const countdown = getCountdown(pruefung.date, reference);
+  const bald = !countdown.isOverdue && countdown.days <= 3;
   return (
-    <li className="flex items-start gap-3 border border-border bg-card/60 p-3.5 transition-colors hover:border-foreground/40">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
-            {fachname ? <p className="text-xs font-medium text-primary">{fachname}</p> : null}
-            <p className={cn("mt-1 truncate text-sm font-semibold", countdown.isOverdue && "text-muted-foreground")}>
-              {pruefung.title}
-            </p>
-          </div>
-          <Badge variant={countdown.isOverdue ? "outline" : countdown.days <= 3 ? "warning" : "info"}>
-            {countdown.isOverdue ? "Vorbei" : countdown.label}
-          </Badge>
-        </div>
-
-        {pruefung.description ? (
-          <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">{pruefung.description}</p>
-        ) : null}
-
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-          <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
-          <span>{formatDate(pruefung.date, { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}</span>
-          {pruefung.source !== "manual" ? (
-            <>
-              <span className="text-border">·</span>
-              <span>aus dem Schulportal</span>
-            </>
-          ) : null}
-        </div>
-
-        {/*
-          Der Generator braucht Themen, und Themen haengen an einem Fach.
-          Ohne Fach gibt es nichts zu erzeugen - deshalb ist der Knopf dann
-          nicht nur deaktiviert, sondern sagt auch warum.
-        */}
-        <div className="mt-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={onGenerator}
-            disabled={busy || laueft || !generatorMoeglich}
-            aria-expanded={generatorOffen}
-            title={pruefung.subject_id === null ? "Diese Klausur hat kein Fach, also keine Themen." : undefined}
-          >
-            {laueft ? (
-              <LoaderCircle className="animate-spin" aria-hidden="true" />
-            ) : (
-              <ListPlus className="h-3.5 w-3.5" aria-hidden="true" />
-            )}
-            {generatorOffen ? "Abbrechen" : "Aufgaben aus Themen"}
-          </Button>
-          {pruefung.subject_id === null ? (
-            <span className="ml-2 text-xs text-muted-foreground">
-              Kein Fach hinterlegt – ohne Themen gibt es nichts zu erzeugen.
-            </span>
-          ) : null}
-        </div>
+    <li className="flex items-start gap-3 px-4 py-2.5">
+      {/* Datum als Kalenderblatt - dieselbe Form wie bei den Terminen. */}
+      <div
+        className={cn(
+          "flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-md border border-border",
+          countdown.isOverdue && "text-muted-foreground",
+          bald && "border-foreground",
+        )}
+        aria-hidden="true"
+      >
+        <span className="text-[10px] leading-3 text-muted-foreground">{formatDate(pruefung.date, { month: "short" })}</span>
+        <span className="text-[15px] font-semibold leading-5 tabular-nums">{formatDate(pruefung.date, { day: "2-digit" })}</span>
       </div>
 
-      <RowActions label={pruefung.title} onEdit={onEdit} onDelete={onDelete} busy={busy} />
+      <div className="min-w-0 flex-1">
+        <p className={cn("truncate text-[13px] font-medium", countdown.isOverdue && "text-muted-foreground")}>{pruefung.title}</p>
+        <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+          {fachname ? (
+            <>
+              <span className="font-medium text-foreground/80">{fachname}</span>
+              <span aria-hidden="true">·</span>
+            </>
+          ) : null}
+          <span className="sr-only">{formatDate(pruefung.date, { weekday: "long", day: "2-digit", month: "long" })},</span>
+          <span className={cn(bald && "font-medium text-foreground")}>{countdown.isOverdue ? "Vorbei" : countdown.label}</span>
+          {pruefung.source !== "manual" ? (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>Schulportal</span>
+            </>
+          ) : null}
+        </p>
+        {pruefung.description ? <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-muted-foreground">{pruefung.description}</p> : null}
+      </div>
+
+      {/*
+        Der Generator braucht Themen (also ein Fach) und einen Lernplan.
+        Fehlt etwas, bleibt der Knopf klickbar und sagt beim Klick, was
+        fehlt - ein deaktivierter Knopf zeigt keinen Grund.
+      */}
+      <div className="flex shrink-0 items-center gap-1.5">
+        <Button
+          type="button"
+          size="icon"
+          variant={generatorOffen ? "secondary" : "ghost"}
+          onClick={onGenerator}
+          disabled={busy || laueft}
+          aria-expanded={generatorOffen}
+          aria-label={`Lernaufgaben aus den Themen von ${pruefung.title} erzeugen`}
+          title="Lernaufgaben aus den Themen erzeugen"
+          className={cn(!generatorMoeglich && "text-muted-foreground/60")}
+        >
+          {laueft ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <ListPlus aria-hidden="true" />}
+        </Button>
+        <RowActions label={pruefung.title} onEdit={onEdit} onDelete={onDelete} busy={busy} />
+      </div>
     </li>
   );
 }

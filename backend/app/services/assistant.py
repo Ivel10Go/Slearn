@@ -213,6 +213,12 @@ class ParsedReply:
 # --- Protokoll ---------------------------------------------------------------
 
 
+def is_action_line(line: str) -> bool:
+    """Ob die Zeile Protokoll ist (``AKTION {...}``) - mit gueltigem JSON oder nicht."""
+    match = _ACTION_RE.match(line)
+    return bool(match and "{" in match.group(1))
+
+
 def parse_reply(raw: str) -> ParsedReply:
     """Trennt den sichtbaren Text von den Zeilen ``AKTION`` und ``MERKE``.
 

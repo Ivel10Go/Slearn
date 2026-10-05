@@ -92,17 +92,18 @@ function DashboardSkeleton() {
         <Skeleton className="h-7 w-[28rem] max-w-full" />
       </div>
       <Skeleton className="h-[74px] w-full" />
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
-        <div className="space-y-5">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
+        <div className="space-y-4">
+          <Skeleton className="h-80 w-full" />
           <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-64 w-full" />
         </div>
-        <div className="space-y-5">
-          <Skeleton className="h-48 w-full" />
-          <Skeleton className="h-48 w-full" />
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-1">
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-28 w-full" />
         </div>
       </div>
-      <Skeleton className="h-80 w-full" />
     </div>
   );
 }
@@ -397,16 +398,20 @@ function AssistantCard() {
 
   return (
     <Card id="assistant" className={anchorClass}>
-      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-3">
-        <div className="space-y-1.5">
-          <CardTitle>Assistent</CardTitle>
-          <CardDescription>Fragen zu deinen Unterlagen, Planung und Einträge – auch per Sprache.</CardDescription>
+      <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 pb-3">
+        <div className="min-w-0 space-y-0.5">
+          <CardTitle>
+            <Link href="/assistent" className="hover:underline hover:underline-offset-2">
+              Assistent
+            </Link>
+          </CardTitle>
+          <CardDescription className="text-xs">Unterlagen, Planung, Einträge – auch per Sprache.</CardDescription>
         </div>
-        <Link href="/assistent" aria-label="Zum Assistenten" className="-mt-1 shrink-0">
-          <Faultier groesse={48} koerper />
+        <Link href="/assistent" aria-label="Zum Assistenten" className="-my-2 shrink-0">
+          <Faultier groesse={44} koerper />
         </Link>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent>
         <form onSubmit={handleAsk} className="relative">
           <label htmlFor="assistant-question" className="sr-only">Frage an den Assistenten</label>
           <Input
@@ -425,9 +430,6 @@ function AssistantCard() {
             <CornerDownLeft className="h-4 w-4" aria-hidden="true" />
           </button>
         </form>
-        <Link href="/assistent" className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">
-          Zum Assistenten
-        </Link>
       </CardContent>
     </Card>
   );
@@ -470,23 +472,25 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
       <TodayStrip data={data} dayProgress={dayProgress} lesson={focusLesson} reference={reference} />
 
       {/*
-        Zwei Spalten: links der Tag - Stundenplan, Lernblöcke, Fälliges -,
-        rechts, was man nachschlägt. Lernfortschritt, Noten und Belohnung
-        stehen auf `/fortschritt`: sie beantworten "wie stehe ich?", nicht "was
-        steht heute an?", und machten das Dashboard zur längsten Seite.
+        Zwei Spalten: links, was den Tag strukturiert - Stundenplan und
+        Lernblöcke, beide brauchen Breite -, rechts das Fällige als schmale
+        Listen. Vorher standen Hausaufgaben und Prüfungen als zwei halbe
+        Karten unter dem Stundenplan, und die rechte Spalte endete nach
+        Kalender und Assistent im Leeren. Zwischen lg und xl läuft die rechte
+        Spalte zweispaltig unter der linken.
+        Lernfortschritt, Noten und Belohnung stehen auf `/fortschritt`: sie
+        beantworten "wie stehe ich?", nicht "was steht heute an?".
       */}
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
         <div className="space-y-4">
           <ScheduleCard />
           <StudyTasksCard tasks={data.studyTasks} />
-          <div className="grid items-start gap-4 lg:grid-cols-2">
-            <HomeworkSection reference={reference} />
-            <ExamsSection reference={reference} />
-          </div>
         </div>
-        <div className="space-y-4">
-          <CalendarSection reference={reference} />
+        <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-1">
           <AssistantCard />
+          <HomeworkSection reference={reference} />
+          <ExamsSection reference={reference} />
+          <CalendarSection reference={reference} />
         </div>
       </div>
     </div>

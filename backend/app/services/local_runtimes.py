@@ -371,6 +371,8 @@ class LocalRuntimeManager:
         self._server_lock = threading.Lock()
         self._progress = {runtime_id: _Progress() for runtime_id in RUNTIME_CATALOG}
         self._servers: dict[str, _Server] = {}
+        #: Aktiver LoRA-Adapter je Textmodell (``training_jobs.py``), Desktop = ein Nutzer.
+        self._text_adapters: dict[str, Path] = {}
         self._job = _WindowsJob()
 
     # ----------------------------------------------------------- Installation
@@ -529,9 +531,31 @@ class LocalRuntimeManager:
                 "-c",
                 str(TEXT_CONTEXT_TOKENS),
                 "--no-webui",
+                *(["--lora", str(self._text_adapters[model_id])] if model_id in self._text_adapters else []),
             ],
             health_path="/health",
         )
+
+    def set_text_adapter(self, model_id: str, adapter: Path | None) -> None:
+        """Merkt den LoRA-Adapter fuer dieses Modell; ein laufender Server startet beim naechsten Gebrauch neu."""
+        with self._server_lock:
+            if self._text_adapters.get(model_id) == adapter:
+                return
+            if adapter is None:
+                self._text_adapters.pop(model_id, None)
+            else:
+                self._text_adapters[model_id] = adapter
+            server = self._servers.get(RUNTIME_LLAMA)
+            if server is not None and server.model_id == model_id:
+                self._stop(server)
+                self._servers.pop(RUNTIME_LLAMA, None)
+
+    def text_adapter(self, model_id: str) -> Path | None:
+        return self._text_adapters.get(model_id)
+
+    def attach_child(self, process: subprocess.Popen[bytes]) -> None:
+        """Haengt einen fremden Kindprozess (Trainer) an das Job-Objekt: stirbt das Backend, stirbt er mit."""
+        self._job.assign(process)
 
     def ensure_whisper_server(self, model_id: str, model_path: Path, language: str | None) -> str:
         """Startet ``whisper-server`` fuer dieses Modell und liefert die Basis-URL."""

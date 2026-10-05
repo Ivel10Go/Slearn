@@ -31,6 +31,13 @@ extraResources:
     to: frontend/node_modules
     filter:
       - "**/*"
+  # Nur die Skripte des LoRA-Trainers. Sein Python (torch/CUDA, mehrere GB)
+  # liefert die App nicht mit; es steht in trainer.json im Benutzerordner.
+  - from: ../trainer
+    to: trainer
+    filter:
+      - "*.py"
+      - "requirements.txt"
 asar: true
 
 win:

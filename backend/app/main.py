@@ -46,6 +46,7 @@ from app.services.local_runtimes import (
 from app.services.model_downloads import ModelDownloadManager
 from app.services.notification_scheduler import ReminderScheduler
 from app.services.speech import PiperSynthesizer, SpeechService, WhisperTranscriber
+from app.services.training_jobs import TrainingRunner
 
 logger = logging.getLogger("school_assistant")
 
@@ -79,9 +80,16 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     if runtimes is not None:
         set_active_manager(runtimes)
         _prefetch_runtimes(application, runtimes)
+    training: TrainingRunner | None = getattr(application.state, "training_runner", None)
+    if training is not None:
+        training.restore_adapters()
     try:
         yield
     finally:
+        if training is not None:
+            # Vor den Laufzeiten: der Trainer haengt an deren Job-Objekt und soll
+            # erst noch seinen Checkpoint schreiben duerfen.
+            training.shutdown()
         if reminders is not None:
             reminders.stop()
         if scheduler is not None:
@@ -222,6 +230,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         language=active_settings.whisper_language,
         transcriber_timeout_seconds=active_settings.whisper_server_timeout_seconds,
     )
+    # Trainingsrunden (LoRA): immer gebaut wie der Sprachdienst - er muss sagen
+    # koennen, *warum* hier nicht trainiert wird.
+    application.state.training_runner = TrainingRunner(active_settings, runtimes=runtimes)
     if active_settings.cors_origins:
         application.add_middleware(
             CORSMiddleware,

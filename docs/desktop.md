@@ -48,3 +48,18 @@ npm.cmd run build:frontend   # einmal, oder stattdessen ein laufendes `next dev`
 $env:LERNRAUM_FRONTEND_URL = "http://localhost:3000"
 npm.cmd start                # startet Python-Backend direkt aus backend/ (LERNRAUM_PYTHON wählt den Interpreter)
 ```
+
+## Persönliches Training (LoRA, nur NVIDIA)
+
+Das Training läuft in einem eigenen Python mit torch/CUDA, das die App **nicht** mitliefert (mehrere GB). Einrichten wie in [Konfiguration](konfiguration.md#lora-training-optional-nur-nvidia), dann im Benutzerordner der App (`%APPDATA%\Lernraum`) eine `trainer.json` anlegen:
+
+```json
+{
+  "python": "E:\lernraum-trainer\venv\Scripts\python.exe",
+  "cache": "E:\lernraum-trainer\hf-cache"
+}
+```
+
+`TRAINER_PYTHON`/`TRAINER_CACHE_PATH` in der Umgebung schlagen die Datei. Die App reicht beides als Umgebung an das Backend weiter; die Trainer-Skripte selbst liegen im Installer unter `resources/trainer`.
+
+Die App meldet dem Backend alle 30 s – und sofort beim Wechsel Netz/Akku oder beim Ruhezustand –, ob gerade trainiert werden darf: **nur am Netzteil und nach zwei Minuten ohne Eingabe** (`trainingAllowed()` in `lib/runtime.js`). Mit „Automatisch trainieren“ auf `/ki` setzt das Backend dann eine pausierte Runde fort oder beginnt nach 20 neuen bewerteten Antworten eine neue; fällt die Erlaubnis weg, hält der Trainer nach dem laufenden Schritt an. Beim Beenden der App schreibt er noch seinen Checkpoint (bis 60 s).

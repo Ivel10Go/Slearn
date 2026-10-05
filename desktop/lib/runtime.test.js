@@ -82,3 +82,27 @@ test("gepackt startet das eingefrorene Backend, sonst Python", () => {
   assert.equal(dev.command, "python3");
   assert.ok(dev.args[0].endsWith("desktop_main.py"));
 });
+
+test("ohne Trainer-Python bleibt das Training aus", () => {
+  assert.deepEqual(runtime.trainerEnv({ userDataDir: tempDir(), packaged: false, resourcesPath: "", repoRoot: "/repo", env: {} }), {});
+});
+
+test("der Trainer kommt aus trainer.json, die Umgebung schlaegt die Datei", () => {
+  const dir = tempDir();
+  fs.writeFileSync(path.join(dir, "trainer.json"), JSON.stringify({ python: "E:/venv/python.exe", cache: "E:/hf" }));
+  const ausDatei = runtime.trainerEnv({ userDataDir: dir, packaged: true, resourcesPath: "/res", repoRoot: "/repo", env: {} });
+  assert.equal(ausDatei.TRAINER_PYTHON, "E:/venv/python.exe");
+  assert.equal(ausDatei.TRAINER_CACHE_PATH, "E:/hf");
+  assert.equal(ausDatei.TRAINER_DIR, path.join("/res", "trainer"));
+
+  const ausUmgebung = runtime.trainerEnv({ userDataDir: dir, packaged: false, resourcesPath: "/res", repoRoot: "/repo", env: { TRAINER_PYTHON: "/py" } });
+  assert.equal(ausUmgebung.TRAINER_PYTHON, "/py");
+  assert.equal(ausUmgebung.TRAINER_DIR, path.join("/repo", "trainer"));
+});
+
+test("trainiert wird nur am Netz und wenn der Rechner ruht", () => {
+  const ruhig = runtime.TRAINING_IDLE_SECONDS;
+  assert.equal(runtime.trainingAllowed({ onBattery: false, idleSeconds: ruhig }), true);
+  assert.equal(runtime.trainingAllowed({ onBattery: true, idleSeconds: ruhig * 10 }), false);
+  assert.equal(runtime.trainingAllowed({ onBattery: false, idleSeconds: ruhig - 1 }), false);
+});

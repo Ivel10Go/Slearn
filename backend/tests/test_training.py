@@ -176,7 +176,6 @@ def test_korrigiertes_datum_gilt_als_korrigiert_nicht_als_gut() -> None:
         memory_deleted=False,
     )
     assert training_service.example_label(beispiel) == "corrected"
-    assert training_service.export_rows([beispiel])[0]["label"] == "corrected"
 
 
 def test_widerruf_behaelt_die_beispiele_und_loeschen_raeumt_auf(

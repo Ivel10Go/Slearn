@@ -13,13 +13,12 @@ Was hier passiert, und was (noch) nicht:
   Daumen stehen nebeneinander; keines ueberschreibt das andere.
 * **Kein Training.** Das kommt als eigener Schritt (lokal auf starken
   Rechnern, siehe ``training_hardware.py``, spaeter optional in der Cloud) und
-  liest nur :func:`export_rows`.
+  liest nur den Datensatz aus ``training_data.py``.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -30,6 +29,7 @@ from app.db.assistant import MEMORY_SOURCE_ASSISTANT, RATING_BAD, RATING_GOOD, A
 from app.db.entities import UserSettings
 
 PREFERENCE_KEY: Final[str] = "train_on_conversations"
+AUTO_PREFERENCE_KEY: Final[str] = "train_automatically"
 
 #: Obergrenze je Nutzer. Ein Beispiel traegt den ganzen Prompt (bis ~20 KB mit
 #: Dokumentauszuegen); 2000 sind rund 40 MB - genug fuer LoRA, und die Platte
@@ -49,13 +49,29 @@ _QUESTION_RE = re.compile(r"^Person:\s*(.*)$", re.MULTILINE)
 # --- Freigabe ----------------------------------------------------------------
 
 
-def training_enabled(db: Session, user_id: int) -> bool:
-    """Darf gesammelt werden? Standard und Fehlerfall: nein."""
+def _flag(db: Session, user_id: int, key: str) -> bool:
     settings = db.scalar(select(UserSettings).where(UserSettings.user_id == user_id))
     if settings is None or not isinstance(settings.preferences, dict):
         return False
-    wert = settings.preferences.get(PREFERENCE_KEY)
+    wert = settings.preferences.get(key)
     return wert if isinstance(wert, bool) else False
+
+
+def _set_flag(db: Session, user_id: int, key: str, enabled: bool) -> bool:
+    settings = db.scalar(select(UserSettings).where(UserSettings.user_id == user_id))
+    if settings is None:
+        settings = UserSettings(user_id=user_id)
+        db.add(settings)
+    einstellungen: dict[str, Any] = dict(settings.preferences) if isinstance(settings.preferences, dict) else {}
+    einstellungen[key] = enabled
+    settings.preferences = einstellungen
+    db.flush()
+    return enabled
+
+
+def training_enabled(db: Session, user_id: int) -> bool:
+    """Darf gesammelt werden? Standard und Fehlerfall: nein."""
+    return _flag(db, user_id, PREFERENCE_KEY)
 
 
 def set_training_enabled(db: Session, user_id: int, enabled: bool) -> bool:
@@ -64,15 +80,20 @@ def set_training_enabled(db: Session, user_id: int, enabled: bool) -> bool:
     Ein Widerruf loescht die gesammelten Beispiele **nicht** - ein versehentlicher
     Klick soll nicht Wochen an Daten kosten. Dafuer gibt es "Alle loeschen".
     """
-    settings = db.scalar(select(UserSettings).where(UserSettings.user_id == user_id))
-    if settings is None:
-        settings = UserSettings(user_id=user_id)
-        db.add(settings)
-    einstellungen: dict[str, Any] = dict(settings.preferences) if isinstance(settings.preferences, dict) else {}
-    einstellungen[PREFERENCE_KEY] = enabled
-    settings.preferences = einstellungen
-    db.flush()
-    return enabled
+    return _set_flag(db, user_id, PREFERENCE_KEY, enabled)
+
+
+def auto_training_enabled(db: Session, user_id: int) -> bool:
+    """Darf im Hintergrund trainiert werden? Eigene Freigabe, Standard aus.
+
+    Sammeln und Trainieren sind zwei Entscheidungen: wer sammelt, will nicht
+    zwingend, dass die Grafikkarte nachts anlaeuft.
+    """
+    return _flag(db, user_id, AUTO_PREFERENCE_KEY)
+
+
+def set_auto_training(db: Session, user_id: int, enabled: bool) -> bool:
+    return _set_flag(db, user_id, AUTO_PREFERENCE_KEY, enabled)
 
 
 # --- Sammeln -----------------------------------------------------------------
@@ -233,24 +254,3 @@ def delete_all_examples(db: Session, user_id: int) -> int:
     if ids:
         db.execute(delete(TrainingExample).where(TrainingExample.id.in_(ids)))
     return len(ids)
-
-
-def export_rows(examples: Sequence[TrainingExample]) -> list[dict[str, Any]]:
-    """Chat-Datensatz (``messages``) fuer den spaeteren Trainer - nur Beispiele mit Urteil."""
-    rows: list[dict[str, Any]] = []
-    for example in examples:
-        label = example_label(example)
-        if label is None:
-            continue
-        rows.append(
-            {
-                "messages": [
-                    {"role": "system", "content": example.system_prompt},
-                    {"role": "user", "content": example.prompt},
-                    {"role": "assistant", "content": example.completion},
-                ],
-                "label": label,
-                "applied_actions": list(example.applied_actions),
-            }
-        )
-    return rows

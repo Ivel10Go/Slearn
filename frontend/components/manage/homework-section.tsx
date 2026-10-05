@@ -1,17 +1,16 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import { AlarmClock, CheckCircle2, LoaderCircle, Plus, RefreshCw, X } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { AlarmClock, Check, CheckCircle2, LoaderCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, FormError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { RowActions, SectionBanner } from "@/components/manage/row-actions";
+import { RowActions, SectionBanner, SectionHeader } from "@/components/manage/row-actions";
 import {
   createHomework,
   deleteHomework,
@@ -22,7 +21,7 @@ import {
   type HomeworkWrite,
 } from "@/lib/api";
 import { toDateTimeLocal, toUtcIso } from "@/lib/datetime";
-import { formatDate, formatDueDate } from "@/lib/format";
+import { formatDueDate } from "@/lib/format";
 import { useCollection } from "@/lib/use-collection";
 import { useSubjectOptions } from "@/lib/use-subject-options";
 import { cn } from "@/lib/utils";
@@ -152,28 +151,22 @@ export function HomeworkSection({ reference }: { reference: Date }) {
   }
 
   return (
-    <Card id="homework" className={anchorClass}>
-      <CardHeader className="flex-row flex-wrap items-start justify-between space-y-0 pb-3">
-        <div>
-          <CardTitle>Hausaufgaben</CardTitle>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant={uebersicht.offen.length ? "warning" : "success"}>{uebersicht.offen.length} offen</Badge>
-          <Button type="button" size="icon" variant="ghost" onClick={() => void sammlung.reload()} aria-label="Hausaufgaben neu laden" disabled={sammlung.status === "loading"}>
-            <RefreshCw className={cn(sammlung.status === "loading" && "animate-spin")} aria-hidden="true" />
-          </Button>
-          <Button type="button" size="sm" onClick={() => (formularOffen && bearbeitet === null ? schliessen() : oeffnen())} aria-expanded={formularOffen && bearbeitet === null}>
-            {formularOffen && bearbeitet === null ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
-            {formularOffen && bearbeitet === null ? "Schließen" : "Neu"}
-          </Button>
-        </div>
-      </CardHeader>
+    <Card id="homework" className={cn(anchorClass, "@container")}>
+      <SectionHeader
+        title="Hausaufgaben"
+        count={`${uebersicht.offen.length} offen`}
+        loading={sammlung.status === "loading"}
+        onReload={() => void sammlung.reload()}
+        formOpen={formularOffen && bearbeitet === null}
+        onToggleForm={() => (formularOffen && bearbeitet === null ? schliessen() : oeffnen())}
+        newLabel="Neue Hausaufgabe"
+      />
 
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 pb-0">
         <SectionBanner error={sammlung.error} actionError={sammlung.actionError} onRetry={() => void sammlung.reload()} />
 
         {formularOffen ? (
-          <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
+          <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-border bg-muted/40 p-4">
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-semibold">{bearbeitet === null ? "Neue Hausaufgabe" : "Hausaufgabe bearbeiten"}</p>
               <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
@@ -193,7 +186,7 @@ export function HomeworkSection({ reference }: { reference: Date }) {
               )}
             </Field>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 @md:grid-cols-2">
               <Field id="hausaufgabe-faellig" label="Fällig am" required>
                 {(props) => (
                   <Input
@@ -252,16 +245,18 @@ export function HomeworkSection({ reference }: { reference: Date }) {
         ) : null}
 
         {sammlung.status === "loading" && sammlung.items.length === 0 ? (
-          <div className="space-y-3" aria-busy="true" aria-label="Hausaufgaben werden geladen">
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
+          <div className="space-y-2 pb-4" aria-busy="true" aria-label="Hausaufgaben werden geladen">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
           </div>
         ) : uebersicht.offen.length === 0 && uebersicht.erledigt.length === 0 ? (
-          <EmptyState icon={CheckCircle2} title="Noch keine Hausaufgaben" description="Lege deine erste Aufgabe an – sie landet direkt in dieser Liste." />
+          <div className="pb-4">
+            <EmptyState icon={CheckCircle2} title="Noch keine Hausaufgaben" description="Neue Aufgaben landen direkt in dieser Liste." />
+          </div>
         ) : (
-          <div className="space-y-4">
+          <div className="-mx-4 border-t border-border">
             {uebersicht.offen.length > 0 ? (
-              <ul className="space-y-2.5">
+              <ul className="divide-y divide-border">
                 {uebersicht.offen.map((aufgabe) => (
                   <AufgabenZeile
                     key={aufgabe.id}
@@ -278,11 +273,11 @@ export function HomeworkSection({ reference }: { reference: Date }) {
             ) : null}
 
             {uebersicht.erledigt.length > 0 ? (
-              <details className="group">
-                <summary className="cursor-pointer list-none text-xs font-medium text-muted-foreground">
+              <details className="group border-t border-border first:border-t-0">
+                <summary className="cursor-pointer list-none px-4 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground">
                   {uebersicht.erledigt.length} erledigt
                 </summary>
-                <ul className="mt-3 space-y-2.5">
+                <ul className="divide-y divide-border border-t border-border">
                   {uebersicht.erledigt.map((aufgabe) => (
                     <AufgabenZeile
                       key={aufgabe.id}
@@ -323,8 +318,13 @@ function AufgabenZeile({
   onDelete: () => void;
 }) {
   const faellig = formatDueDate(aufgabe.due_date, reference);
+  // `formatDueDate` sagt "Heute fällig", "Morgen fällig", "Überfällig" -
+  // oder liefert nur das Datum. Das Datum bekommt das Wort davor, damit die
+  // Zeile nicht zweimal dasselbe Datum zeigt (relativ und absolut).
+  const faelligText = /fällig/i.test(faellig) ? faellig : `Fällig ${faellig}`;
+  const ueberfaellig = faellig === "Überfällig" && !aufgabe.completed;
   return (
-    <li className="flex items-start gap-3 border border-border bg-card/60 p-3.5 transition-colors hover:border-foreground/40">
+    <li className="flex items-start gap-3 px-4 py-2.5">
       <button
         type="button"
         role="checkbox"
@@ -333,31 +333,34 @@ function AufgabenZeile({
         onClick={onToggle}
         disabled={busy}
         className={cn(
-          "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center border transition-colors disabled:opacity-50",
-          aufgabe.completed ? "border-foreground bg-foreground text-background" : "border-border bg-muted hover:border-foreground",
+          "mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border transition-colors disabled:opacity-50",
+          aufgabe.completed ? "border-foreground bg-foreground text-background" : "border-input hover:border-foreground",
         )}
       >
-        {aufgabe.completed ? <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> : <span className="sr-only">Nicht erledigt</span>}
+        {aufgabe.completed ? <Check className="h-3 w-3" strokeWidth={3} aria-hidden="true" /> : null}
       </button>
 
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className={cn("truncate text-sm font-semibold", aufgabe.completed && "text-muted-foreground line-through")}>{aufgabe.title}</p>
-          {fachname ? <span className="text-xs font-semibold text-primary">{fachname}</span> : null}
-        </div>
-        {aufgabe.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{aufgabe.description}</p> : null}
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-          <AlarmClock className="h-3.5 w-3.5" aria-hidden="true" />
-          <span className={cn(faellig === "Überfällig" && !aufgabe.completed && "text-destructive")}>{faellig}</span>
-          <span className="text-border">·</span>
-          <span>{formatDate(aufgabe.due_date, { day: "2-digit", month: "short" })}</span>
-          {aufgabe.source !== "manual" ? (
+        <p className={cn("truncate text-[13px] font-medium", aufgabe.completed && "text-muted-foreground line-through")}>{aufgabe.title}</p>
+        <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+          {fachname ? (
             <>
-              <span className="text-border">·</span>
-              <span>aus dem Schulportal</span>
+              <span className="font-medium text-foreground/80">{fachname}</span>
+              <span aria-hidden="true">·</span>
             </>
           ) : null}
-        </div>
+          <span className={cn("inline-flex items-center gap-1", ueberfaellig && "font-medium text-destructive")}>
+            <AlarmClock className="h-3 w-3" aria-hidden="true" />
+            {faelligText}
+          </span>
+          {aufgabe.source !== "manual" ? (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>Schulportal</span>
+            </>
+          ) : null}
+        </p>
+        {aufgabe.description ? <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-muted-foreground">{aufgabe.description}</p> : null}
       </div>
 
       <RowActions label={aufgabe.title} onEdit={onEdit} onDelete={onDelete} busy={busy} />

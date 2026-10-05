@@ -109,6 +109,8 @@ class TrainingStatsRead(BaseModel):
 
 class TrainingStatusRead(BaseModel):
     enabled: bool
+    #: Im Hintergrund trainieren, wenn der Rechner am Netz haengt und ruht.
+    auto: bool = False
     max_examples: int
     stats: TrainingStatsRead
     hardware: TrainingHardwareRead
@@ -137,3 +139,60 @@ class TrainingFeedback(BaseModel):
     #: ``rejected`` = ein Vorschlag wurde verworfen; ``good``/``bad`` = Daumen;
     #: ``cleared`` nimmt den Daumen zurueck.
     event: Literal["rejected", "good", "bad", "cleared"]
+
+
+class TrainingRunRead(BaseModel):
+    """Eine Trainingsrunde, gelesen aus ihrem Ordner (``training_jobs.py``)."""
+
+    run_id: str
+    base_model_id: str
+    status: Literal["pending", "loading", "running", "paused", "converting", "done", "failed"]
+    #: Laeuft der Trainer gerade?
+    active: bool
+    step: int
+    total_steps: int
+    example_count: int
+    loss: float | None = None
+    eval_loss_base: float | None = None
+    eval_loss: float | None = None
+    #: Anteil der Pruefantworten mit richtiger Art und richtigem Datum (0-1).
+    eval_score_base: float | None = None
+    eval_score: float | None = None
+    seconds_per_step: float | None = None
+    skipped_too_long: int = 0
+    error: str | None = None
+    adapter_version: int | None = None
+    activated: bool = False
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class TrainingRunStart(BaseModel):
+    #: Leer = das Modell, das der Assistent gerade benutzt.
+    model_id: str | None = None
+
+
+class AdapterVersionRead(BaseModel):
+    version: int
+    example_count: int
+    eval_score: float | None = None
+    eval_loss: float | None = None
+    eval_loss_base: float | None = None
+    created_at: str
+    active: bool
+
+
+class AdaptersRead(BaseModel):
+    model_id: str
+    active_version: int | None = None
+    versions: list[AdapterVersionRead]
+
+
+class TrainingAutoUpdate(BaseModel):
+    enabled: bool
+
+
+class TrainingConditions(BaseModel):
+    """Von der Desktop-App: darf gerade trainiert werden (am Netz, Rechner ruht)?"""
+
+    allowed: bool
