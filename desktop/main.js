@@ -233,10 +233,10 @@ function createMainWindow() {
     title: "Lernraum",
     backgroundColor: windowBackground(),
     autoHideMenuBar: true,
-    // macOS: die Ampelknoepfe sitzen in der Seitenleiste (siehe `mac:` in
-    // `globals.css`). Windows behaelt den Systemrahmen - er folgt ueber
-    // `nativeTheme` dem gewaehlten Design.
-    ...(isMac ? { titleBarStyle: /** @type {const} */ ("hiddenInset"), trafficLightPosition: { x: 16, y: 18 } } : {}),
+    // Beide Systeme behalten ihre normale Titelleiste; sie folgt ueber
+    // `nativeTheme` dem gewaehlten Design. Mit `hiddenInset` lagen die
+    // Ampelknoepfe des Macs ueber der Oberflaeche - auf schmalen Fenstern ohne
+    // Seitenleiste direkt ueber dem Seitenkopf.
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,

@@ -152,10 +152,9 @@ export function AppShell({ children, user }: AppShellProps) {
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[232px] flex-col border-r border-border bg-sidebar lg:flex">
         {/*
           Die Kopfzeile der Seitenleiste ist in der Desktop-App die Fensterleiste:
-          man zieht das Fenster daran. Auf dem Mac liegen die Ampelknoepfe hier,
-          deshalb rueckt die Marke dort nach unten.
+          man zieht das Fenster daran.
         */}
-        <div className="app-drag flex h-12 shrink-0 items-center px-4 mac:h-[52px] mac:items-end mac:pb-2">
+        <div className="app-drag flex h-12 shrink-0 items-center px-4">
           <Link href="/" className="app-no-drag flex items-center gap-2 rounded-md px-1 py-1" aria-label="Lernraum Startseite">
             <BrandMark />
             <span className="text-[13px] font-semibold tracking-tight">Lernraum</span>

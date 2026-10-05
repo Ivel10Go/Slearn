@@ -5,7 +5,6 @@
    `components/desktop-bridge.tsx`). Damit kann eine Komponente Platz fuer die
    Fensterknoepfe lassen, ohne im Browser leere Raender zu bekommen. */
 @custom-variant desktop (&:where([data-desktop], [data-desktop] *));
-@custom-variant mac (&:where([data-platform="darwin"], [data-platform="darwin"] *));
 
 /*
  * Schwarz-Weiss mit einer Graustufen-Leiter, keine Akzentfarbe.
