@@ -109,6 +109,8 @@ function LessonCell({ lesson, reference, detailed }: { lesson: DashboardLesson; 
         state === "completed" && !isCurrent && "opacity-50",
         lesson.isCancelled && "opacity-70",
       )}
+      // Die Fachfarbe traegt nur die Randlinie; die laufende Stunde bleibt schwarz markiert.
+      style={isCurrent ? undefined : { borderLeftColor: lesson.color }}
       title={`${lesson.subject}${lesson.title ? ` · ${lesson.title}` : ""} · ${formatTime(lesson.startTime)} – ${formatTime(lesson.endTime)} Uhr · ${lesson.room} · ${lesson.teacher}${lesson.isCancelled ? " · Entfallen" : ""}`}
     >
       {detailed ? (

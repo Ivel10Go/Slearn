@@ -477,7 +477,7 @@ export async function getSubjectOptions(): Promise<SubjectOption[]> {
 export async function createSubject(input: SubjectWrite): Promise<Subject> {
   const payload = await apiRequest("/v1/subjects", {
     method: "POST",
-    body: JSON.stringify(compact({ ...input, color: input.color ?? "#3B82F6" })),
+    body: JSON.stringify(compact({ ...input })),
   });
   return parseSubjectRead(payload);
 }

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta
 
-from app.db.entities import Lesson, Subject, SyncSource, User
+from app.db.entities import Lesson, Subject, SyncSource, User, UserSettings
+from app.services import lesson_choices
 from app.services.timetable_import import import_timetable
 from app.services.webuntis import WebUntisEntity, WebUntisLessonEntry, WebUntisTimetable
 from fastapi.testclient import TestClient
@@ -82,6 +83,80 @@ def test_auswahl_entfernt_die_anderen_stunden_und_bleibt_aenderbar(
     db.expire_all()
     subjects = set(db.scalars(select(Lesson.subject_id).where(Lesson.user_id == user.id)).all())
     assert subjects == {religion.id, mathe.id}
+
+
+def test_wochenweise_unterschiedliche_parallelfaecher_sind_eine_frage(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    login(client)
+    ethik = Subject(user_id=user.id, name="Ethik")
+    evangelisch = Subject(user_id=user.id, name="ev. Religion")
+    katholisch = Subject(user_id=user.id, name="kath. Religion")
+    db.add_all([ethik, evangelisch, katholisch])
+    db.flush()
+    wednesday = _next_monday() + timedelta(days=2)
+    for week in range(2):
+        day = wednesday + timedelta(weeks=week)
+        db.add(_lesson(user, evangelisch, day, time(9, 35), time(11, 10)))
+        db.add(_lesson(user, katholisch, day, time(9, 35), time(11, 10)))
+    # Ethik liegt nur in der ersten Woche daneben.
+    db.add(_lesson(user, ethik, wednesday, time(9, 35), time(11, 10)))
+    db.commit()
+
+    groups = client.get("/api/v1/timetable/conflicts").json()
+    assert len(groups) == 1
+    assert [option["name"] for option in groups[0]["options"]] == ["Ethik", "ev. Religion", "kath. Religion"]
+    key = groups[0]["key"]
+
+    saved = client.put("/api/v1/timetable/choices", json={"selections": [{"key": key, "attended": [ethik.id]}]})
+    assert saved.status_code == 200
+    groups = saved.json()["groups"]
+    assert len(groups) == 1
+    assert groups[0]["decided"] is True
+
+    umentschieden = client.put(
+        "/api/v1/timetable/choices", json={"selections": [{"key": groups[0]["key"], "attended": [evangelisch.id]}]}
+    )
+    assert umentschieden.status_code == 200
+    # Ohne Schulportal kommt ev. Religion erst beim naechsten Abruf zurueck; ausgeschlossen ist sie nicht mehr.
+    db.expire_all()
+    ausgeschlossen = {key[0] for key in lesson_choices.excluded_keys(db, user.id)}
+    assert ausgeschlossen == {ethik.id, katholisch.id}
+
+
+def test_auswahl_unter_altem_schluessel_gilt_als_entschieden(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    client, db, user = app_context
+    login(client)
+    ethik, religion, _ = _parallel_setup(db, user)
+    stored = db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+    if stored is None:
+        stored = UserSettings(user_id=user.id, preferences={})
+        db.add(stored)
+    # So sah ein gespeicherter Eintrag vor dem Zusammenfuehren aus: anderer Schluessel, dieselbe Abwahl.
+    stored.preferences = {
+        **(stored.preferences or {}),
+        "lesson_choices": {
+            "0|alt": [{"subject_id": ethik.id, "name": "Ethik", "weekday": 0, "start": "09:35", "end": "10:20"}]
+        },
+    }
+    db.commit()
+
+    group = client.get("/api/v1/timetable/conflicts").json()[0]
+    assert group["decided"] is True
+    assert {option["name"]: option["selected"] for option in group["options"]} == {"Ethik": False, "Religion": True}
+
+    # Umentscheiden muss den alten Eintrag mit aufraeumen, sonst bliebe Ethik ausgeschlossen.
+    saved = client.put("/api/v1/timetable/choices", json={"selections": [{"key": group["key"], "attended": [ethik.id]}]})
+    assert saved.status_code == 200
+    db.expire_all()
+    stored = db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+    assert stored is not None
+    choices = stored.preferences["lesson_choices"]
+    assert "0|alt" not in choices
+    assert {item["subject_id"] for item in choices[group["key"]]} == {religion.id}
 
 
 def test_auswahl_braucht_mindestens_ein_fach_aus_der_gruppe(

@@ -120,7 +120,12 @@ export function LessonChoicesCard({ onSaved }: LessonChoicesCardProps) {
                             aktiv ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
                           )}
                         >
-                          {option.name}
+                          <span className="inline-flex items-center gap-1.5">
+                            {option.color ? (
+                              <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: option.color }} aria-hidden="true" />
+                            ) : null}
+                            {option.name}
+                          </span>
                         </button>
                       );
                     })}

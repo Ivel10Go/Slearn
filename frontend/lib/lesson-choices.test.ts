@@ -8,7 +8,7 @@ function gruppe(key: string, weekday: number, start: string, end: string, faeche
     start,
     end,
     decided,
-    options: faecher.map(([subject_id, name, selected]) => ({ subject_id, name, short_name: null, selected })),
+    options: faecher.map(([subject_id, name, selected]) => ({ subject_id, name, short_name: null, color: null, selected })),
   };
 }
 

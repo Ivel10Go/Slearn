@@ -22,7 +22,7 @@ def create_subject(payload: SubjectCreate, current_user: CurrentUser, db: Databa
         teacher = db.get(Teacher, payload.teacher_id)
         if teacher is None or teacher.user_id != current_user.id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
-    subject = Subject(user_id=current_user.id, **payload.model_dump())
+    subject = Subject(user_id=current_user.id, **payload.model_dump(exclude={"color"} if payload.color is None else None))
     db.add(subject)
     try:
         db.commit()
