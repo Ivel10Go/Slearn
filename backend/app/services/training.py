@@ -30,6 +30,7 @@ from app.db.entities import UserSettings
 
 PREFERENCE_KEY: Final[str] = "train_on_conversations"
 AUTO_PREFERENCE_KEY: Final[str] = "train_automatically"
+MATERIALS_PREFERENCE_KEY: Final[str] = "train_on_materials"
 
 #: Obergrenze je Nutzer. Ein Beispiel traegt den ganzen Prompt (bis ~20 KB mit
 #: Dokumentauszuegen); 2000 sind rund 40 MB - genug fuer LoRA, und die Platte
@@ -94,6 +95,19 @@ def auto_training_enabled(db: Session, user_id: int) -> bool:
 
 def set_auto_training(db: Session, user_id: int, enabled: bool) -> bool:
     return _set_flag(db, user_id, AUTO_PREFERENCE_KEY, enabled)
+
+
+def materials_training_enabled(db: Session, user_id: int) -> bool:
+    """Duerfen Aufschriebe und Arbeitsblaetter ins Training? Eigene Freigabe, Standard aus.
+
+    Gespraeche und Unterrichtsmaterial sind verschiedene Inhalte: wer seine
+    Antworten sammeln laesst, hat damit nicht seine Hefte freigegeben.
+    """
+    return _flag(db, user_id, MATERIALS_PREFERENCE_KEY)
+
+
+def set_materials_training(db: Session, user_id: int, enabled: bool) -> bool:
+    return _set_flag(db, user_id, MATERIALS_PREFERENCE_KEY, enabled)
 
 
 # --- Sammeln -----------------------------------------------------------------

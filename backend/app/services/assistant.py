@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta
 from difflib import SequenceMatcher
@@ -58,7 +58,7 @@ from app.db.entities import (
     Subject,
     User,
 )
-from app.services import ai_routing
+from app.services import ai_routing, learner
 from app.services import training as training_service
 from app.services.documents import DocumentSource, search_chunks
 from app.services.local_runtimes import active_manager
@@ -796,6 +796,10 @@ SYSTEM_PROMPT: Final = (
     "- Nenne nur Fakten, die woertlich oder eindeutig in diesen Bloecken stehen. Erfinde nichts, "
     "auch keine Noten, Daten oder Inhalte.\n"
     "- Die Notizen ueber die Person sind KEIN Dokumentinhalt. Gib sie nie als Inhalt eines Dokuments aus.\n"
+    "- Das Lernprofil sagt, was der Person schwerfaellt und wie sie lernt. Erklaere Unsicheres "
+    "kleinschrittiger und schlage passende Wiederholungen vor.\n"
+    "- Auszuege mit [Aufschrieb ...] sind die eigenen Hefteintraege der Person. Erklaerst du etwas, nutze "
+    "ihre Begriffe, Abkuerzungen und ihren Aufbau, damit es zu ihrem Heft passt.\n"
     "- Fragt die Person nach einem Dokument und es gibt keinen Auszug daraus, sag ehrlich, dass du den "
     "Inhalt nicht siehst, und nenne die Dokumente, die du hast.\n"
     "- Fehlt eine Information, sag genau, was fehlt, statt zu raten.\n\n"
@@ -840,23 +844,56 @@ def _is_known(content: str, known: Sequence[str]) -> bool:
     return any(SequenceMatcher(None, candidate, _letters(other)).ratio() >= 0.8 for other in known)
 
 
+_KIND_LABELS: Final[dict[str, str]] = {
+    "aufschrieb": "Aufschrieb",
+    "arbeitsblatt": "Arbeitsblatt",
+    "loesung": "Lösung",
+}
+
+
+def material_label(document: Document) -> str:
+    """"Aufschrieb · Mathe · Ableitungen · 12.03.2026" - was das Modell ueber die Herkunft wissen muss."""
+    parts: list[str] = []
+    if document.material_kind in _KIND_LABELS:
+        parts.append(_KIND_LABELS[document.material_kind])
+    if document.subject is not None:
+        parts.append(document.subject.short_name or document.subject.name)
+    if document.material_topic:
+        parts.append(document.material_topic)
+    if document.material_date is not None:
+        parts.append(f"{document.material_date:%d.%m.%Y}")
+    return " · ".join(parts)
+
+
+def format_excerpt(index: int, hit: DocumentSource, label: str = "") -> str:
+    """Eine Zeile im Block "Dokumentauszuege" - auch das Trainingsformat (``training_data``)."""
+    herkunft = f"{hit.filename} [{label}]" if label else hit.filename
+    return f"[{index}] {herkunft} (Abschnitt {hit.chunk_index + 1}): {hit.content}"
+
+
 def build_user_prompt(
     history: Sequence[ChatTurn],
     context: Sequence[str],
     memories: Sequence[AssistantMemory],
     hits: Sequence[DocumentSource],
     grade_context: Sequence[str],
+    labels: Mapping[int, str] | None = None,
+    profile: Sequence[str] = (),
 ) -> str:
     parts: list[str] = ["--- Schulstand ---", *context]
     if memories:
         parts.append("")
         parts.append("--- Notizen ueber die Person ---")
         parts.extend(f"- {memory.content}" for memory in memories)
+    if profile:
+        parts.append("")
+        parts.append("--- Lernprofil ---")
+        parts.extend(f"- {line}" for line in profile)
     parts.append("")
     parts.append("--- Dokumentauszuege ---")
     if hits:
         for index, hit in enumerate(hits, start=1):
-            parts.append(f"[{index}] {hit.filename} (Abschnitt {hit.chunk_index + 1}): {hit.content}")
+            parts.append(format_excerpt(index, hit, (labels or {}).get(hit.document_id, "")))
     else:
         parts.append("Zu dieser Frage wurde in den Dokumenten nichts gefunden.")
     if grade_context:
@@ -993,7 +1030,9 @@ def chat(
     grade_context = list(grade_context) if grades_allowed else []
     entry_wanted = wants_entry(question)
     system_prompt = SYSTEM_PROMPT + (ACTION_PROMPT if entry_wanted else "") + (VOICE_PROMPT if voice else "")
-    user_prompt = build_user_prompt(history, context, memories, hits, grade_context)
+    labels = {document.id: material_label(document) for document in documents}
+    profile = learner.profile_lines(db, user.id, zone, moment)
+    user_prompt = build_user_prompt(history, context, memories, hits, grade_context, labels, profile)
     outcome = (
         ai_routing.generate_with_routes(
             routes,

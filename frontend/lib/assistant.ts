@@ -237,6 +237,7 @@ const trainingHardwareSchema = z.object({
 const trainingStatusSchema = z.object({
   enabled: z.boolean(),
   auto: z.boolean().optional().default(false),
+  materials: z.boolean().optional().default(false),
   max_examples: z.number().int(),
   stats: z.object({
     total: z.number().int(),
@@ -304,6 +305,11 @@ export async function deleteAllTrainingExamples(): Promise<void> {
   await apiRequest("/v1/assistant/training/examples", { method: "DELETE" });
 }
 
+export async function setMaterialsTraining(enabled: boolean): Promise<TrainingStatus> {
+  const payload = await apiRequest("/v1/assistant/training/materials", { method: "PUT", body: JSON.stringify({ enabled }) });
+  return trainingStatusSchema.parse(payload);
+}
+
 export async function setAutoTraining(enabled: boolean): Promise<TrainingStatus> {
   const payload = await apiRequest("/v1/assistant/training/auto", { method: "PUT", body: JSON.stringify({ enabled }) });
   return trainingStatusSchema.parse(payload);
@@ -314,7 +320,7 @@ export async function setAutoTraining(enabled: boolean): Promise<TrainingStatus>
 const trainingRunSchema = z.object({
   run_id: z.string(),
   base_model_id: z.string(),
-  status: z.enum(["pending", "loading", "running", "paused", "converting", "done", "failed"]),
+  status: z.enum(["pending", "loading", "generating", "running", "paused", "converting", "done", "failed"]),
   active: z.boolean(),
   step: z.number().int(),
   total_steps: z.number().int(),
@@ -324,6 +330,9 @@ const trainingRunSchema = z.object({
   eval_loss: z.number().nullable().optional().default(null),
   eval_score_base: z.number().nullable().optional().default(null),
   eval_score: z.number().nullable().optional().default(null),
+  qa_done: z.number().int().optional().default(0),
+  qa_total: z.number().int().optional().default(0),
+  qa_kept: z.number().int().optional().default(0),
   seconds_per_step: z.number().nullable().optional().default(null),
   skipped_too_long: z.number().int().optional().default(0),
   error: z.string().nullable().optional().default(null),
@@ -355,6 +364,7 @@ export type TrainingAdapters = z.infer<typeof adaptersSchema>;
 export const TRAINING_RUN_STATUS: Record<TrainingRun["status"], string> = {
   pending: "Wartet auf den Start",
   loading: "Lädt das Modell",
+  generating: "Übt mit deinem Material",
   running: "Trainiert",
   paused: "Pausiert",
   converting: "Prüft und speichert",
@@ -400,4 +410,48 @@ export function feedbackNebenbei(exampleId: number | null | undefined, event: Tr
     return;
   }
   void sendTrainingFeedback(exampleId, event).catch(() => undefined);
+}
+
+// --- Lernprofil und Abfrage --------------------------------------------------
+
+const learnerProfileSchema = z.object({ lines: z.array(z.string()) });
+
+const quizQuestionSchema = z.object({
+  question_id: z.number().int(),
+  question: z.string(),
+  document_id: z.number().int(),
+  filename: z.string(),
+  source: z.string(),
+});
+
+const quizResultSchema = z.object({
+  verdict: z.enum(["richtig", "teilweise", "falsch"]),
+  explanation: z.string(),
+  reference: z.string(),
+  excerpt: z.string(),
+  filename: z.string(),
+  source: z.string(),
+  topic: z.string().nullable().optional().default(null),
+  confidence_label: z.string().nullable().optional().default(null),
+});
+
+export type QuizQuestion = z.infer<typeof quizQuestionSchema>;
+export type QuizResult = z.infer<typeof quizResultSchema>;
+
+/** Genau die Zeilen, die bei jeder Frage als „Lernprofil“ im Prompt stehen. */
+export async function getLearnerProfile(): Promise<string[]> {
+  return learnerProfileSchema.parse(await apiRequest("/v1/assistant/profile")).lines;
+}
+
+export async function startQuiz(subjectId: number | null): Promise<QuizQuestion> {
+  const payload = await apiRequest("/v1/assistant/quiz", { method: "POST", body: JSON.stringify({ subject_id: subjectId }) });
+  return quizQuestionSchema.parse(payload);
+}
+
+export async function answerQuiz(questionId: number, answer: string): Promise<QuizResult> {
+  const payload = await apiRequest(`/v1/assistant/quiz/questions/${encodeURIComponent(String(questionId))}/answer`, {
+    method: "POST",
+    body: JSON.stringify({ answer }),
+  });
+  return quizResultSchema.parse(payload);
 }

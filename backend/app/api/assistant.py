@@ -36,8 +36,13 @@ from app.schemas.assistant import (
     AssistantChatRequest,
     AssistantChatResponse,
     AssistantRouteRead,
+    LearnerProfileRead,
     MemoryCreate,
     MemoryRead,
+    QuizAnswerSubmit,
+    QuizQuestionRead,
+    QuizResultRead,
+    QuizStart,
     TrainingAutoUpdate,
     TrainingConditions,
     TrainingConsentUpdate,
@@ -54,6 +59,7 @@ from app.schemas.documents import DocumentSourceOut
 from app.services import adapter_store, training_jobs
 from app.services import assistant as assistant_service
 from app.services import grades as grades_service
+from app.services import learner as learner_service
 from app.services import training as training_service
 from app.services.training_hardware import detect_training_hardware
 
@@ -195,6 +201,7 @@ def _training_status(db: DatabaseSession, user_id: int) -> TrainingStatusRead:
     return TrainingStatusRead(
         enabled=training_service.training_enabled(db, user_id),
         auto=training_service.auto_training_enabled(db, user_id),
+        materials=training_service.materials_training_enabled(db, user_id),
         max_examples=training_service.MAX_EXAMPLES_PER_USER,
         stats=TrainingStatsRead(**asdict(training_service.training_stats(db, user_id))),
         hardware=TrainingHardwareRead(**asdict(detect_training_hardware())),
@@ -372,6 +379,16 @@ def update_training_auto(
     return _training_status(db, current_user.id)
 
 
+@router.put("/training/materials", response_model=TrainingStatusRead)
+def update_training_materials(
+    payload: TrainingAutoUpdate, current_user: CurrentUser, db: DatabaseSession
+) -> TrainingStatusRead:
+    """Aufschriebe und Arbeitsblaetter fuers Training freigeben - eigene Freigabe, Standard aus."""
+    training_service.set_materials_training(db, current_user.id, payload.enabled)
+    db.commit()
+    return _training_status(db, current_user.id)
+
+
 @router.post("/training/conditions", response_model=TrainingRunRead | None)
 def training_conditions(
     payload: TrainingConditions,
@@ -391,3 +408,48 @@ def training_conditions(
             and training_service.training_enabled(db, current_user.id),
         )
     )
+
+
+# --- Lernprofil und Abfrage --------------------------------------------------
+
+
+@router.get("/profile", response_model=LearnerProfileRead)
+def learner_profile(current_user: CurrentUser, db: DatabaseSession, settings: AppSettings) -> LearnerProfileRead:
+    zone = assistant_service.user_zone(current_user, settings)
+    return LearnerProfileRead(lines=learner_service.profile_lines(db, current_user.id, zone))
+
+
+@router.post("/quiz", response_model=QuizQuestionRead, status_code=status.HTTP_201_CREATED)
+def start_quiz(
+    payload: QuizStart, current_user: CurrentUser, db: DatabaseSession, settings: AppSettings
+) -> QuizQuestionRead:
+    """Eine Frage aus dem eigenen Material - ohne Modell eine Lueckenfrage."""
+    try:
+        question = learner_service.ask_question(
+            db,
+            current_user.id,
+            learner_service.routes_generator(db, current_user.id, settings),
+            subject_id=payload.subject_id,
+            document_id=payload.document_id,
+        )
+    except learner_service.QuizError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return QuizQuestionRead(**asdict(question))
+
+
+@router.post("/quiz/questions/{question_id}/answer", response_model=QuizResultRead)
+def answer_quiz(
+    question_id: int, payload: QuizAnswerSubmit, current_user: CurrentUser, db: DatabaseSession, settings: AppSettings
+) -> QuizResultRead:
+    try:
+        result = learner_service.answer_question(
+            db,
+            current_user.id,
+            question_id,
+            payload.answer,
+            learner_service.routes_generator(db, current_user.id, settings),
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found") from exc
+    return QuizResultRead(**asdict(result))
+

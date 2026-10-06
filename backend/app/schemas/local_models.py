@@ -24,7 +24,7 @@ from pydantic import Field
 
 from app.schemas.common import UTCResponseModel
 
-ModelTask = Literal["text_generation", "speech_to_text", "text_to_speech", "embedding"]
+ModelTask = Literal["text_generation", "speech_to_text", "text_to_speech", "embedding", "image_to_text"]
 ModelStatus = Literal["not_downloaded", "downloading", "installed", "interrupted", "failed"]
 
 

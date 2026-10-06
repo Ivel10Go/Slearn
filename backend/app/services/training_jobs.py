@@ -46,6 +46,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.services import adapter_store, training_data
+from app.services import training as training_service
 from app.services.local_runtimes import LocalRuntimeManager
 from app.services.model_catalog import ModelCatalogError, model_spec
 from app.services.training_hardware import BACKEND_CUDA, TrainingHardware, detect_training_hardware
@@ -77,6 +78,8 @@ TRAINABLE_BASES: Final[dict[str, TrainableBase]] = {
 MIN_TRAIN_EXAMPLES: Final[int] = 8
 #: Automatisch beginnt eine neue Runde erst mit so vielen neuen bewerteten Beispielen.
 MIN_NEW_EXAMPLES: Final[int] = 20
+#: ... oder mit so vielen neuen Absaetzen aus Aufschrieben und Arbeitsblaettern.
+MIN_NEW_MATERIAL_CHUNKS: Final[int] = 10
 #: So lange darf der Trainer beim Beenden noch einen Checkpoint schreiben.
 SHUTDOWN_WAIT_SECONDS: Final[float] = 60.0
 
@@ -93,7 +96,7 @@ STATUS_PAUSED: Final[str] = "paused"
 STATUS_DONE: Final[str] = "done"
 STATUS_FAILED: Final[str] = "failed"
 #: Der Trainer schreibt diese drei nur, solange er lebt.
-_LIVE_STATUSES: Final[frozenset[str]] = frozenset({"loading", "running", "converting"})
+_LIVE_STATUSES: Final[frozenset[str]] = frozenset({"loading", "generating", "running", "converting"})
 
 
 class TrainingUnavailableError(RuntimeError):
@@ -118,6 +121,10 @@ class RunStatus:
     eval_loss: float | None
     eval_score_base: float | None
     eval_score: float | None
+    #: Fragen zum Material: erzeugt / gesamt / behalten (belegt aus dem Auszug).
+    qa_done: int
+    qa_total: int
+    qa_kept: int
     seconds_per_step: float | None
     skipped_too_long: int
     error: str | None
@@ -245,6 +252,9 @@ class TrainingRunner:
             eval_loss=_float(progress.get("eval_loss")),
             eval_score_base=_float(progress.get("eval_score_base")),
             eval_score=_float(progress.get("eval_score")),
+            qa_done=int(progress.get("qa_done") or 0),
+            qa_total=int(progress.get("qa_total") or 0),
+            qa_kept=int(progress.get("qa_kept") or 0),
             seconds_per_step=_float(progress.get("seconds_per_step")),
             skipped_too_long=int(progress.get("skipped_too_long") or 0),
             error=error if isinstance(error, str) else None,
@@ -308,10 +318,12 @@ class TrainingRunner:
         model_id = self._base_model(base_model_id)
         base = TRAINABLE_BASES[model_id]
         if dataset is None:
-            dataset = training_data.load_dataset(db, user_id, zone)
-        if len(dataset.train) < MIN_TRAIN_EXAMPLES:
+            dataset = self.load(db, user_id, zone)
+        usable = len(dataset.train) + len(dataset.qa_tasks)
+        if usable < MIN_TRAIN_EXAMPLES:
             raise TrainingJobError(
-                f"Noch zu wenige bewertete Beispiele: {len(dataset.train)} von {MIN_TRAIN_EXAMPLES}."
+                f"Noch zu wenig zum Trainieren: {usable} von {MIN_TRAIN_EXAMPLES} "
+                "(bewertete Antworten und Absätze aus freigegebenem Material)."
             )
         now = datetime.now(UTC)
         run = self.runs_root(user_id) / f"{RUN_PREFIX}{now:%Y%m%d-%H%M%S}"
@@ -334,7 +346,10 @@ class TrainingRunner:
                     "sha256": model_spec(model_id).files[0].sha256,
                 },
                 "cache_dir": str(self.cache_dir),
-                "dataset": {"fingerprint": dataset.fingerprint, "example_count": len(dataset.example_ids)},
+                "dataset": {
+                    "fingerprint": dataset.fingerprint,
+                    "example_count": len(dataset.example_ids) + len(dataset.material_chunk_ids),
+                },
                 "hyper": {},
             },
         )
@@ -399,22 +414,34 @@ class TrainingRunner:
 
     # ------------------------------------------------------------ Automatik
 
-    def trained_example_ids(self, user_id: int) -> set[int]:
-        """Alle Beispiele, die schon in einer abgeschlossenen Runde steckten."""
+    def load(self, db: Session, user_id: int, zone: ZoneInfo) -> training_data.TrainingDataset:
+        """Der Datensatz - Material nur mit der eigenen Freigabe ``train_on_materials``."""
+        materials = training_service.materials_training_enabled(db, user_id)
+        return training_data.load_dataset(db, user_id, zone, materials=materials)
+
+    def trained_ids(self, user_id: int, key: str = "example_ids") -> set[int]:
+        """Alle Beispiele (oder Materialabsaetze), die schon in einer abgeschlossenen Runde steckten."""
         ids: set[int] = set()
         for run in self._runs(user_id):
             if (run / REGISTERED_FILE).exists():
-                ids.update(_read_json(run / "data" / training_data.DATASET_FILE).get("example_ids", []))
+                ids.update(_read_json(run / "data" / training_data.DATASET_FILE).get(key, []))
         return ids
 
     def round_due(self, user_id: int, dataset: training_data.TrainingDataset) -> bool:
-        """Lohnt eine neue Runde? Beim ersten Mal ab ``MIN_TRAIN_EXAMPLES``, danach ab ``MIN_NEW_EXAMPLES`` neuen."""
-        if len(dataset.train) < MIN_TRAIN_EXAMPLES:
+        """Lohnt eine neue Runde? Beim ersten Mal ab ``MIN_TRAIN_EXAMPLES``, danach mit genug Neuem.
+
+        Neu ist, was in keiner abgeschlossenen Runde steckte: 20 bewertete
+        Antworten oder 10 Absaetze aus freigegebenem Material.
+        """
+        if len(dataset.train) + len(dataset.qa_tasks) < MIN_TRAIN_EXAMPLES:
             return False
-        trained = self.trained_example_ids(user_id)
-        if not trained:
+        trained = self.trained_ids(user_id)
+        trained_material = self.trained_ids(user_id, "material_chunk_ids")
+        if not trained and not trained_material:
             return True
-        return len(set(dataset.example_ids) - trained) >= MIN_NEW_EXAMPLES
+        new_examples = len(set(dataset.example_ids) - trained)
+        new_material = len(set(dataset.material_chunk_ids) - trained_material)
+        return new_examples >= MIN_NEW_EXAMPLES or new_material >= MIN_NEW_MATERIAL_CHUNKS
 
     def on_conditions(
         self, db: Session, user_id: int, zone: ZoneInfo, *, allowed: bool, auto: bool
@@ -437,7 +464,7 @@ class TrainingRunner:
                     self.check_available()
                     run = self._open_run(user_id)
                     if run is None:
-                        dataset = training_data.load_dataset(db, user_id, zone)
+                        dataset = self.load(db, user_id, zone)
                         if self.round_due(user_id, dataset):
                             run = self._prepare(db, user_id, zone, None, dataset)
                     elif _read_json(run / PROGRESS_FILE).get("status") == STATUS_FAILED:

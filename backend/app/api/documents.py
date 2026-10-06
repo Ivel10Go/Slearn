@@ -1,12 +1,13 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from app.api.deps import AppSettings, CurrentUser, DatabaseSession
-from app.db.entities import Document
+from app.db.entities import Document, Subject
 from app.schemas.documents import (
     DocumentAskRequest,
     DocumentAskResponse,
     DocumentHitOut,
+    DocumentMaterialUpdate,
     DocumentRead,
     DocumentSearchRequest,
     DocumentSearchResponse,
@@ -27,6 +28,29 @@ def list_documents(current_user: CurrentUser, db: DatabaseSession) -> list[Docum
             .order_by(Document.created_at.desc(), Document.id)
         ).all()
     )
+
+
+@router.patch("/{document_id}/material", response_model=DocumentRead)
+def update_document_material(
+    document_id: int, payload: DocumentMaterialUpdate, current_user: CurrentUser, db: DatabaseSession
+) -> Document:
+    """Korrigiert Art, Thema, Datum oder Fach. Von Hand Gesetztes ueberschreibt die Erkennung nie wieder."""
+    document = db.get(Document, document_id)
+    if document is None or document.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
+    changes = payload.model_dump(exclude_unset=True)
+    if changes.get("subject_id") is not None:
+        subject = db.get(Subject, changes["subject_id"])
+        if subject is None or subject.user_id != current_user.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
+    for field, value in changes.items():
+        setattr(document, field, value)
+    extra = dict(document.extra_data or {})
+    extra["manual_fields"] = sorted(set(extra.get("manual_fields", [])) | set(changes))
+    document.extra_data = extra
+    db.commit()
+    db.refresh(document)
+    return document
 
 
 @router.post("/search", response_model=DocumentSearchResponse)

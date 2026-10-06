@@ -41,13 +41,15 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.core.config import Settings, require_integration_encryption_key
 from app.core.crypto import CredentialDecryptionError, decrypt_credentials, has_credentials
 from app.core.time import utc_now
-from app.db.entities import Document, DocumentChunk, SyncSource
-from app.services import ai_routing
+from app.db.entities import ChunkEmbedding, Document, DocumentChunk, SyncSource
+from app.services import ai_routing, materials
 from app.services.ai_provider import AiProviderError, generate_embeddings
 
 logger = logging.getLogger("school_assistant")
 
-SUPPORTED_EXTENSIONS: frozenset[str] = frozenset({".txt", ".md", ".markdown"})
+# Ordner-Sync: alles mit Textebene. Fotos gehen ueber den Upload und den
+# Hintergrund-Indexer (``materials.py``), weil das Abschreiben dauert.
+SUPPORTED_EXTENSIONS: frozenset[str] = frozenset({".txt", ".md", ".markdown", ".pdf"})
 DOCUMENTS_SOURCE: str = "documents"
 UPLOAD_SOURCE: str = "upload"
 
@@ -143,20 +145,39 @@ def is_supported(path: Path) -> bool:
 
 
 def read_document_text(path: Path) -> str:
-    """Liest den Klartext einer unterstuetzten Datei.
+    """Liest den Klartext einer Datei mit Textebene (Text, Markdown, PDF).
 
-    Wirft ``ValueError`` fuer nicht unterstuetzte Formate und ``UnicodeError``
-    fuer Dateien, die sich keinem Lesen oeffnen. Bewusst nur Textformate: PDF
-    und Office brauchen zusaetzliche Pakete, die der schlanke Stack bewusst
-    nicht mitfuehrt.
+    Wirft ``ValueError`` fuer nicht unterstuetzte Formate. Scanseiten eines PDFs
+    fehlen hier - die schreibt der Hintergrund-Indexer ab.
     """
     if not is_supported(path):
         raise ValueError(f"Nicht unterstütztes Format: {path.suffix or 'ohne Endung'}")
-    raw = path.read_bytes()
-    try:
-        return raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return raw.decode("latin-1")
+    return materials.read_quick(path).text
+
+
+def _tokens_with_breaks(text: str) -> list[str]:
+    """Woerter und Zeilenumbrueche als eigene Stuecke - hoechstens eine Leerzeile am Stueck."""
+    tokens: list[str] = []
+    for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        words = line.split()
+        if tokens and tokens[-1] != "\n\n":
+            tokens.append("\n" if words else "\n\n")
+        elif tokens and tokens[-1] == "\n\n" and not words:
+            continue
+        tokens.extend(words)
+    while tokens and tokens[-1] in ("\n", "\n\n"):
+        tokens.pop()
+    return tokens
+
+
+def _join(tokens: list[str]) -> str:
+    out = ""
+    for token in tokens:
+        if token in ("\n", "\n\n"):
+            out = out.rstrip(" ") + token
+        else:
+            out += ("" if not out or out.endswith("\n") else " ") + token
+    return out.strip()
 
 
 def chunk_text(text: str, *, size: int = CHUNK_CHARS, overlap: int = CHUNK_OVERLAP) -> list[str]:
@@ -165,17 +186,22 @@ def chunk_text(text: str, *, size: int = CHUNK_CHARS, overlap: int = CHUNK_OVERL
     Die Einheit sind Woerter, nicht Zeichen, damit kein Wort in der Mitte
     zerschnitten wird. Die Ueberlappung haelt einen Teil des letzten Absatzes
     zum naechsten, damit ein gedachter Abschnitt nicht durch die Naht faellt.
+
+    **Zeilenumbrueche bleiben erhalten.** Ein Aufschrieb lebt von seiner Form -
+    Ueberschriften, Aufzaehlungen, "Merke"-Kaesten. Frueher wurde alles mit
+    Leerzeichen verbunden; dann sah das persoenliche Training nur Fliesstext und
+    konnte den Aufbau des Hefts nicht lernen.
     """
     if overlap >= size:
         raise ValueError("overlap must be smaller than size")
-    woerter = _WHITESPACE_RE.split(text.strip())
+    tokens = _tokens_with_breaks(text)
     chunks: list[str] = []
     aktuell: list[str] = []
     laenge = 0
-    for wort in woerter:
-        wortlaenge = len(wort) + 1
-        if aktuell and laenge + wortlaenge > size:
-            chunks.append(" ".join(aktuell))
+    for token in tokens:
+        laenge_token = len(token) + 1
+        if aktuell and laenge + laenge_token > size and token not in ("\n", "\n\n"):
+            chunks.append(_join(aktuell))
             keep: list[str] = []
             akku = 0
             for vorher in reversed(aktuell):
@@ -183,12 +209,14 @@ def chunk_text(text: str, *, size: int = CHUNK_CHARS, overlap: int = CHUNK_OVERL
                     break
                 keep.insert(0, vorher)
                 akku += len(vorher) + 1
+            while keep and keep[0] in ("\n", "\n\n"):
+                akku -= len(keep.pop(0)) + 1
             aktuell = keep
             laenge = akku
-        aktuell.append(wort)
-        laenge += wortlaenge
+        aktuell.append(token)
+        laenge += laenge_token
     if aktuell:
-        chunks.append(" ".join(aktuell))
+        chunks.append(_join(aktuell))
     return [chunk for chunk in chunks if chunk]
 
 
@@ -208,6 +236,8 @@ def mime_type_for(path: Path) -> str:
     suffix = path.suffix.lower()
     if suffix in {".md", ".markdown"}:
         return "text/markdown"
+    if suffix == ".pdf":
+        return "application/pdf"
     if suffix == ".csv":
         return "text/csv"
     return "text/plain"
@@ -248,7 +278,7 @@ def _load_provider(db: Session, user_id: int, settings: Settings) -> ProviderPro
     )
 
 
-def _write_chunks(db: Session, document: Document, text: str, provider: ProviderProfile | None) -> int:
+def write_chunks(db: Session, document: Document, text: str, provider: ProviderProfile | None = None) -> int:
     """Ersetzt die Absaetze eines Dokuments und pflegt Status und Einbettungen."""
     db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
     absaetze = chunk_text(text)
@@ -323,33 +353,40 @@ def index_folder_document(
         document.storage_path = str(file_path)
         document.mime_type = mime_type_for(file_path)
         document.checksum = checksum
-    chunk_count = _write_chunks(db, document, text, provider)
+    chunk_count = write_chunks(db, document, text, provider)
+    document.text_source = materials.SOURCE_PDF if file_path.suffix.lower() == ".pdf" else materials.SOURCE_TEXT
+    materials.apply_classification(db, document, text, handwritten=False, today=utc_now().date())
     if not new_row:
         db.flush()
     return document, chunk_count
 
 
 def index_uploaded_document(db: Session, user_id: int, document: Document, settings: Settings) -> None:
-    """Extrahiert die hochgeladene Datei und füllt die Absaetze nach.
+    """Liest die hochgeladene Datei, soweit es sofort geht, und reiht den Rest ein.
 
-    Nicht unterstuetzte oder unlesbare Dateien bleiben als ``error`` erhalten;
-    die Suche darf an einer kaputten Datei nicht haengen bleiben.
+    Text und PDF-Textebene werden sofort zerlegt. Fotos und Scanseiten gehen an
+    den Hintergrund-Indexer (``status="queued"``); ein PDF mit Text *und*
+    Scanseiten ist bis dahin schon mit seinem Text durchsuchbar. Nicht
+    unterstuetzte oder unlesbare Dateien bleiben als ``error`` erhalten.
     """
     path = Path(document.storage_path)
     provider = _load_provider(db, user_id, settings)
     try:
-        text = read_document_text(path)
+        read = materials.read_quick(path)
     except (OSError, UnicodeError, ValueError) as exc:
         logger.warning("Dokument %s konnte nicht gelesen werden: %s", path.name, exc)
         document.status = "error"
         db.commit()
         return
-    if not text.strip():
-        document.status = "error"
-        db.commit()
-        return
-    _write_chunks(db, document, text, provider)
     document.extra_data = None
+    if read.text.strip():
+        write_chunks(db, document, read.text, provider)
+        document.text_source = read.source
+        materials.apply_classification(db, document, read.text, handwritten=False, today=utc_now().date())
+    if read.needs_ocr:
+        document.status = materials.STATUS_QUEUED
+    elif not read.text.strip():
+        document.status = "error"
     db.commit()
 
 
@@ -496,6 +533,57 @@ def _vector_search(
     ]
 
 
+#: Darunter ist ein Treffer eher Zufall als Bedeutung. Gemessen mit bge-m3: verwandt ~0,58, fremd ~0,37.
+MIN_LOCAL_SIMILARITY: float = 0.45
+
+
+def _local_vector_search(db: Session, user_id: int, query: str, limit: int) -> list[SearchHit]:
+    """Bedeutungssuche mit dem lokalen Einbettungsmodell - nur, wenn es geladen ist und Vektoren da sind."""
+    from app.services.local_runtimes import active_manager
+
+    runtimes = active_manager()
+    if runtimes is None:
+        return []
+    models = runtimes.installed_models("embedding")
+    if not models:
+        return []
+    model_id = models[0].id
+    has_vectors = db.scalar(
+        select(ChunkEmbedding.chunk_id)
+        .where(ChunkEmbedding.user_id == user_id, ChunkEmbedding.model_id == model_id)
+        .limit(1)
+    )
+    if has_vectors is None:
+        return []
+    try:
+        query_vector = materials.http_embedder(runtimes.ensure_embedding_model(models[0]))([query])[0]
+    except Exception as exc:  # noqa: BLE001 - ohne Vektor bleibt die Stichwortsuche
+        logger.warning("Lokale Bedeutungssuche nicht möglich: %s", exc)
+        return []
+    ranking = materials.vector_ranking(db, user_id, model_id, query_vector, limit)
+    if not ranking:
+        return []
+    rows = {
+        chunk.id: (chunk, filename)
+        for chunk, filename in db.execute(
+            select(DocumentChunk, Document.filename)
+            .join(Document, Document.id == DocumentChunk.document_id)
+            .where(DocumentChunk.id.in_([chunk_id for chunk_id, _ in ranking]))
+        ).tuples()
+    }
+    return [
+        SearchHit(
+            document_id=rows[chunk_id][0].document_id,
+            filename=rows[chunk_id][1],
+            chunk_index=rows[chunk_id][0].chunk_index,
+            content=rows[chunk_id][0].content,
+            distance=1.0 - score,
+        )
+        for chunk_id, score in ranking
+        if chunk_id in rows and score >= MIN_LOCAL_SIMILARITY
+    ]
+
+
 def _merge_hits(vector_hits: list[SearchHit], keyword_hits: list[SearchHit], limit: int) -> list[SearchHit]:
     gesehen: set[tuple[int, int]] = set()
     merged: list[SearchHit] = []
@@ -524,8 +612,8 @@ def search_chunks(
     auch die eigentliche Suche des Prompts eingebettet.
     """
     keyword_hits = _keyword_search(db, user_id, query, limit=limit * 2)
-    vector_hits: list[SearchHit] = []
-    if db.get_bind().dialect.name == "postgresql":
+    vector_hits: list[SearchHit] = _local_vector_search(db, user_id, query, limit)
+    if not vector_hits and db.get_bind().dialect.name == "postgresql":
         provider = _load_provider(db, user_id, settings)
         if provider is not None:
             try:
