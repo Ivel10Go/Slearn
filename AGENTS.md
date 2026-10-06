@@ -10,6 +10,7 @@ Lokal betreibbarer Docker-Compose-Stack: Next.js 16 Frontend, FastAPI Backend, P
 | `backend/` | FastAPI + SQLAlchemy + Alembic. Einziger Python-Package-Boundary, `app/` unter `backend/`. `entrypoint.sh` liegt hier, nicht im Root. |
 | `worker/` | Nur DB-Healthcheck + Status-Heartbeat. Kein HTTP-Port, keine Jobs. |
 | `trainer/` | LoRA-Trainer als eigener Prozess mit eigenem Python (torch/CUDA, `trainer/requirements.txt`). Kein Backend-Import; Tests aus dem **Repo-Root**: `python -m unittest discover -s trainer/tests`. |
+| `landing/` | Landingpage mit Warteliste: eigene Next.js-App mit eigenem `package.json`, Port 3100, siehe `docs/landing.md`. Faultier und Tokens sind **Kopien** aus `frontend/` – bei Änderungen dort nachziehen. |
 | `desktop/` | Electron-Hülle der Desktop-App (Windows/macOS): startet das eingefrorene Backend und den Next-Standalone-Server, eigenes `package.json`. Siehe „Desktop-App“. |
 | `postgres/init/` | pgvector-Aktivierung bei neuer DB. |
 | `.github/` | Zwei Workflows (`ci.yml`, `arm64.yml`) plus der Baseline-Prüfer unter `ci/`. Kein Task-Runner, sonst nichts. |
@@ -104,6 +105,14 @@ Der Modellkatalog laedt nur Dateien. Ohne `llama-server`/`whisper-server`/`piper
 - **Figur** `components/assistant/faultier.tsx` (inline-SVG, CSP-konform), **Zustand** `lib/faultier.ts` (`faultierZustand()`, getestet): `ruhe`, `zuhoeren`, `denken`, `sprechen`, `freut` (2,5 s nach einem Eintrag), `schlaeft` (kein KI-Weg). Gespraechsmodus hat Vorrang vor Senden/Vorlesen.
 - **Graustufen** als `--sloth-*` in `globals.css` mit `.dark`-Variante – keine Farbe, passend zum Design. Ganze Figur (`koerper`) in der Seitenleiste von `/assistent` (unter `lg` im leeren Chat) und in der Dashboard-Karte; nur Kopf neben Antworten, beim Nachdenken und im Gespraechsbalken. Nur die juengste Antwort bewegt sich (`still` fuer aeltere).
 - Augen folgen dem Zeiger (`folgen`) per direktem DOM-Transform, ohne React-Zustand.
+
+## Landingpage (`landing/`)
+
+- **Eigene App, kein Teil von `frontend/`.** Die App hat SetupGate, Login und einen Service Worker; eine öffentliche Werbeseite dahinter würde in der Desktop-App mit ausgeliefert. Deshalb eigener Ordner, eigenes Lockfile, eigener CI-Job `landing`.
+- **Kopien statt Import:** `components/faultier.tsx` und die Tokens in `app/globals.css` stammen aus `frontend/`. Das Dunkelschema hängt hier an `prefers-color-scheme`, nicht an `.dark`.
+- **Warteliste:** Regeln in `lib/waitlist.ts` (ohne I/O, getestet), Speicher in `lib/waitlist-store.ts` (Supabase per REST, sonst JSONL-Datei). Doppelte Adressen und das Honigtopf-Feld bekommen dieselbe Erfolgsantwort – nicht „verbessern“, sonst verrät das Formular, wer eingetragen ist. Die Mengenbegrenzung zählt jede Anfrage, auch ungültige; lokal teilen sich alle Anfragen ohne `X-Forwarded-For` einen Schlüssel.
+- **Aussagen auf der Seite nur aus dem Code.** Preise, Systemanforderungen und Raspberry-Pi-Betrieb sind bewusst nicht behauptet.
+- `npm install` im leeren Ordner brach mit `Cannot read properties of null (reading 'edgesOut')` ab; mit dem Lockfile aus `frontend/` als Startpunkt lief es durch.
 
 ## Desktop-App (`desktop/`)
 
