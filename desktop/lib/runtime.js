@@ -209,10 +209,59 @@ function openLog(file, maxBytes = 5 * 1024 * 1024) {
   return fs.createWriteStream(file, { flags: "a" });
 }
 
+/** Erst nach so vielen Sekunden ohne Eingabe darf trainiert werden. */
+const TRAINING_IDLE_SECONDS = 120;
+
+/**
+ * Wo der Trainer liegt. Das Trainer-Python (torch mit CUDA, mehrere GB) liefert
+ * die App nicht mit; es steht in `trainer.json` im Benutzerordner
+ * (`{"python": "...", "cache": "..."}`) oder in `TRAINER_PYTHON`. Ohne beides
+ * bleibt das Training aus, und das Backend sagt das auf `/ki`.
+ *
+ * @param {{ userDataDir: string, packaged: boolean, resourcesPath: string, repoRoot: string, env?: NodeJS.ProcessEnv }} options
+ * @returns {Record<string, string>}
+ */
+function trainerEnv({ userDataDir, packaged, resourcesPath, repoRoot, env = process.env }) {
+  /** @type {{ python?: unknown, cache?: unknown }} */
+  let file = {};
+  try {
+    file = JSON.parse(fs.readFileSync(path.join(userDataDir, "trainer.json"), "utf8"));
+  } catch {
+    // Keine oder kaputte Datei: dann nur die Umgebung.
+  }
+  const python = env.TRAINER_PYTHON || (typeof file.python === "string" ? file.python : "");
+  if (!python) {
+    return {};
+  }
+  /** @type {Record<string, string>} */
+  const out = {
+    TRAINER_PYTHON: python,
+    TRAINER_DIR: env.TRAINER_DIR || (packaged ? path.join(resourcesPath, "trainer") : path.join(repoRoot, "trainer")),
+  };
+  const cache = env.TRAINER_CACHE_PATH || (typeof file.cache === "string" ? file.cache : "");
+  if (cache) {
+    out.TRAINER_CACHE_PATH = cache;
+  }
+  return out;
+}
+
+/**
+ * Darf gerade trainiert werden? Nur am Netz und wenn niemand den Rechner benutzt -
+ * Training soll den Akku nicht leeren und die Arbeit nicht ausbremsen.
+ *
+ * @param {{ onBattery: boolean, idleSeconds: number }} state
+ */
+function trainingAllowed({ onBattery, idleSeconds }) {
+  return !onBattery && idleSeconds >= TRAINING_IDLE_SECONDS;
+}
+
 module.exports = {
   PREFERRED_FRONTEND_PORT,
+  TRAINING_IDLE_SECONDS,
   backendCommand,
   backendEnv,
+  trainerEnv,
+  trainingAllowed,
   findFreePort,
   loadOrCreateSecrets,
   openLog,

@@ -17,6 +17,7 @@
 
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
+const http = require("node:http");
 const path = require("node:path");
 const {
   BrowserWindow,
@@ -25,6 +26,7 @@ const {
   dialog,
   ipcMain,
   nativeTheme,
+  powerMonitor,
   session,
   shell,
   utilityProcess,
@@ -54,6 +56,8 @@ let mainWindow = null;
 let splashWindow = null;
 let appOrigin = "";
 let quitting = false;
+/** @type {NodeJS.Timeout | null} */
+let trainingTimer = null;
 
 function windowBackground() {
   return nativeTheme.shouldUseDarkColors ? BACKGROUND.dark : BACKGROUND.light;
@@ -80,6 +84,12 @@ async function startBackend(port) {
     env: {
       ...process.env,
       ...runtime.backendEnv({ dataDir, secrets, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+      ...runtime.trainerEnv({
+        userDataDir,
+        packaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        repoRoot,
+      }),
     },
     // stdin bleibt offen: schliesst es sich, beendet sich das Backend selbst
     // (`--watch-parent`). So bleibt nach einem Absturz der App kein Server
@@ -157,8 +167,56 @@ async function startFrontend(port, backendPort) {
   return origin;
 }
 
+/* --------------------------------------------------------------- Training */
+
+/**
+ * Meldet dem Backend, ob gerade trainiert werden darf (am Netz, Rechner ruht).
+ * Nur die App kennt Akku und Leerlauf; das Backend entscheidet daraus, ob es
+ * eine Runde fortsetzt, beginnt oder anhaelt. Ohne Freigabe auf /ki tut es nichts.
+ *
+ * @param {number} port
+ */
+function reportTrainingConditions(port) {
+  if (quitting || !backendProcess) {
+    return;
+  }
+  const allowed = runtime.trainingAllowed({
+    onBattery: powerMonitor.isOnBatteryPower(),
+    idleSeconds: powerMonitor.getSystemIdleTime(),
+  });
+  const body = JSON.stringify({ allowed });
+  const request = http.request(
+    {
+      host: "127.0.0.1",
+      port,
+      path: "/api/v1/assistant/training/conditions",
+      method: "POST",
+      headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+    },
+    (response) => response.resume(),
+  );
+  request.setTimeout(10_000, () => request.destroy());
+  // Vor der Ersteinrichtung gibt es keinen Nutzer (503) - das ist kein Fehler.
+  request.once("error", () => {});
+  request.end(body);
+}
+
+/** @param {number} port */
+function watchTrainingConditions(port) {
+  const report = () => reportTrainingConditions(port);
+  trainingTimer = setInterval(report, 30_000);
+  // Netzstecker gezogen oder Deckel zu: sofort anhalten, nicht erst nach 30 s.
+  powerMonitor.on("on-battery", report);
+  powerMonitor.on("on-ac", report);
+  powerMonitor.on("suspend", report);
+}
+
 function stopServers() {
   quitting = true;
+  if (trainingTimer) {
+    clearInterval(trainingTimer);
+    trainingTimer = null;
+  }
   if (frontendProcess) {
     frontendProcess.kill();
     frontendProcess = null;
@@ -374,6 +432,7 @@ async function start() {
     const frontendPort = await runtime.findFreePort(runtime.PREFERRED_FRONTEND_PORT);
     await startBackend(backendPort);
     appOrigin = await startFrontend(frontendPort, backendPort);
+    watchTrainingConditions(backendPort);
   } catch (error) {
     await fatal(error instanceof Error ? error.message : "Der Lernraum konnte nicht gestartet werden.");
     return;

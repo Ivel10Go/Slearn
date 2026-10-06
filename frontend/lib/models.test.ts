@@ -164,6 +164,7 @@ describe("describeModelTask", () => {
     expect(describeModelTask("speech_to_text")).toBe("Sprache zu Text");
     expect(describeModelTask("text_to_speech")).toBe("Text zu Sprache");
     expect(describeModelTask("embedding")).toBe("Einbettungen");
+    expect(describeModelTask("image_to_text")).toBe("Bild zu Text");
     expect(describeModelTask("future_task")).toBe("future_task");
   });
 });

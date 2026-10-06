@@ -6,6 +6,7 @@ import { AudioLines, Check, CornerDownLeft, LoaderCircle, Mic, PhoneOff, Plus, R
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AbfrageCard, LernprofilCard } from "@/components/assistant/learning-cards";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -90,6 +91,7 @@ function nurText(messages: ViewMessage[]): ChatMessage[] {
 }
 
 export function AssistantView() {
+  const [profilStand, setProfilStand] = useState(0);
   const [messages, setMessages] = useState<ViewMessage[]>([]);
   const [eingabe, setEingabe] = useState("");
   const [sendet, setSendet] = useState(false);
@@ -554,6 +556,8 @@ export function AssistantView() {
             <Faultier zustand={zustand} groesse={132} koerper folgen beschriftung={`Faultier-Assistent: ${FAULTIER_TEXT[zustand]}`} />
             <p className="text-xs text-muted-foreground">{FAULTIER_TEXT[zustand]}</p>
           </div>
+          <AbfrageCard onErgebnis={() => setProfilStand((stand) => stand + 1)} />
+          <LernprofilCard refreshKey={profilStand} />
           <GedaechtnisCard messages={messages} />
         </div>
       </div>

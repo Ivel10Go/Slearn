@@ -147,6 +147,8 @@ jobs:
           python-version: "3.12"
       - name: tests (unittest, no dependencies needed)
         run: python -m unittest discover -s worker/tests -v
+      - name: trainer tests (pure parts only, torch is imported lazily)
+        run: python -m unittest discover -s trainer/tests -v
       - name: compile the module the tests do not import
         # worker/main.py is never imported by the tests, so a syntax error there
         # would otherwise only surface in the image build.

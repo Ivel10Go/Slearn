@@ -507,3 +507,12 @@ def test_einzelnoten_gehen_an_lokale_modelle_auch_ohne_freigabe(
     )
     assert "Mathematik: 2,0" not in online
     assert "nicht freigegeben" in online
+
+
+def test_art_aus_der_nachricht_schlaegt_das_modell() -> None:
+    kind = assistant_service.kind_from_text
+    assert kind("Trage bitte die Englisch-Klassenarbeit für nächsten Mittwoch ein") == assistant_service.ACTION_EXAM
+    assert kind("Trag die Matheklausur ein") == assistant_service.ACTION_EXAM
+    assert kind("Trag die KA am Freitag ein") == assistant_service.ACTION_EXAM
+    assert kind("Trag die Hausaufgabe Bildanalyse ein") is None
+    assert kind("Trag den Kakao-Termin ein") is None

@@ -27,7 +27,8 @@ class SubjectCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=160)
-    color: str = Field(default="#3B82F6", min_length=4, max_length=20)
+    # Ohne Angabe waehlt das Modell eine zufaellige Farbe (``random_subject_color``).
+    color: str | None = Field(default=None, min_length=4, max_length=20)
     teacher_id: int | None = None
     description: str | None = None
     source: str = Field(default="manual", min_length=1, max_length=64)
@@ -35,8 +36,8 @@ class SubjectCreate(BaseModel):
 
     @field_validator("color")
     @classmethod
-    def validate_color(cls, value: str) -> str:
-        if not _valid_color(value):
+    def validate_color(cls, value: str | None) -> str | None:
+        if value is not None and not _valid_color(value):
             raise ValueError("color must be a hexadecimal color")
         return value
 

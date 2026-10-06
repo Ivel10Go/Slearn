@@ -5,7 +5,7 @@ import { parseAiRuntime, type AiRuntimePayload } from "./ai-runtime";
 import { endungFuerFormat, parseSpeechCapabilities, parseVoiceList, type SpeechCapabilitiesPayload, type VoiceListPayload } from "./speech";
 import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type CalendarEvent, type DashboardData, type DocumentAnswer, type DocumentRecord, type DocumentSearchResult, type Exam, type FileUploadResult, type Grade, type GradeImportPreview, type GradeImportResult, type GradeKind, type GradeSharing, type GradeSummary, type Greeting, type Homework, type ScheduleRange, type StudySessionRecord, type StudyTask, type StudyTaskState, type Subject, type SubjectOption } from "./types";
 import { collectSubjectNames, parseCalendarEventArray, parseCalendarEventRead, parseCalendarFeed, parseCalendarWriting, parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseExamArray, parseExamRead, parseExamTaskPlanResult, parseFileUploadResponse, parseGradeArray, parseGradeImportPreview, parseGradeImportResult, parseGradeRead, parseGradeSharing, parseGradeSummary, parseHomeworkArray, parseHomeworkRead, parseIntegrationArray, parseIntegrationAuthorize, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseLearningInsights, parseMarkReadResult, parseNotificationArray, parseNotificationSettings, parsePushSubscription, parsePushSubscriptionArray, parseReminderRun, parseRewardOverview, parseStudyDependencyArray, parseStudyDependencyRead, parseStudyPlanArray, parseStudyPlanRead, parseStudySeriesArray, parseStudySeriesRead, parseStudySessionRead, parseStudyTaskArray, parseStudyTaskRead, parseSubjectArray, parseSubjectRead, parseTopicProgressArray, parseTopicProgressRead, parseUserResponse, parseUserSession, parseVapidKey, parseWeeklyGoalRead } from "./schemas";
-import type { CalendarFeed, CalendarWriting, ExamTaskPlanResult, IntegrationAuthorize, IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult, LearningInsights, RewardOverview, StudyPlan, StudyTaskDependency, StudyTaskOrder, StudyTaskSeries, StudyTaskSeriesInput, TopicProgress, WeeklyGoal } from "./types";
+import type { CalendarFeed, CalendarWriting, ExamTaskPlanResult, IntegrationAuthorize, IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult, LearningInsights, MaterialKind, RewardOverview, StudyPlan, StudyTaskDependency, StudyTaskOrder, StudyTaskSeries, StudyTaskSeriesInput, TopicProgress, WeeklyGoal } from "./types";
 
 const API_PREFIX = "/api/backend";
 
@@ -304,6 +304,22 @@ export async function getDocuments(): Promise<DocumentRecord[]> {
   return parseDocumentArray(payload);
 }
 
+export interface DocumentMaterialInput {
+  material_kind?: MaterialKind;
+  material_topic?: string | null;
+  material_date?: string | null;
+  subject_id?: number | null;
+}
+
+/** Korrigiert die Erkennung; von Hand Gesetztes ueberschreibt das Backend danach nie mehr. */
+export async function updateDocumentMaterial(documentId: number, input: DocumentMaterialInput): Promise<DocumentRecord> {
+  const payload = await apiRequest(`/v1/documents/${encodeURIComponent(String(documentId))}/material`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  return parseDocumentArray([payload])[0];
+}
+
 export interface DocumentSearchInput {
   query: string;
   limit?: number;
@@ -477,7 +493,7 @@ export async function getSubjectOptions(): Promise<SubjectOption[]> {
 export async function createSubject(input: SubjectWrite): Promise<Subject> {
   const payload = await apiRequest("/v1/subjects", {
     method: "POST",
-    body: JSON.stringify(compact({ ...input, color: input.color ?? "#3B82F6" })),
+    body: JSON.stringify(compact({ ...input })),
   });
   return parseSubjectRead(payload);
 }

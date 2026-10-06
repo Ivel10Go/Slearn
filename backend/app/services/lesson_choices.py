@@ -51,6 +51,7 @@ class ChoiceOption:
     subject_id: int
     name: str
     short_name: str | None
+    color: str | None = None
     slots: set[tuple[str, str]] = field(default_factory=set)
     selected: bool = True
 
@@ -70,6 +71,30 @@ class _Item:
     subject_id: int
     start: datetime
     end: datetime
+
+
+@dataclass(slots=True)
+class _Window:
+    weekday: int
+    start: str
+    end: str
+    slots: set[tuple[int, str, str]]
+
+
+def _merge_windows(windows: list[_Window]) -> list[_Window]:
+    """Verschmilzt Fenster desselben Wochentags, die sich zeitlich ueberlappen.
+
+    ``"HH:MM"`` laesst sich als Text vergleichen, deshalb kein Umrechnen.
+    """
+    merged: list[_Window] = []
+    for window in sorted(windows, key=lambda entry: (entry.weekday, entry.start, entry.end)):
+        last = merged[-1] if merged else None
+        if last is not None and last.weekday == window.weekday and window.start < last.end:
+            last.end = max(last.end, window.end)
+            last.slots |= window.slots
+        else:
+            merged.append(_Window(window.weekday, window.start, window.end, set(window.slots)))
+    return merged
 
 
 def _load(db: Session, user_id: int) -> dict[str, list[dict[str, Any]]]:
@@ -96,15 +121,21 @@ def _store(db: Session, user_id: int, choices: dict[str, list[dict[str, Any]]]) 
     db.flush()
 
 
+def _item_key(item: dict[str, Any]) -> SlotKey | None:
+    try:
+        return int(item["subject_id"]), int(item["weekday"]), str(item["start"]), str(item["end"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def excluded_keys(db: Session, user_id: int) -> set[SlotKey]:
     """Alle abgewaehlten Stunden - der Import ueberspringt genau diese."""
     keys: set[SlotKey] = set()
     for items in _load(db, user_id).values():
         for item in items:
-            try:
-                keys.add((int(item["subject_id"]), int(item["weekday"]), str(item["start"]), str(item["end"])))
-            except (KeyError, TypeError, ValueError):
-                continue
+            slot = _item_key(item)
+            if slot is not None:
+                keys.add(slot)
     return keys
 
 
@@ -166,42 +197,54 @@ def find_groups(db: Session, user_id: int, zone: ZoneInfo, today: date | None = 
                 per_day.setdefault(day, []).append(_Item(subject_id, start, end))
             day += timedelta(days=1)
 
-    groups: dict[str, ConflictGroup] = {}
+    # Erst je Wochentag sammeln, was parallel liegt - ueber alle Wochen. Liegt
+    # Ethik nur in manchen Wochen neben den Religionen, ist das trotzdem *eine*
+    # Frage („Ethik, ev. oder kath. Religion?“) und nicht zwei, von denen eine
+    # nach der Entscheidung fuer immer offen bliebe.
+    windows: list[_Window] = []
     for day in sorted(per_day):
         for cluster in _clusters(per_day[day]):
             if len({item.subject_id for item in cluster}) < 2:
                 continue
-            weekday = day.weekday()
-            signature = sorted(
-                {(item.subject_id, item.start.strftime("%H:%M"), item.end.strftime("%H:%M")) for item in cluster}
+            windows.append(
+                _Window(
+                    weekday=day.weekday(),
+                    start=min(item.start for item in cluster).strftime("%H:%M"),
+                    end=max(item.end for item in cluster).strftime("%H:%M"),
+                    slots={(item.subject_id, item.start.strftime("%H:%M"), item.end.strftime("%H:%M")) for item in cluster},
+                )
             )
-            key = f"{weekday}|" + ",".join(f"{sid}@{begin}-{finish}" for sid, begin, finish in signature)
-            if key in groups:
-                continue
-            options: dict[int, ChoiceOption] = {}
-            for item in cluster:
-                option = options.get(item.subject_id)
-                if option is None:
-                    if item.subject_id not in subjects:
-                        subjects[item.subject_id] = db.get(Subject, item.subject_id)
-                    subject = subjects[item.subject_id]
-                    if subject is None:
-                        continue
-                    option = options[item.subject_id] = ChoiceOption(item.subject_id, subject.name, subject.short_name)
-                begin, finish = item.start.strftime("%H:%M"), item.end.strftime("%H:%M")
-                option.slots.add((begin, finish))
-                if (item.subject_id, weekday, begin, finish) in excluded:
-                    option.selected = False
-            if len(options) < 2:
-                continue
-            groups[key] = ConflictGroup(
-                key=key,
-                weekday=weekday,
-                start=min(item.start for item in cluster).strftime("%H:%M"),
-                end=max(item.end for item in cluster).strftime("%H:%M"),
-                options=sorted(options.values(), key=lambda entry: entry.name.casefold()),
-                decided=key in stored,
-            )
+
+    groups: dict[str, ConflictGroup] = {}
+    for window in _merge_windows(windows):
+        weekday = window.weekday
+        signature = sorted(window.slots)
+        key = f"{weekday}|" + ",".join(f"{sid}@{begin}-{finish}" for sid, begin, finish in signature)
+        options: dict[int, ChoiceOption] = {}
+        for subject_id, begin, finish in signature:
+            option = options.get(subject_id)
+            if option is None:
+                if subject_id not in subjects:
+                    subjects[subject_id] = db.get(Subject, subject_id)
+                subject = subjects[subject_id]
+                if subject is None:
+                    continue
+                option = options[subject_id] = ChoiceOption(subject_id, subject.name, subject.short_name, subject.color)
+            option.slots.add((begin, finish))
+            if (subject_id, weekday, begin, finish) in excluded:
+                option.selected = False
+        if len(options) < 2:
+            continue
+        groups[key] = ConflictGroup(
+            key=key,
+            weekday=weekday,
+            start=window.start,
+            end=window.end,
+            options=sorted(options.values(), key=lambda entry: entry.name.casefold()),
+            # Eine abgewaehlte Option ist schon eine Entscheidung - auch wenn sie
+            # unter einem aelteren Schluessel gespeichert wurde.
+            decided=key in stored or any(not option.selected for option in options.values()),
+        )
     return sorted(groups.values(), key=lambda group: (group.weekday, group.start, group.key))
 
 
@@ -230,6 +273,16 @@ def save_choices(
         known = {option.subject_id for option in group.options}
         if not attended or not set(attended) <= known:
             raise LessonChoiceError("Wähle in jeder Parallelstunde mindestens ein Fach aus der Liste.")
+        # Was diese Gruppe abdeckt, gilt nur noch hier: Eintraege unter einem
+        # aelteren Schluessel (vor dem Zusammenfuehren) wuerden sonst ein jetzt
+        # gewaehltes Fach weiter ausschliessen.
+        covered = {(option.subject_id, group.weekday, start, end) for option in group.options for start, end in option.slots}
+        for other in [name for name in stored if name != key]:
+            remaining = [item for item in stored[other] if _item_key(item) not in covered]
+            if remaining:
+                stored[other] = remaining
+            else:
+                del stored[other]
         stored[key] = [
             {
                 "subject_id": option.subject_id,

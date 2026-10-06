@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { BookOpen, CheckCircle2, LoaderCircle, Plus, RefreshCw, X } from "lucide-react";
+import { BookOpen, CheckCircle2, LoaderCircle, Plus, RefreshCw, Shuffle, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import { LessonChoicesCard } from "@/components/manage/lesson-choices-card";
 import { TimetableUploadCard } from "@/components/manage/timetable-upload-card";
 import { createSubject, deleteSubject, getSubjects, updateSubject, type SubjectChanges, type SubjectWrite } from "@/lib/api";
 import { formatDate } from "@/lib/format";
+import { randomSubjectColor, SUBJECT_COLORS } from "@/lib/subject-colors";
 import { useCollection } from "@/lib/use-collection";
 import { cn } from "@/lib/utils";
 import type { Subject } from "@/lib/types";
@@ -25,7 +26,10 @@ interface FachFormular {
   beschreibung: string;
 }
 
-const leeresFormular: FachFormular = { name: "", farbe: "#3B82F6", beschreibung: "" };
+/** Ein neues Fach startet mit einer zufaelligen, noch freien Farbe - aenderbar wie jede andere. */
+function leeresFormular(vergeben: Iterable<string> = []): FachFormular {
+  return { name: "", farbe: randomSubjectColor(vergeben), beschreibung: "" };
+}
 
 /**
  * Das Backend validiert die Farbe selbst: 4 bis 20 Zeichen und ein
@@ -56,14 +60,14 @@ export function SubjectsView() {
   const [planVersion, setPlanVersion] = useState(0);
   const [formularOffen, setFormularOffen] = useState(false);
   const [bearbeitet, setBearbeitet] = useState<number | null>(null);
-  const [formular, setFormular] = useState<FachFormular>(leeresFormular);
+  const [formular, setFormular] = useState<FachFormular>(() => leeresFormular());
   const [formularFehler, setFormularFehler] = useState<string | null>(null);
 
   const istSpeichern = sammlung.pending === "create" || sammlung.pending === `update:${bearbeitet}`;
 
   function oeffnen(fach?: Subject) {
     setBearbeitet(fach?.id ?? null);
-    setFormular(fach ? ausFach(fach) : leeresFormular);
+    setFormular(fach ? ausFach(fach) : leeresFormular(sammlung.items.map((eintrag) => eintrag.color)));
     setFormularFehler(null);
     setFormularOffen(true);
   }
@@ -71,7 +75,7 @@ export function SubjectsView() {
   function schliessen() {
     setFormularOffen(false);
     setBearbeitet(null);
-    setFormular(leeresFormular);
+    setFormular(leeresFormular());
     setFormularFehler(null);
   }
 
@@ -145,7 +149,7 @@ export function SubjectsView() {
                 </Button>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_9rem]">
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_11rem]">
                 <Field id="fach-name" label="Name" required>
                   {(props) => (
                     <Input
@@ -158,24 +162,62 @@ export function SubjectsView() {
                   )}
                 </Field>
 
-                <Field
-                  id="fach-farbe"
-                  label="Farbe"
-                  required
-                  hint="Als Hex-Wert."
-                >
+                <Field id="fach-farbe" label="Farbe" required hint="Als Hex-Wert.">
                   {(props) => (
-                    <Input
-                      {...props}
-                      value={formular.farbe}
-                      onChange={(event) => setFormular((current) => ({ ...current, farbe: event.target.value }))}
-                      disabled={istSpeichern}
-                      placeholder="#3B82F6"
-                      spellCheck={false}
-                      className="font-mono"
-                    />
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="size-8 shrink-0 rounded-md border border-border"
+                        style={{ backgroundColor: FARBE_MUSTER.test(formular.farbe.trim()) ? formular.farbe.trim() : "transparent" }}
+                        aria-hidden="true"
+                      />
+                      <Input
+                        {...props}
+                        value={formular.farbe}
+                        onChange={(event) => setFormular((current) => ({ ...current, farbe: event.target.value }))}
+                        disabled={istSpeichern}
+                        placeholder="#3B82F6"
+                        spellCheck={false}
+                        className="font-mono"
+                      />
+                    </div>
                   )}
                 </Field>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Farbe wählen">
+                {SUBJECT_COLORS.map((farbe) => {
+                  const aktiv = formular.farbe.trim().toUpperCase() === farbe;
+                  return (
+                    <button
+                      key={farbe}
+                      type="button"
+                      aria-label={`Farbe ${farbe}`}
+                      aria-pressed={aktiv}
+                      disabled={istSpeichern}
+                      onClick={() => setFormular((current) => ({ ...current, farbe }))}
+                      className={cn(
+                        "size-6 rounded-[4px] border border-border transition-transform hover:scale-110 disabled:opacity-60",
+                        aktiv && "ring-2 ring-foreground ring-offset-2 ring-offset-background",
+                      )}
+                      style={{ backgroundColor: farbe }}
+                    />
+                  );
+                })}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={istSpeichern}
+                  onClick={() =>
+                    setFormular((current) => ({
+                      ...current,
+                      farbe: randomSubjectColor([current.farbe, ...sammlung.items.filter((eintrag) => eintrag.id !== bearbeitet).map((eintrag) => eintrag.color)]),
+                    }))
+                  }
+                >
+                  <Shuffle aria-hidden="true" />
+                  Zufällig
+                </Button>
               </div>
 
               <Field id="fach-beschreibung" label="Beschreibung" hint="Optional. Zum Beispiel die Lehrkraft oder der Raum.">

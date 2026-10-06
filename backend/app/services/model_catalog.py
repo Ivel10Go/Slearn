@@ -75,6 +75,8 @@ MODEL_TASKS: Final[tuple[str, ...]] = (
     "speech_to_text",
     "text_to_speech",
     "embedding",
+    # Fotos und Scans lesen - vor allem handschriftliche Aufschriebe.
+    "image_to_text",
 )
 
 #: Eine `model_id` wird zu einem Verzeichnisnamen. Der Ausdruck ist eine zweite
@@ -333,6 +335,62 @@ MODEL_CATALOG: Final[dict[str, ModelSpec]] = {
                 "Qwen2.5-3B-Instruct-Q4_K_M.gguf",
                 "9c9f56a391a3abbd5b89d0245bf6106081bcc3173119d4229235dd9d23253f94",
                 1929903264,
+            ),
+        ),
+    ),
+    # Liest Fotos und Scans, auch Handschrift: ohne dieses Modell bleibt ein
+    # fotografierter Aufschrieb fuer den Assistenten eine leere Datei. Zwei
+    # Dateien - das Sprachmodell und der Bildteil (mmproj) fuer --mmproj.
+    "qwen2.5-vl-3b-instruct-q4km": ModelSpec(
+        id="qwen2.5-vl-3b-instruct-q4km",
+        label="Qwen2.5-VL 3B (Q4_K_M)",
+        task="image_to_text",
+        family="GGUF für llama.cpp",
+        description=(
+            "Liest Fotos, Scans und Handschrift ab, damit Aufschriebe und Arbeitsblätter "
+            "durchsuchbar werden. Eine Seite dauert auf dem Prozessor etwa eine Minute."
+        ),
+        license="Qwen Research License",
+        source_repository="ggml-org/Qwen2.5-VL-3B-Instruct-GGUF",
+        source_page="https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF",
+        parameter_count=3754622976,
+        quantization="Q4_K_M",
+        context_length=32768,
+        files=(
+            _hugging_face_file(
+                "ggml-org/Qwen2.5-VL-3B-Instruct-GGUF",
+                "Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf",
+                "d02fe9b69ad8cadbbd228e387667af66612c44bed29ffc8eb1e7caf9ac486c12",
+                1929901056,
+            ),
+            _hugging_face_file(
+                "ggml-org/Qwen2.5-VL-3B-Instruct-GGUF",
+                "mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf",
+                "980c9b2f78c04e6cff93d277ada09e768394f112d75db3b4e9dea8a69f9fb904",
+                844757728,
+            ),
+        ),
+    ),
+    # Findet Absaetze nach Bedeutung statt nach Wort: "Steigung" findet den
+    # Aufschrieb zum Differenzenquotienten. Mehrsprachig, stark im Deutschen.
+    "bge-m3-q8": ModelSpec(
+        id="bge-m3-q8",
+        label="BGE-M3 (Q8_0)",
+        task="embedding",
+        family="GGUF für llama.cpp",
+        description="Sucht in deinen Unterlagen nach Bedeutung statt nur nach Stichworten. Läuft neben dem Textmodell.",
+        license="MIT",
+        source_repository="ggml-org/bge-m3-Q8_0-GGUF",
+        source_page="https://huggingface.co/ggml-org/bge-m3-Q8_0-GGUF",
+        parameter_count=None,
+        quantization="Q8_0",
+        context_length=8192,
+        files=(
+            _hugging_face_file(
+                "ggml-org/bge-m3-Q8_0-GGUF",
+                "bge-m3-q8_0.gguf",
+                "aa473d51f451a22f0fcf39ba3330c14bed38a385712b1113440f69df4047a173",
+                634553760,
             ),
         ),
     ),

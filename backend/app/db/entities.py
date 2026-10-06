@@ -11,7 +11,7 @@ from .academic import (
 )
 from .assistant import AssistantMemory, TrainingExample
 from .base import Base
-from .content import Document, DocumentChunk, GreetingCache, LearningProgress, Topic, TopicDocument
+from .content import ChunkEmbedding, Document, DocumentChunk, GreetingCache, LearningProgress, Topic, TopicDocument
 from .identity import Room, Subject, SyncSource, Teacher, User, UserSettings
 from .notify import Notification, PushSubscription
 from .planning import StudyPlan, StudyPlanTask, StudySession, StudyTaskDependency, StudyTaskSeries
@@ -38,6 +38,7 @@ __all__ = [
     "Base",
     "CalendarEvent",
     "Document",
+    "ChunkEmbedding",
     "DocumentChunk",
     "Exam",
     "GreetingCache",

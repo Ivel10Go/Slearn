@@ -1,0 +1,10 @@
+# Trainer-Umgebung, getrennt vom Backend (das bleibt ohne torch, ~58 MB).
+# torch mit CUDA kommt aus dem PyTorch-Index:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+torch>=2.7
+transformers>=4.56
+peft>=0.15
+bitsandbytes>=0.45
+accelerate>=1.6
+safetensors>=0.5
+gguf>=0.16

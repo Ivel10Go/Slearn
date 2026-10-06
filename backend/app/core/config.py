@@ -252,6 +252,30 @@ class Settings(BaseSettings):
         default=False,
         validation_alias=AliasChoices("LOCAL_RUNTIMES_ENABLED", "local_runtimes_enabled"),
     )
+    # Hintergrund-Indexer fuer Fotos/Scans und Einbettungen (app/services/materials.py).
+    # Auf dem Desktop laeuft er immer; auf einem Server nur, wenn eingeschaltet -
+    # ohne eingebautes Bildmodell schreibt er ueber den Online-KI-Dienst ab.
+    material_indexer_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("MATERIAL_INDEXER_ENABLED", "material_indexer_enabled"),
+    )
+    # LoRA-Training (app/services/training_jobs.py): der Trainer ist ein
+    # eigener Python mit torch/CUDA (trainer/requirements.txt), nicht das
+    # Backend-Python. Leer = Training nicht eingerichtet.
+    trainer_python: str = Field(
+        default="",
+        validation_alias=AliasChoices("TRAINER_PYTHON", "trainer_python"),
+    )
+    # Ordner mit lernraum_trainer.py; leer = trainer/ im Repository.
+    trainer_dir: str = Field(
+        default="",
+        validation_alias=AliasChoices("TRAINER_DIR", "trainer_dir"),
+    )
+    # Hugging-Face-Ablage fuer die Basisgewichte (3B = ~6 GB); leer = unter MODEL_STORAGE_PATH.
+    trainer_cache_path: str = Field(
+        default="",
+        validation_alias=AliasChoices("TRAINER_CACHE_PATH", "trainer_cache_path"),
+    )
     # ffmpeg wird nur fuer alles gebraucht, was **nicht** bereits ein
     # 16-kHz-Mono-WAV ist - also praktisch immer, weil Chrome WebM und Safari
     # MP4 aufnehmen. Fehlt es, bleibt der Textmodus und eine WAV-Datei moeglich.

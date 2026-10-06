@@ -34,8 +34,8 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Sequence
-from dataclasses import dataclass, field
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta
 from difflib import SequenceMatcher
 from typing import Final
@@ -58,7 +58,7 @@ from app.db.entities import (
     Subject,
     User,
 )
-from app.services import ai_routing
+from app.services import ai_routing, learner
 from app.services import training as training_service
 from app.services.documents import DocumentSource, search_chunks
 from app.services.local_runtimes import active_manager
@@ -77,6 +77,8 @@ _KIND_ALIASES: Final[dict[str, str]] = {
     "klausur": ACTION_EXAM,
     "test": ACTION_EXAM,
     "exam": ACTION_EXAM,
+    "klassenarbeit": ACTION_EXAM,
+    "schulaufgabe": ACTION_EXAM,
     "hausaufgabe": ACTION_HOMEWORK,
     "hausaufgaben": ACTION_HOMEWORK,
     "homework": ACTION_HOMEWORK,
@@ -213,6 +215,12 @@ class ParsedReply:
 # --- Protokoll ---------------------------------------------------------------
 
 
+def is_action_line(line: str) -> bool:
+    """Ob die Zeile Protokoll ist (``AKTION {...}``) - mit gueltigem JSON oder nicht."""
+    match = _ACTION_RE.match(line)
+    return bool(match and "{" in match.group(1))
+
+
 def parse_reply(raw: str) -> ParsedReply:
     """Trennt den sichtbaren Text von den Zeilen ``AKTION`` und ``MERKE``.
 
@@ -290,6 +298,28 @@ def date_from_text(text: str, today: date) -> date | None:
         offset = (_WEEKDAY_INDEX[match.group(3).lower()] - today.weekday()) % 7 or 7
         return today + timedelta(days=offset + (7 if match.group(1) else 0))
     return None
+
+
+_TEXT_EXAM_RE = re.compile(
+    r"klassenarbeit|klausur|schulaufgabe|pr[uü]fung|lernkontrolle|vokabeltest|(?<![a-zäöüß])(?:ka|test)(?![a-zäöüß])",
+    re.IGNORECASE,
+)
+
+
+def kind_from_text(text: str) -> str | None:
+    """Die Art, die die Person **selbst** genannt hat - sonst ``None``.
+
+    Qwen 1.5B macht aus "Trage die Englisch-Klassenarbeit ein" eine Hausaufgabe.
+    "Klassenarbeit", "Klausur", "KA" und "Test" sind eindeutig eine Pruefung.
+    """
+    return ACTION_EXAM if _TEXT_EXAM_RE.search(text) else None
+
+
+def with_kind(proposal: ActionProposal, kind: str) -> ActionProposal:
+    """Derselbe Vorschlag als andere Art; ein Termin wird nicht zur Pruefung umgedeutet."""
+    if proposal.kind == kind or proposal.kind == ACTION_EVENT:
+        return proposal
+    return replace(proposal, kind=kind)
 
 
 def with_day(proposal: ActionProposal, day: date, zone: ZoneInfo) -> ActionProposal:
@@ -766,6 +796,10 @@ SYSTEM_PROMPT: Final = (
     "- Nenne nur Fakten, die woertlich oder eindeutig in diesen Bloecken stehen. Erfinde nichts, "
     "auch keine Noten, Daten oder Inhalte.\n"
     "- Die Notizen ueber die Person sind KEIN Dokumentinhalt. Gib sie nie als Inhalt eines Dokuments aus.\n"
+    "- Das Lernprofil sagt, was der Person schwerfaellt und wie sie lernt. Erklaere Unsicheres "
+    "kleinschrittiger und schlage passende Wiederholungen vor.\n"
+    "- Auszuege mit [Aufschrieb ...] sind die eigenen Hefteintraege der Person. Erklaerst du etwas, nutze "
+    "ihre Begriffe, Abkuerzungen und ihren Aufbau, damit es zu ihrem Heft passt.\n"
     "- Fragt die Person nach einem Dokument und es gibt keinen Auszug daraus, sag ehrlich, dass du den "
     "Inhalt nicht siehst, und nenne die Dokumente, die du hast.\n"
     "- Fehlt eine Information, sag genau, was fehlt, statt zu raten.\n\n"
@@ -783,7 +817,7 @@ ACTION_PROMPT: Final = (
     "genau in dieser Form:\n"
     'AKTION {"typ": "pruefung|hausaufgabe|termin", "titel": "...", "fach": "...", '
     '"datum": "JJJJ-MM-TT", "uhrzeit": "HH:MM", "ende": "HH:MM", "beschreibung": "..."}\n'
-    "Nur typ, titel und datum sind Pflicht. Uebernimm das Datum fuer Angaben wie 'naechsten Freitag' "
+    "Nur typ, titel und datum sind Pflicht. Eine Klassenarbeit, Klausur oder ein Test ist typ 'pruefung', nie 'hausaufgabe'. Uebernimm das Datum fuer Angaben wie 'naechsten Freitag' "
     "oder 'morgen' genau aus der Datumshilfe, rechne nicht selbst. Lass uhrzeit weg, wenn keine genannt "
     "wurde. Schreibe davor kurz in einem Satz, was du vorschlaegst; die Person bestaetigt den Eintrag selbst."
 )
@@ -810,23 +844,56 @@ def _is_known(content: str, known: Sequence[str]) -> bool:
     return any(SequenceMatcher(None, candidate, _letters(other)).ratio() >= 0.8 for other in known)
 
 
+_KIND_LABELS: Final[dict[str, str]] = {
+    "aufschrieb": "Aufschrieb",
+    "arbeitsblatt": "Arbeitsblatt",
+    "loesung": "Lösung",
+}
+
+
+def material_label(document: Document) -> str:
+    """"Aufschrieb · Mathe · Ableitungen · 12.03.2026" - was das Modell ueber die Herkunft wissen muss."""
+    parts: list[str] = []
+    if document.material_kind in _KIND_LABELS:
+        parts.append(_KIND_LABELS[document.material_kind])
+    if document.subject is not None:
+        parts.append(document.subject.short_name or document.subject.name)
+    if document.material_topic:
+        parts.append(document.material_topic)
+    if document.material_date is not None:
+        parts.append(f"{document.material_date:%d.%m.%Y}")
+    return " · ".join(parts)
+
+
+def format_excerpt(index: int, hit: DocumentSource, label: str = "") -> str:
+    """Eine Zeile im Block "Dokumentauszuege" - auch das Trainingsformat (``training_data``)."""
+    herkunft = f"{hit.filename} [{label}]" if label else hit.filename
+    return f"[{index}] {herkunft} (Abschnitt {hit.chunk_index + 1}): {hit.content}"
+
+
 def build_user_prompt(
     history: Sequence[ChatTurn],
     context: Sequence[str],
     memories: Sequence[AssistantMemory],
     hits: Sequence[DocumentSource],
     grade_context: Sequence[str],
+    labels: Mapping[int, str] | None = None,
+    profile: Sequence[str] = (),
 ) -> str:
     parts: list[str] = ["--- Schulstand ---", *context]
     if memories:
         parts.append("")
         parts.append("--- Notizen ueber die Person ---")
         parts.extend(f"- {memory.content}" for memory in memories)
+    if profile:
+        parts.append("")
+        parts.append("--- Lernprofil ---")
+        parts.extend(f"- {line}" for line in profile)
     parts.append("")
     parts.append("--- Dokumentauszuege ---")
     if hits:
         for index, hit in enumerate(hits, start=1):
-            parts.append(f"[{index}] {hit.filename} (Abschnitt {hit.chunk_index + 1}): {hit.content}")
+            parts.append(format_excerpt(index, hit, (labels or {}).get(hit.document_id, "")))
     else:
         parts.append("Zu dieser Frage wurde in den Dokumenten nichts gefunden.")
     if grade_context:
@@ -963,7 +1030,9 @@ def chat(
     grade_context = list(grade_context) if grades_allowed else []
     entry_wanted = wants_entry(question)
     system_prompt = SYSTEM_PROMPT + (ACTION_PROMPT if entry_wanted else "") + (VOICE_PROMPT if voice else "")
-    user_prompt = build_user_prompt(history, context, memories, hits, grade_context)
+    labels = {document.id: material_label(document) for document in documents}
+    profile = learner.profile_lines(db, user.id, zone, moment)
+    user_prompt = build_user_prompt(history, context, memories, hits, grade_context, labels, profile)
     outcome = (
         ai_routing.generate_with_routes(
             routes,
@@ -997,6 +1066,11 @@ def chat(
     if genannt is not None:
         korrigiert = [with_day(proposal, genannt, zone) for proposal in proposals]
         adjusted = korrigiert != proposals
+        proposals = korrigiert
+    genannte_art = kind_from_text(question) if proposals else None
+    if genannte_art is not None:
+        korrigiert = [with_kind(proposal, genannte_art) for proposal in proposals]
+        adjusted = adjusted or korrigiert != proposals
         proposals = korrigiert
     example = (
         training_service.record_example(

@@ -1,16 +1,15 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { CalendarDays, CheckCircle2, Clock3, LoaderCircle, Plus, RefreshCw, X } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { CalendarDays, CheckCircle2, Clock3, LoaderCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, FormError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { RowActions, SectionBanner } from "@/components/manage/row-actions";
+import { RowActions, SectionBanner, SectionHeader } from "@/components/manage/row-actions";
 import {
   createCalendarEvent,
   deleteCalendarEvent,
@@ -165,42 +164,23 @@ export function CalendarSection({ reference }: { reference: Date }) {
     }
   }
 
-  // Nach Tag gruppieren, damit ein Tag mit drei Terminen nicht drei
-  // Ueberschriften bekommt.
-  const nachTag = sammlung.items.reduce<Map<string, CalendarEvent[]>>((gruppen, termin) => {
-    const schluessel = toIsoDate(termin.start_time);
-    const vorhandene = gruppen.get(schluessel);
-    if (vorhandene) {
-      vorhandene.push(termin);
-    } else {
-      gruppen.set(schluessel, [termin]);
-    }
-    return gruppen;
-  }, new Map());
-
   return (
-    <Card id="calendar" className={anchorClass}>
-      <CardHeader className="flex-row flex-wrap items-start justify-between space-y-0 pb-3">
-        <div>
-          <CardTitle>Kalender</CardTitle>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary">{sammlung.items.length} Termine</Badge>
-          <Button type="button" size="icon" variant="ghost" onClick={() => void sammlung.reload()} aria-label="Kalender neu laden" disabled={sammlung.status === "loading"}>
-            <RefreshCw className={cn(sammlung.status === "loading" && "animate-spin")} aria-hidden="true" />
-          </Button>
-          <Button type="button" size="sm" onClick={() => (formularOffen && bearbeitet === null ? schliessen() : oeffnen())} aria-expanded={formularOffen && bearbeitet === null}>
-            {formularOffen && bearbeitet === null ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
-            {formularOffen && bearbeitet === null ? "Schließen" : "Neu"}
-          </Button>
-        </div>
-      </CardHeader>
+    <Card id="calendar" className={cn(anchorClass, "@container")}>
+      <SectionHeader
+        title="Termine"
+        count={`${sammlung.items.length} ${sammlung.items.length === 1 ? "Termin" : "Termine"}`}
+        loading={sammlung.status === "loading"}
+        onReload={() => void sammlung.reload()}
+        formOpen={formularOffen && bearbeitet === null}
+        onToggleForm={() => (formularOffen && bearbeitet === null ? schliessen() : oeffnen())}
+        newLabel="Neuer Termin"
+      />
 
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 pb-0">
         <SectionBanner error={sammlung.error} actionError={sammlung.actionError} onRetry={() => void sammlung.reload()} />
 
         {formularOffen ? (
-          <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
+          <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-border bg-muted/40 p-4">
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-semibold">{bearbeitet === null ? "Neuer Termin" : "Termin bearbeiten"}</p>
               <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
@@ -220,8 +200,10 @@ export function CalendarSection({ reference }: { reference: Date }) {
               )}
             </Field>
 
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Field id="termin-tag" label="Tag" required>
+            <div className="grid grid-cols-2 gap-4 @md:grid-cols-3">
+              {/* Im schmalen Raster steht der Tag allein in der ersten Zeile,
+                  Von und Bis teilen sich die zweite. */}
+              <Field id="termin-tag" label="Tag" required className="col-span-2 @md:col-span-1">
                 {(props) => (
                   <Input
                     {...props}
@@ -296,53 +278,71 @@ export function CalendarSection({ reference }: { reference: Date }) {
         ) : null}
 
         {sammlung.status === "loading" && sammlung.items.length === 0 ? (
-          <div className="space-y-3" aria-busy="true" aria-label="Kalender wird geladen">
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
+          <div className="space-y-2 pb-4" aria-busy="true" aria-label="Termine werden geladen">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
           </div>
         ) : sammlung.items.length === 0 ? (
-          <EmptyState icon={CalendarDays} title="Keine Termine" description="Dein Kalender ist frei. Trag einen Termin ein, damit er nicht untergeht." />
-        ) : (
-          <div className="space-y-5">
-            {[...nachTag.entries()].map(([tag, termine]) => (
-              <section key={tag} aria-label={formatDate(tag, { weekday: "long", day: "2-digit", month: "long" })}>
-                <h4 className={cn("mb-2 text-[11px] font-medium text-muted-foreground", isSameDay(tag, reference) && "text-primary")}>
-                  {isSameDay(tag, reference) ? "Heute" : formatDate(tag, { weekday: "long", day: "2-digit", month: "long" })}
-                </h4>
-                <ul className="space-y-2.5">
-                  {termine.map((termin) => (
-                    <TerminZeile
-                      key={termin.id}
-                      termin={termin}
-                      busy={sammlung.pending !== null}
-                      onEdit={() => oeffnen(termin)}
-                      onDelete={() => sammlung.remove(termin.id)}
-                    />
-                  ))}
-                </ul>
-              </section>
-            ))}
+          <div className="pb-4">
+            <EmptyState icon={CalendarDays} title="Keine Termine" description="Dein Kalender ist frei." />
           </div>
+        ) : (
+          // Eine flache Liste statt Tagesgruppen: das Kalenderblatt vorn zeigt
+          // den Tag schon, eine Ueberschrift je Tag sagte ihn ein zweites Mal.
+          <ul className="-mx-4 divide-y divide-border border-t border-border">
+            {sammlung.items.map((termin) => (
+              <TerminZeile
+                key={termin.id}
+                termin={termin}
+                heute={isSameDay(termin.start_time, reference)}
+                busy={sammlung.pending !== null}
+                onEdit={() => oeffnen(termin)}
+                onDelete={() => sammlung.remove(termin.id)}
+              />
+            ))}
+          </ul>
         )}
       </CardContent>
     </Card>
   );
 }
 
-function TerminZeile({ termin, busy, onEdit, onDelete }: { termin: CalendarEvent; busy: boolean; onEdit: () => void; onDelete: () => void }) {
+function TerminZeile({
+  termin,
+  heute,
+  busy,
+  onEdit,
+  onDelete,
+}: {
+  termin: CalendarEvent;
+  heute: boolean;
+  busy: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   return (
-    <li className="flex items-start gap-3 border border-border bg-card/60 p-3.5 transition-colors hover:border-foreground/40">
-      <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center bg-secondary text-secondary-foreground">
-        <span className="text-[11px] font-medium">{formatDate(termin.start_time, { month: "short" })}</span>
-        <span className="text-lg font-semibold leading-5">{formatDate(termin.start_time, { day: "2-digit" })}</span>
+    <li className="flex items-start gap-3 px-4 py-2.5">
+      <div
+        className={cn(
+          "flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-md border border-border",
+          heute && "border-foreground bg-foreground text-background",
+        )}
+        aria-hidden="true"
+      >
+        <span className={cn("text-[10px] leading-3", heute ? "text-background/70" : "text-muted-foreground")}>
+          {formatDate(termin.start_time, { month: "short" })}
+        </span>
+        <span className="text-[15px] font-semibold leading-5 tabular-nums">{formatDate(termin.start_time, { day: "2-digit" })}</span>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold">{termin.title}</p>
-        <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-          <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
+        <p className="truncate text-[13px] font-medium">{termin.title}</p>
+        <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+          <Clock3 className="h-3 w-3" aria-hidden="true" />
+          <span className="sr-only">{formatDate(termin.start_time, { weekday: "long", day: "2-digit", month: "long" })},</span>
+          {heute ? "Heute · " : null}
           {termin.all_day ? "Ganztägig" : `${formatTime(termin.start_time)} – ${formatTime(termin.end_time)}`}
         </p>
-        {termin.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{termin.description}</p> : null}
+        {termin.description ? <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-muted-foreground">{termin.description}</p> : null}
       </div>
       <RowActions label={termin.title} onEdit={onEdit} onDelete={onDelete} busy={busy} />
     </li>

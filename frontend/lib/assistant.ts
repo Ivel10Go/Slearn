@@ -236,6 +236,8 @@ const trainingHardwareSchema = z.object({
 
 const trainingStatusSchema = z.object({
   enabled: z.boolean(),
+  auto: z.boolean().optional().default(false),
+  materials: z.boolean().optional().default(false),
   max_examples: z.number().int(),
   stats: z.object({
     total: z.number().int(),
@@ -303,6 +305,102 @@ export async function deleteAllTrainingExamples(): Promise<void> {
   await apiRequest("/v1/assistant/training/examples", { method: "DELETE" });
 }
 
+export async function setMaterialsTraining(enabled: boolean): Promise<TrainingStatus> {
+  const payload = await apiRequest("/v1/assistant/training/materials", { method: "PUT", body: JSON.stringify({ enabled }) });
+  return trainingStatusSchema.parse(payload);
+}
+
+export async function setAutoTraining(enabled: boolean): Promise<TrainingStatus> {
+  const payload = await apiRequest("/v1/assistant/training/auto", { method: "PUT", body: JSON.stringify({ enabled }) });
+  return trainingStatusSchema.parse(payload);
+}
+
+// --- Trainingsrunden und Adapter --------------------------------------------
+
+const trainingRunSchema = z.object({
+  run_id: z.string(),
+  base_model_id: z.string(),
+  status: z.enum(["pending", "loading", "generating", "running", "paused", "converting", "done", "failed"]),
+  active: z.boolean(),
+  step: z.number().int(),
+  total_steps: z.number().int(),
+  example_count: z.number().int(),
+  loss: z.number().nullable().optional().default(null),
+  eval_loss_base: z.number().nullable().optional().default(null),
+  eval_loss: z.number().nullable().optional().default(null),
+  eval_score_base: z.number().nullable().optional().default(null),
+  eval_score: z.number().nullable().optional().default(null),
+  qa_done: z.number().int().optional().default(0),
+  qa_total: z.number().int().optional().default(0),
+  qa_kept: z.number().int().optional().default(0),
+  seconds_per_step: z.number().nullable().optional().default(null),
+  skipped_too_long: z.number().int().optional().default(0),
+  error: z.string().nullable().optional().default(null),
+  adapter_version: z.number().int().nullable().optional().default(null),
+  activated: z.boolean().optional().default(false),
+  created_at: z.string().nullable().optional().default(null),
+  updated_at: z.string().nullable().optional().default(null),
+});
+
+const adaptersSchema = z.object({
+  model_id: z.string(),
+  active_version: z.number().int().nullable(),
+  versions: z.array(
+    z.object({
+      version: z.number().int(),
+      example_count: z.number().int(),
+      eval_score: z.number().nullable().optional().default(null),
+      eval_loss: z.number().nullable().optional().default(null),
+      eval_loss_base: z.number().nullable().optional().default(null),
+      created_at: z.string(),
+      active: z.boolean(),
+    }),
+  ),
+});
+
+export type TrainingRun = z.infer<typeof trainingRunSchema>;
+export type TrainingAdapters = z.infer<typeof adaptersSchema>;
+
+export const TRAINING_RUN_STATUS: Record<TrainingRun["status"], string> = {
+  pending: "Wartet auf den Start",
+  loading: "Lädt das Modell",
+  generating: "Übt mit deinem Material",
+  running: "Trainiert",
+  paused: "Pausiert",
+  converting: "Prüft und speichert",
+  done: "Fertig",
+  failed: "Abgebrochen",
+};
+
+export async function getTrainingRun(): Promise<TrainingRun | null> {
+  return trainingRunSchema.nullable().parse(await apiRequest("/v1/assistant/training/run"));
+}
+
+export async function startTrainingRun(): Promise<TrainingRun> {
+  return trainingRunSchema.parse(await apiRequest("/v1/assistant/training/run", { method: "POST", body: "{}" }));
+}
+
+export async function pauseTrainingRun(): Promise<TrainingRun | null> {
+  return trainingRunSchema.nullable().parse(await apiRequest("/v1/assistant/training/run/pause", { method: "POST" }));
+}
+
+export async function discardTrainingRun(): Promise<void> {
+  await apiRequest("/v1/assistant/training/run", { method: "DELETE" });
+}
+
+export async function getTrainingAdapters(): Promise<TrainingAdapters> {
+  return adaptersSchema.parse(await apiRequest("/v1/assistant/training/adapters"));
+}
+
+export async function rollbackTrainingAdapter(): Promise<TrainingAdapters> {
+  return adaptersSchema.parse(await apiRequest("/v1/assistant/training/adapters/rollback", { method: "POST" }));
+}
+
+/** Anteil als ganze Prozent, `null` als Gedankenstrich. */
+export function prozent(wert: number | null): string {
+  return wert === null ? "–" : `${Math.round(wert * 100)} %`;
+}
+
 /**
  * Ein Signal, das nur eine Zugabe ist: scheitert es, merkt die Person nichts
  * davon - der Eintrag oder das Verwerfen selbst ist ja passiert.
@@ -312,4 +410,48 @@ export function feedbackNebenbei(exampleId: number | null | undefined, event: Tr
     return;
   }
   void sendTrainingFeedback(exampleId, event).catch(() => undefined);
+}
+
+// --- Lernprofil und Abfrage --------------------------------------------------
+
+const learnerProfileSchema = z.object({ lines: z.array(z.string()) });
+
+const quizQuestionSchema = z.object({
+  question_id: z.number().int(),
+  question: z.string(),
+  document_id: z.number().int(),
+  filename: z.string(),
+  source: z.string(),
+});
+
+const quizResultSchema = z.object({
+  verdict: z.enum(["richtig", "teilweise", "falsch"]),
+  explanation: z.string(),
+  reference: z.string(),
+  excerpt: z.string(),
+  filename: z.string(),
+  source: z.string(),
+  topic: z.string().nullable().optional().default(null),
+  confidence_label: z.string().nullable().optional().default(null),
+});
+
+export type QuizQuestion = z.infer<typeof quizQuestionSchema>;
+export type QuizResult = z.infer<typeof quizResultSchema>;
+
+/** Genau die Zeilen, die bei jeder Frage als „Lernprofil“ im Prompt stehen. */
+export async function getLearnerProfile(): Promise<string[]> {
+  return learnerProfileSchema.parse(await apiRequest("/v1/assistant/profile")).lines;
+}
+
+export async function startQuiz(subjectId: number | null): Promise<QuizQuestion> {
+  const payload = await apiRequest("/v1/assistant/quiz", { method: "POST", body: JSON.stringify({ subject_id: subjectId }) });
+  return quizQuestionSchema.parse(payload);
+}
+
+export async function answerQuiz(questionId: number, answer: string): Promise<QuizResult> {
+  const payload = await apiRequest(`/v1/assistant/quiz/questions/${encodeURIComponent(String(questionId))}/answer`, {
+    method: "POST",
+    body: JSON.stringify({ answer }),
+  });
+  return quizResultSchema.parse(payload);
 }

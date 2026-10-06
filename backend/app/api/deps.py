@@ -11,6 +11,7 @@ from app.db.entities import User
 from app.db.session import get_db
 from app.services.model_downloads import ModelDownloadManager
 from app.services.speech import SpeechService
+from app.services.training_jobs import TrainingRunner
 
 
 def get_app_settings(request: Request) -> Settings:
@@ -113,3 +114,17 @@ def get_speech(request: Request) -> SpeechService:
 #: schon vergeben ist - derselbe Trick wie bei ``CurrentUser``/``User``. In einer
 #: Signatur liest sich ``speech: Speech`` besser als ``speech: SpeechServiceDep``.
 Speech = Annotated[SpeechService, Depends(get_speech)]
+
+
+def get_training_runner(request: Request) -> TrainingRunner:
+    """Die Trainingsrunden - wie der Sprachdienst immer gebaut, ``None`` ist ein Programmierfehler."""
+    runner: TrainingRunner | None = getattr(request.app.state, "training_runner", None)
+    if runner is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Das Training ist nicht eingerichtet",
+        )
+    return runner
+
+
+TrainingJobs = Annotated[TrainingRunner, Depends(get_training_runner)]

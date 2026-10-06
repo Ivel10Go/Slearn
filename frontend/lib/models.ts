@@ -234,6 +234,8 @@ export function describeModelTask(task: string): string {
       return "Text zu Sprache";
     case "embedding":
       return "Einbettungen";
+    case "image_to_text":
+      return "Bild zu Text";
     default:
       return task;
   }

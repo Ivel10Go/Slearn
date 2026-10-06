@@ -38,6 +38,23 @@ Alle Umgebungsvariablen des Compose-Stacks. `.env.example` ist die kommentierte 
 | `LOG_LEVEL` | `INFO` | Backend-Logging |
 | `SCHOOL_TIMEZONE` | `Europe/Berlin` | IANA-Zeitzone für Schul- und Kalenderdaten |
 
+### LoRA-Training (optional, nur NVIDIA)
+
+Der Trainer (`trainer/`) läuft mit einem **eigenen** Python, das torch mit CUDA enthält – das Backend selbst bleibt ohne torch. Einrichten:
+
+```powershell
+python -m venv E:\lernraum-trainer\venv
+E:\lernraum-trainer\venv\Scripts\python.exe -m pip install torch --index-url https://download.pytorch.org/whl/cu128
+E:\lernraum-trainer\venv\Scripts\python.exe -m pip install -r trainer\requirements.txt
+```
+
+| Variable | Standardwert | Zweck |
+| --- | --- | --- |
+| `TRAINER_PYTHON` | leer | Pfad zum Trainer-Python (`…\venv\Scripts\python.exe`). Leer = Training nicht eingerichtet, `POST /assistant/training/run` antwortet 503 |
+| `TRAINER_DIR` | `trainer/` im Repository | Ordner mit `lernraum_trainer.py` |
+| `MATERIAL_INDEXER_ENABLED` | `false` (Desktop: immer an) | Schreibt Fotos und Scans im Hintergrund ab und rechnet Einbettungen. Auf einem Server ohne eingebautes Bildmodell geht das über den eingetragenen Online-KI-Dienst |
+| `TRAINER_CACHE_PATH` | `<MODEL_STORAGE_PATH>/trainer-cache` | Hugging-Face-Ablage der unquantisierten Basisgewichte (Qwen2.5 3B ≈ 6 GB) |
+
 ## Frontend
 
 | Variable | Standardwert | Zweck |
