@@ -35,7 +35,7 @@ import json
 import logging
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta
 from difflib import SequenceMatcher
 from typing import Final
@@ -77,6 +77,8 @@ _KIND_ALIASES: Final[dict[str, str]] = {
     "klausur": ACTION_EXAM,
     "test": ACTION_EXAM,
     "exam": ACTION_EXAM,
+    "klassenarbeit": ACTION_EXAM,
+    "schulaufgabe": ACTION_EXAM,
     "hausaufgabe": ACTION_HOMEWORK,
     "hausaufgaben": ACTION_HOMEWORK,
     "homework": ACTION_HOMEWORK,
@@ -296,6 +298,28 @@ def date_from_text(text: str, today: date) -> date | None:
         offset = (_WEEKDAY_INDEX[match.group(3).lower()] - today.weekday()) % 7 or 7
         return today + timedelta(days=offset + (7 if match.group(1) else 0))
     return None
+
+
+_TEXT_EXAM_RE = re.compile(
+    r"klassenarbeit|klausur|schulaufgabe|pr[uü]fung|lernkontrolle|vokabeltest|(?<![a-zäöüß])(?:ka|test)(?![a-zäöüß])",
+    re.IGNORECASE,
+)
+
+
+def kind_from_text(text: str) -> str | None:
+    """Die Art, die die Person **selbst** genannt hat - sonst ``None``.
+
+    Qwen 1.5B macht aus "Trage die Englisch-Klassenarbeit ein" eine Hausaufgabe.
+    "Klassenarbeit", "Klausur", "KA" und "Test" sind eindeutig eine Pruefung.
+    """
+    return ACTION_EXAM if _TEXT_EXAM_RE.search(text) else None
+
+
+def with_kind(proposal: ActionProposal, kind: str) -> ActionProposal:
+    """Derselbe Vorschlag als andere Art; ein Termin wird nicht zur Pruefung umgedeutet."""
+    if proposal.kind == kind or proposal.kind == ACTION_EVENT:
+        return proposal
+    return replace(proposal, kind=kind)
 
 
 def with_day(proposal: ActionProposal, day: date, zone: ZoneInfo) -> ActionProposal:
@@ -789,7 +813,7 @@ ACTION_PROMPT: Final = (
     "genau in dieser Form:\n"
     'AKTION {"typ": "pruefung|hausaufgabe|termin", "titel": "...", "fach": "...", '
     '"datum": "JJJJ-MM-TT", "uhrzeit": "HH:MM", "ende": "HH:MM", "beschreibung": "..."}\n'
-    "Nur typ, titel und datum sind Pflicht. Uebernimm das Datum fuer Angaben wie 'naechsten Freitag' "
+    "Nur typ, titel und datum sind Pflicht. Eine Klassenarbeit, Klausur oder ein Test ist typ 'pruefung', nie 'hausaufgabe'. Uebernimm das Datum fuer Angaben wie 'naechsten Freitag' "
     "oder 'morgen' genau aus der Datumshilfe, rechne nicht selbst. Lass uhrzeit weg, wenn keine genannt "
     "wurde. Schreibe davor kurz in einem Satz, was du vorschlaegst; die Person bestaetigt den Eintrag selbst."
 )
@@ -1003,6 +1027,11 @@ def chat(
     if genannt is not None:
         korrigiert = [with_day(proposal, genannt, zone) for proposal in proposals]
         adjusted = korrigiert != proposals
+        proposals = korrigiert
+    genannte_art = kind_from_text(question) if proposals else None
+    if genannte_art is not None:
+        korrigiert = [with_kind(proposal, genannte_art) for proposal in proposals]
+        adjusted = adjusted or korrigiert != proposals
         proposals = korrigiert
     example = (
         training_service.record_example(
