@@ -20,6 +20,11 @@ an und liest nur Dateien zurueck.
 * **Ein Checkpoint ist ganz oder gar nicht da.** Er entsteht in
   ``checkpoint.tmp`` und wird umbenannt; ein Absturz dazwischen faellt auf
   ``checkpoint.old`` zurueck.
+* **Fragen zum Material** (``data/qa_tasks.jsonl``) erzeugt der Trainer selbst,
+  vor dem Training, mit dem Basismodell: erst eine Frage zum Absatz, dann die
+  Antwort im echten Prompt-Format des Assistenten. Behalten wird nur, was
+  :func:`grounded` als belegt erkennt. Jedes Ergebnis steht sofort in
+  ``qa_generated.jsonl`` - ein Anhalten mitten im Erzeugen verliert nichts.
 * Torch und Co. werden erst in :func:`train` importiert. Die reinen Teile
   laufen in den Tests mit dem Standard-Python.
 """
@@ -50,6 +55,7 @@ OUT_DIR = "out"
 ADAPTER_GGUF = "adapter.gguf"
 
 STATUS_LOADING = "loading"
+STATUS_GENERATING = "generating"
 STATUS_RUNNING = "running"
 STATUS_PAUSED = "paused"
 STATUS_CONVERTING = "converting"
@@ -65,6 +71,17 @@ EXIT_PAUSED = 3
 #: einige Sekunden, und das zweimal (mit und ohne Adapter).
 EVAL_GENERATE_MAX = 20
 EVAL_MAX_NEW_TOKENS = 160
+
+QA_FILE = "qa_tasks.jsonl"
+QA_DONE_FILE = "qa_generated.jsonl"
+QUESTION_PLACEHOLDER = "<<FRAGE>>"
+QUESTION_MAX_TOKENS = 60
+ANSWER_MAX_TOKENS = 320
+#: So viel vom Antwortinhalt muss im passenden Auszug stehen.
+GROUNDED_MIN = 0.5
+QUESTION_SYSTEM = "Du hilfst Schülerinnen und Schülern beim Lernen mit ihrem eigenen Schulmaterial."
+
+_WORD_RE = re.compile(r"\w{4,}", re.UNICODE)
 
 _ACTION_LINE = re.compile(r"^\s*[*`>-]*\s*AKTION\b\s*:?\s*(\{.*\})", re.MULTILINE)
 
@@ -215,6 +232,57 @@ def action_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [row for row in rows if aktionen(row["messages"][-1]["content"])][:EVAL_GENERATE_MAX]
 
 
+def content_words(text: str) -> set[str]:
+    return {word.casefold() for word in _WORD_RE.findall(text)}
+
+
+def grounded(answer: str, source: str, distractors: list[str]) -> bool:
+    """Steht die Antwort im passenden Auszug - und dort mehr als in jedem unpassenden?
+
+    Gemessen an den Inhaltswoertern (ab vier Buchstaben). Eine Antwort, die
+    sich eher aus einem Ablenker speist oder nur Allgemeines sagt, lehrt das
+    Falsche: entweder Verwechseln oder Erfinden.
+    """
+    words = content_words(answer)
+    if len(words) < 3:
+        return False
+    share = len(words & content_words(source)) / len(words)
+    others = [len(words & content_words(other)) / len(words) for other in distractors]
+    return share >= GROUNDED_MIN and all(share > other for other in others)
+
+
+def question_messages(task: dict[str, Any]) -> list[dict[str, str]]:
+    return [
+        {"role": "system", "content": QUESTION_SYSTEM},
+        {
+            "role": "user",
+            "content": (
+                f"Abschnitt aus dem Schulmaterial ({task.get('label') or 'Material'}):\n{task['content']}\n\n"
+                "Formuliere genau eine Frage, die eine Schülerin oder ein Schüler zu diesem Abschnitt stellen würde "
+                "und die der Abschnitt beantwortet. Gib nur die Frage aus."
+            ),
+        },
+    ]
+
+
+def clean_question(text: str) -> str | None:
+    """Die erste Zeile, ohne "Frage:" und Anfuehrungszeichen - nur, wenn es wirklich eine Frage ist."""
+    for line in text.strip().splitlines():
+        line = re.sub(r"^\s*(frage\s*:|\d+[.)]|[-*])\s*", "", line, flags=re.IGNORECASE).strip(" \"'„“”*")
+        if line:
+            return line if line.endswith("?") and 10 <= len(line) <= 220 else None
+    return None
+
+
+def read_done(directory: Path) -> dict[str, dict[str, Any]]:
+    return {row["task_id"]: row for row in read_rows(directory / QA_DONE_FILE)}
+
+
+def append_done(directory: Path, row: dict[str, Any]) -> None:
+    with (directory / QA_DONE_FILE).open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
 def read_rows(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
@@ -276,14 +344,10 @@ def train(job: Job) -> int:  # noqa: C901 - ein Ablauf, bewusst an einem Stueck 
         kept = [item for item in encoded if item is not None]
         return kept, len(encoded) - len(kept)
 
-    train_items, skipped = encode_all(read_rows(job.data_dir / "train.jsonl"))
+    train_rows = read_rows(job.data_dir / "train.jsonl")
     eval_rows = read_rows(job.data_dir / "eval.jsonl")
-    eval_items, _ = encode_all(eval_rows)
     eval_actions = action_rows(eval_rows)
-    if not train_items:
-        raise RuntimeError("Keine Trainingsbeispiele, die in die Kontextlänge passen.")
-    steps = total_steps(len(train_items), hyper.epochs, hyper.grad_accum)
-    order = micro_order(len(train_items), hyper.epochs, hyper.seed)
+    qa_tasks = read_rows(job.data_dir / QA_FILE)
 
     quant = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -352,6 +416,68 @@ def train(job: Job) -> int:  # noqa: C901 - ein Ablauf, bewusst an einem Stueck 
                 pairs.append((row["messages"][-1]["content"], text))
         model.train()
         return action_score(pairs)
+
+    def generate(messages: list[dict[str, str]], max_new_tokens: int) -> str:
+        ids = prompt_ids_of([*messages, {"role": "assistant", "content": ""}])
+        with torch.no_grad():
+            out = model.generate(
+                input_ids=torch.tensor([ids], device="cuda"),
+                attention_mask=torch.ones((1, len(ids)), dtype=torch.long, device="cuda"),
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+                pad_token_id=tokenizer.eos_token_id,
+            )
+        return str(tokenizer.decode(out[0][len(ids) :], skip_special_tokens=True)).strip()
+
+    # --- Fragen zum Material: vor dem Training, mit dem reinen Basismodell ---
+    if qa_tasks:
+        done = read_done(job.directory)
+        pending = [task for task in qa_tasks if task["task_id"] not in done]
+        kept = sum(1 for row in done.values() if row.get("keep"))
+        if pending:
+            write_progress(
+                job.directory, status=STATUS_GENERATING, qa_total=len(qa_tasks), qa_done=len(done), qa_kept=kept
+            )
+            model.eval()
+            with model.disable_adapter():
+                for task in pending:
+                    if flag.raised or stop_requested(job.directory):
+                        write_progress(job.directory, status=STATUS_PAUSED)
+                        return EXIT_PAUSED
+                    raw_question = generate(question_messages(task), QUESTION_MAX_TOKENS)
+                    question = clean_question(raw_question)
+                    # Auch Verworfenes mit Grund ablegen - sonst laesst sich nie sagen, warum nichts blieb.
+                    result: dict[str, Any] = {"task_id": task["task_id"], "keep": False, "reason": "keine_frage"}
+                    result["raw_question"] = raw_question[:300]
+                    if question:
+                        prompt = [
+                            {"role": "system", "content": task["system"]},
+                            {"role": "user", "content": task["user_template"].replace(QUESTION_PLACEHOLDER, question)},
+                        ]
+                        answer = generate(prompt, ANSWER_MAX_TOKENS)
+                        result.update(reason="nicht_belegt", question=question, answer=answer[:600])
+                        if grounded(answer, task["content"], task.get("distractors", [])):
+                            result.update(
+                                keep=True,
+                                reason="belegt",
+                                eval=bool(task.get("eval")),
+                                messages=[*prompt, {"role": "assistant", "content": answer}],
+                            )
+                            kept += 1
+                    append_done(job.directory, result)
+                    done[task["task_id"]] = result
+                    write_progress(job.directory, qa_done=len(done), qa_kept=kept)
+            model.train()
+        for row in read_done(job.directory).values():
+            if row.get("keep"):
+                (eval_rows if row.get("eval") else train_rows).append(row)
+
+    train_items, skipped = encode_all(train_rows)
+    eval_items, _ = encode_all(eval_rows)
+    if not train_items:
+        raise RuntimeError("Keine Trainingsbeispiele, die in die Kontextlänge passen.")
+    steps = total_steps(len(train_items), hyper.epochs, hyper.grad_accum)
+    order = micro_order(len(train_items), hyper.epochs, hyper.seed)
 
     step = 0
     progress = read_progress(job.directory)

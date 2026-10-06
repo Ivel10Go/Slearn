@@ -238,3 +238,80 @@ def test_unsichere_modell_id_wird_abgelehnt(tmp_path: Path) -> None:
             tmp_path / "x", tmp_path, base_model_id="m", base_sha256="", dataset_fingerprint="",
             example_count=0, eval_score=None, created_at="",
         )
+
+
+# --- Material: Stil und Fragen ------------------------------------------------
+
+AUFSCHRIEB = (
+    "# Ableitungen\n"
+    "- Die Ableitung f'(x) ist die Steigung der Tangente im Punkt x.\n"
+    "- Potenzregel: (x^n)' = n * x^(n-1), gilt für alle reellen n.\n"
+    "**Merke:** Konstanten fallen beim Ableiten weg, Faktoren bleiben stehen.\n"
+    "- Bsp.: f(x) = 3x^2 -> f'(x) = 6x"
+)
+ARBEITSBLATT = (
+    "Arbeitsblatt Zellbiologie. Aufgabe 1: Beschreibe den Aufbau einer tierischen Zelle mit Zellkern, "
+    "Mitochondrien und Zellmembran. Aufgabe 2: Vergleiche sie mit einer Pflanzenzelle."
+)
+
+
+def _material(db: Session, user: User, name: str, art: str, inhalt: str) -> int:
+    from app.db.entities import Document, DocumentChunk
+
+    dokument = Document(
+        user_id=user.id, filename=name, storage_path=name, source="upload", status="indexed", material_kind=art
+    )
+    db.add(dokument)
+    db.flush()
+    absatz = DocumentChunk(user_id=user.id, document_id=dokument.id, chunk_index=0, content=inhalt)
+    db.add(absatz)
+    db.commit()
+    return absatz.id
+
+
+def test_stilbeispiel_ohne_form_rein_original_raus() -> None:
+    flach = training_data.flatten(AUFSCHRIEB)
+    assert "#" not in flach and "**" not in flach and "\n" not in flach
+    assert "Potenzregel" in flach and "Bsp.:" in flach
+    assert training_data.has_structure(AUFSCHRIEB)
+    assert not training_data.has_structure(ARBEITSBLATT)
+
+
+def test_material_nur_mit_freigabe_und_im_echten_promptformat(
+    app_context: tuple[TestClient, Session, User], tmp_path: Path
+) -> None:
+    client, db, user = app_context
+    aufschrieb = _material(db, user, "Mathe Aufschrieb.jpg", "aufschrieb", AUFSCHRIEB)
+    _material(db, user, "AB Zelle.pdf", "arbeitsblatt", ARBEITSBLATT)
+    _material(db, user, "Lebenslauf.pdf", "sonstiges", "Lebenslauf " * 40)
+    andere = User(username="andere", password_hash=hash_password("pw-andere-123"), is_active=True, timezone="UTC")
+    db.add(andere)
+    db.commit()
+    _material(db, andere, "Fremd.jpg", "aufschrieb", AUFSCHRIEB.replace("Ableitungen", "Geheim"))
+
+    ohne = training_data.load_dataset(db, user.id, BERLIN)
+    assert ohne.qa_tasks == [] and ohne.material_chunk_ids == []
+
+    satz = training_data.load_dataset(db, user.id, BERLIN, materials=True)
+
+    # "sonstiges" (Lebenslauf) und fremdes Material bleiben draussen.
+    assert len(satz.material_chunk_ids) == 2
+    stil = [zeile for zeile in satz.train + satz.eval if zeile["label"] == "style"]
+    assert len(stil) == 1 and stil[0]["material_chunk_id"] == aufschrieb
+    nachricht = stil[0]["messages"]
+    assert nachricht[-1]["content"] == AUFSCHRIEB
+    assert "# Ableitungen" not in nachricht[1]["content"] and "Potenzregel" in nachricht[1]["content"]
+    assert "--- Dokumentauszuege ---" in nachricht[1]["content"]
+    assert "Geheim" not in json.dumps(satz.qa_tasks + stil)
+
+    aufgaben = {aufgabe["chunk_id"]: aufgabe for aufgabe in satz.qa_tasks}
+    assert set(aufgaben) == set(satz.material_chunk_ids)
+    aufgabe = aufgaben[aufschrieb]
+    assert training_data.QUESTION_PLACEHOLDER in aufgabe["user_template"]
+    assert aufgabe["distractors"] == [ARBEITSBLATT]
+    assert "Zellbiologie" in aufgabe["user_template"] and "Potenzregel" in aufgabe["user_template"]
+
+    ordner = training_data.write_dataset(satz, tmp_path / "runde")
+    zusammenfassung = json.loads((ordner / training_data.DATASET_FILE).read_text(encoding="utf-8"))
+    assert zusammenfassung["counts"]["qa"] == 2
+    assert sorted(zusammenfassung["material_chunk_ids"]) == sorted(satz.material_chunk_ids)

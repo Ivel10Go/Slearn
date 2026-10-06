@@ -95,6 +95,34 @@ jobs:
         # Not `npm run build`: that script is plain `next build` (Turbopack).
         run: npx next build --webpack
 
+  landing:
+    name: landing page (test, lint, typecheck, build)
+    # Separate Next.js app with its own lockfile; it shares nothing with
+    # frontend/ at build time, so one job covers all of its checks.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: landing
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: landing/package-lock.json
+      - name: install
+        run: npm ci
+      - name: test (vitest)
+        run: npm test
+      - name: lint (eslint)
+        run: npm run lint
+      - name: typecheck (tsc --noEmit)
+        run: npm run typecheck
+      - name: build
+        run: npm run build
+
   backend:
     name: backend (${{ matrix.check }})
     runs-on: ubuntu-latest

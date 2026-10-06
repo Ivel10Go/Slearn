@@ -14,6 +14,7 @@ import {
   prozent,
   rollbackTrainingAdapter,
   setAutoTraining,
+  setMaterialsTraining,
   startTrainingRun,
   type TrainingAdapters,
   type TrainingRun,
@@ -85,7 +86,7 @@ export function TrainingRunPanel({ status, onStatus }: { status: TrainingStatus;
     }
   }
 
-  const kannTrainieren = status.hardware.eligible && status.enabled;
+  const kannTrainieren = status.hardware.eligible && (status.enabled || status.materials);
   const offen = lauf !== null && lauf.status !== "done";
   const anteil = lauf && lauf.total_steps > 0 ? Math.min(100, Math.round((lauf.step / lauf.total_steps) * 100)) : 0;
 
@@ -115,7 +116,27 @@ export function TrainingRunPanel({ status, onStatus }: { status: TrainingStatus;
           onChange={(event) => void ausfuehren(async () => onStatus(await setAutoTraining(event.target.checked)), "Die Einstellung konnte nicht gespeichert werden.")}
         />
       </label>
-      {!status.enabled ? <p className="text-xs text-muted-foreground">Erst mit eingeschaltetem Sammeln gibt es etwas zu trainieren.</p> : null}
+      <label className="flex items-center justify-between gap-3 text-[13px]">
+        <span>
+          <span className="font-medium">Aufschriebe und Arbeitsblätter nutzen</span>
+          <span className="block text-xs text-muted-foreground">
+            Das Modell lernt den Aufbau deines Hefts – Überschriften, Stichpunkte, Merke-Kästen, Abkürzungen – und das Antworten mit
+            deinem Material. Der Stoff selbst bleibt in den Dateien: löschst du eine, ist sie weg. Alles bleibt auf diesem Rechner.
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          className="h-4 w-4 accent-foreground"
+          checked={status.materials}
+          disabled={beschaeftigt || !status.hardware.eligible}
+          onChange={(event) =>
+            void ausfuehren(async () => onStatus(await setMaterialsTraining(event.target.checked)), "Die Einstellung konnte nicht gespeichert werden.")
+          }
+        />
+      </label>
+      {!status.enabled && !status.materials ? (
+        <p className="text-xs text-muted-foreground">Schalte das Sammeln oder dein Material frei, dann gibt es etwas zu trainieren.</p>
+      ) : null}
 
       {lauf ? (
         <div className="space-y-2 border-t border-border pt-3">
@@ -132,6 +153,11 @@ export function TrainingRunPanel({ status, onStatus }: { status: TrainingStatus;
           <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={anteil}>
             <div className="h-full bg-foreground transition-[width]" style={{ width: `${anteil}%` }} />
           </div>
+          {lauf.qa_total > 0 ? (
+            <p className="text-xs">
+              Fragen zu deinem Material: {lauf.qa_done} von {lauf.qa_total} geübt, {lauf.qa_kept} mit Beleg aus dem Material behalten
+            </p>
+          ) : null}
           <p className="text-xs text-muted-foreground">
             {lauf.example_count} Beispiele, {lauf.base_model_id}
             {lauf.skipped_too_long > 0 ? ` · ${lauf.skipped_too_long} zu lang, übersprungen` : ""}

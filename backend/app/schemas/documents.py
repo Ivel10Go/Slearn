@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -14,6 +15,22 @@ class DocumentRead(UTCResponseModel):
     mime_type: str | None = None
     created_at: datetime
     processed_at: datetime | None = None
+    #: Beim Einlesen erkannt, von Hand korrigierbar (``PATCH /{id}/material``).
+    material_kind: Literal["aufschrieb", "arbeitsblatt", "loesung", "sonstiges"] | None = None
+    material_topic: str | None = None
+    material_date: date | None = None
+    subject_id: int | None = None
+    #: text | pdf | ocr_local | ocr_online - woher der Text stammt.
+    text_source: str | None = None
+
+
+class DocumentMaterialUpdate(BaseModel):
+    """Korrektur der Erkennung. Gesetzte Felder gelten danach als von Hand und bleiben."""
+
+    material_kind: Literal["aufschrieb", "arbeitsblatt", "loesung", "sonstiges"] | None = None
+    material_topic: str | None = Field(default=None, max_length=240)
+    material_date: date | None = None
+    subject_id: int | None = None
 
 
 class DocumentSearchRequest(BaseModel):

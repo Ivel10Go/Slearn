@@ -42,6 +42,7 @@ class LessonChoiceOption(BaseModel):
     subject_id: int
     name: str
     short_name: str | None = None
+    color: str | None = None
     selected: bool
 
 

@@ -30,7 +30,11 @@ def _groups(db: DatabaseSession, user_id: int, timezone_name: str) -> list[Lesso
             decided=group.decided,
             options=[
                 LessonChoiceOption(
-                    subject_id=option.subject_id, name=option.name, short_name=option.short_name, selected=option.selected
+                    subject_id=option.subject_id,
+                    name=option.name,
+                    short_name=option.short_name,
+                    color=option.color,
+                    selected=option.selected,
                 )
                 for option in group.options
             ],

@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -73,6 +74,12 @@ class Document(Base):
         DateTime(timezone=True), nullable=False, default=utc_now, server_default=text("CURRENT_TIMESTAMP")
     )
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Beim Einlesen erkannt (``materials.py``): aufschrieb | arbeitsblatt | loesung | sonstiges.
+    material_kind: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    material_topic: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    material_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: Woher der Text stammt: text | pdf | ocr_local | ocr_online.
+    text_source: Mapped[str | None] = mapped_column(String(24), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="documents")
     subject: Mapped[Subject | None] = relationship(back_populates="documents")
@@ -103,6 +110,30 @@ class DocumentChunk(Base):
     )
 
     document: Mapped[Document] = relationship(back_populates="chunks")
+
+
+class ChunkEmbedding(Base):
+    """Vektor eines Absatzes aus dem lokalen Einbettungsmodell (Migration 0014).
+
+    Getrennt von ``DocumentChunk.embedding``: jene Spalte ist auf Postgres fest
+    1536 breit und auf SQLite kein Vektor. Hier liegen float32-Bytes, dazu das
+    Modell - ein Modellwechsel macht alte Vektoren wertlos, sie werden neu
+    gerechnet statt mit neuen gemischt.
+    """
+
+    __tablename__ = "chunk_embeddings"
+    __table_args__ = (Index("ix_chunk_embeddings_user_model", "user_id", "model_id"),)
+
+    chunk_id: Mapped[int] = mapped_column(
+        ForeignKey("document_chunks.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    model_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    dims: Mapped[int] = mapped_column(Integer, nullable=False)
+    vector: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, server_default=text("CURRENT_TIMESTAMP")
+    )
 
 
 class Topic(Base):

@@ -4,6 +4,7 @@ export interface LessonChoiceOption {
   subject_id: number;
   name: string;
   short_name: string | null;
+  color: string | null;
   selected: boolean;
 }
 
@@ -40,6 +41,7 @@ function parseGroups(payload: unknown): LessonChoiceGroup[] {
         subject_id: option.subject_id,
         name: option.name,
         short_name: typeof option.short_name === "string" ? option.short_name : null,
+        color: typeof option.color === "string" ? option.color : null,
         selected: option.selected === true,
       });
     }
@@ -132,7 +134,7 @@ export function bundleLessonChoices(groups: LessonChoiceGroup[]): LessonChoiceBu
     return {
       id,
       keys: teil.map((g) => g.key),
-      options: teil[0].options.map(({ subject_id, name, short_name }) => ({ subject_id, name, short_name })),
+      options: teil[0].options.map(({ subject_id, name, short_name, color }) => ({ subject_id, name, short_name, color })),
       windows: verschmelzen(teil.map(({ weekday, start, end }) => ({ weekday, start, end }))),
       selected,
       decided: entschieden.length === teil.length,

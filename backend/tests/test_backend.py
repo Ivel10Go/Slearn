@@ -10634,3 +10634,16 @@ def test_die_vektorsuche_baut_eine_postgres_abfrage() -> None:
     # `<=>` ist der Cosine-Distance-Operator; ohne ihn waere die Query auf
     # Postgres ein Syntaxfehler und die Suche lieferte nichts.
     assert "<=>" in sql
+
+
+def test_neues_fach_ohne_farbe_bekommt_eine_zufaellige_die_aenderbar_bleibt(app_client: TestClient) -> None:
+    from app.db.identity import SUBJECT_COLORS
+
+    login(app_client)
+    created = app_client.post("/api/v1/subjects", json={"name": "Chemie"})
+    assert created.status_code == 201
+    assert created.json()["color"] in SUBJECT_COLORS
+
+    changed = app_client.patch(f"/api/v1/subjects/{created.json()['id']}", json={"color": "#112233"})
+    assert changed.status_code == 200
+    assert changed.json()["color"] == "#112233"

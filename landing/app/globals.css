@@ -1,0 +1,202 @@
+@import "tailwindcss";
+
+/*
+ * Dieselbe Schwarz-Weiss-Palette wie die App (`frontend/app/globals.css`):
+ * Graustufen, Haarlinien, keine Schatten, keine Verlaeufe, keine Akzentfarbe.
+ * Die Landingpage folgt dem System-Farbschema, einen Umschalter braucht sie nicht.
+ */
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --card: #ffffff;
+  --muted: #f5f5f5;
+  --muted-foreground: #6e6e6e;
+  --secondary: #f4f4f4;
+  --accent: #efefef;
+  --primary: #0a0a0a;
+  --primary-foreground: #fafafa;
+  --border: #e7e7e7;
+  --input: #dedede;
+  --ring: #0a0a0a;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    --card: #0f0f0f;
+    --muted: #161616;
+    --muted-foreground: #8c8c8c;
+    --secondary: #1a1a1a;
+    --accent: #1d1d1d;
+    --primary: #ededed;
+    --primary-foreground: #0a0a0a;
+    --border: #222222;
+    --input: #2e2e2e;
+    --ring: #ededed;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", "Cascadia Mono", monospace;
+
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --radius-2xl: 10px;
+  --radius-3xl: 12px;
+
+  --default-transition-duration: 140ms;
+  --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    min-width: 320px;
+    background: var(--background);
+    scroll-behavior: smooth;
+    scroll-padding-top: 72px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    min-height: 100vh;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    text-rendering: optimizeLegibility;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  summary:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--foreground);
+    color: var(--background);
+  }
+}
+
+/* Aufklappbare Fragen: eigener Marker statt des Browser-Dreiecks. */
+details > summary {
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+details[open] .faq-plus {
+  transform: rotate(45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Faultier-Maskottchen, wie in der App. */
+.faultier {
+  --sloth-fur: #cdcdcd;
+  --sloth-belly: #e9e9e9;
+  --sloth-face: #ffffff;
+  --sloth-cheek: #ececec;
+  --sloth-ink: #0a0a0a;
+  --sloth-branch: #0a0a0a;
+  overflow: visible;
+}
+
+@media (prefers-color-scheme: dark) {
+  .faultier {
+    --sloth-fur: #5e5e5e;
+    --sloth-belly: #7a7a7a;
+    --sloth-face: #e8e8e8;
+    --sloth-cheek: #d2d2d2;
+    --sloth-ink: #0a0a0a;
+    --sloth-branch: #9a9a9a;
+  }
+}
+.faultier .f-fell { fill: var(--sloth-fur); stroke: var(--sloth-ink); stroke-width: 2; stroke-linejoin: round; }
+.faultier .f-bauch { fill: var(--sloth-belly); }
+.faultier .f-gesicht,
+.faultier .f-augapfel { fill: var(--sloth-face); }
+.faultier .f-wange { fill: var(--sloth-cheek); }
+.faultier .f-tinte { fill: var(--sloth-ink); }
+.faultier .f-linie { fill: none; stroke: var(--sloth-ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.faultier .f-duenn { stroke-width: 1.5; }
+.faultier .f-linie-rand { stroke: var(--sloth-ink); stroke-width: 1.5; stroke-linejoin: round; }
+.faultier .f-lid { fill: none; stroke: var(--sloth-face); stroke-width: 2; stroke-linecap: round; }
+.faultier .f-ast { fill: none; stroke: var(--sloth-branch); stroke-width: 4; stroke-linecap: round; }
+.faultier .f-blatt { fill: var(--sloth-belly); stroke: var(--sloth-branch); stroke-width: 1.5; }
+.faultier .f-arm-rand { fill: none; stroke: var(--sloth-ink); stroke-width: 12; stroke-linecap: round; }
+.faultier .f-arm { fill: none; stroke: var(--sloth-fur); stroke-width: 8; stroke-linecap: round; }
+.faultier .f-kralle { fill: none; stroke: var(--sloth-ink); stroke-width: 1.8; stroke-linecap: round; }
+.faultier .f-deko { fill: var(--sloth-branch); }
+
+/* Bewegung: Drehpunkt in Nutzerkoordinaten des viewBox (Ast bzw. Kopfmitte). */
+.faultier .f-schwingen { transform-origin: 60px 10px; animation: faultier-schwingen 7s ease-in-out infinite; }
+.faultier .f-wippen { animation: faultier-wippen 6s ease-in-out infinite; }
+.faultier .f-kopf { transform-origin: 60px 62px; transition: transform 400ms cubic-bezier(0.4, 0, 0.2, 1); }
+.faultier[data-zustand="zuhoeren"] .f-kopf { transform: rotate(-7deg); }
+.faultier[data-zustand="freut"] .f-kopf { transform: rotate(5deg); }
+.faultier .f-augen { transform-box: fill-box; transform-origin: center; animation: faultier-blinzeln 6.5s infinite; }
+.faultier .f-blick { transition: transform 250ms ease-out; }
+.faultier .f-blick-oben { transform: translate(1px, -1.2px); }
+.faultier .f-mund-spricht { transform-box: fill-box; transform-origin: center top; animation: faultier-sprechen 380ms ease-in-out infinite alternate; }
+.faultier .f-gedanken circle { animation: faultier-gedanke 1.4s ease-in-out infinite; }
+.faultier .f-gedanken circle:nth-child(2) { animation-delay: 0.2s; }
+.faultier .f-gedanken circle:nth-child(3) { animation-delay: 0.4s; }
+.faultier .f-zzz { animation: faultier-zzz 3s ease-in-out infinite; }
+.faultier-still,
+.faultier-still * { animation: none !important; }
+
+@keyframes faultier-schwingen { 0%, 100% { transform: rotate(-1.8deg); } 50% { transform: rotate(1.8deg); } }
+@keyframes faultier-wippen { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.2px); } }
+@keyframes faultier-blinzeln { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.1); } }
+@keyframes faultier-sprechen { from { transform: scaleY(0.35); } to { transform: scaleY(1.1); } }
+@keyframes faultier-gedanke { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+@keyframes faultier-zzz { 0%, 100% { opacity: 0.4; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }

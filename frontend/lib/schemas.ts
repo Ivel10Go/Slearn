@@ -144,6 +144,11 @@ export const documentReadSchema = z.object({
   mime_type: z.string().nullable().optional(),
   created_at: z.string(),
   processed_at: z.string().nullable().optional(),
+  material_kind: z.enum(["aufschrieb", "arbeitsblatt", "loesung", "sonstiges"]).nullable().optional(),
+  material_topic: z.string().nullable().optional(),
+  material_date: z.string().nullable().optional(),
+  subject_id: z.number().int().nullable().optional(),
+  text_source: z.string().nullable().optional(),
 });
 
 export const documentSourceSchema = z.object({
@@ -183,6 +188,11 @@ export function parseDocumentArray(payload: unknown) {
     mime_type: entry.mime_type ?? null,
     created_at: entry.created_at,
     processed_at: entry.processed_at ?? null,
+    material_kind: entry.material_kind ?? null,
+    material_topic: entry.material_topic ?? null,
+    material_date: entry.material_date ?? null,
+    subject_id: entry.subject_id ?? null,
+    text_source: entry.text_source ?? null,
   }));
 }
 

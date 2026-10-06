@@ -68,6 +68,15 @@ ALLOWED_RUNTIME_HOSTS: Final[frozenset[str]] = frozenset(
 )
 
 TEXT_CONTEXT_TOKENS: Final = 8192
+#: Eigene llama-server neben dem Textmodell: Bilder lesen und Einbettungen.
+#: Jeder Platz haelt hoechstens einen Server; ein Modellwechsel beendet den alten.
+SLOT_VISION: Final = "llama_cpp_vision"
+SLOT_EMBEDDING: Final = "llama_cpp_embedding"
+#: Obergrenze je Bild. Ein A4-Scan in voller Aufloesung kostet sonst ~4200 Bild-Token
+#: und auf dem Prozessor vier Minuten je Seite; 1280 reichen fuer Handschrift.
+VISION_MAX_IMAGE_TOKENS: Final = 1280
+#: Ein Einbettungsabsatz ist ~1000 Zeichen; der Stapel muss ihn ganz fassen.
+EMBEDDING_BATCH_TOKENS: Final = 2048
 SERVER_START_TIMEOUT_SECONDS: Final = 120.0
 DOWNLOAD_TIMEOUT_SECONDS: Final = 60.0
 _MARKER: Final = ".installed"
@@ -617,26 +626,115 @@ class LocalRuntimeManager:
             raise LocalRuntimeError("Es gibt keine Modellablage.")
         return self.ensure_text_server(spec.id, self.downloads.model_directory(spec) / spec.files[0].name)
 
+    # ------------------------------------------------- Bilder und Einbettungen
+
+    def installed_models(self, task: str) -> list[ModelSpec]:
+        """Die geladenen Modelle einer Aufgabe, groesstes zuerst."""
+        if self.downloads is None:
+            return []
+        specs = [spec for spec in catalog_models() if spec.task == task and spec.files]
+        installed = [spec for spec in specs if self.downloads.is_installed(spec)]
+        return sorted(installed, key=lambda spec: (-spec.size_bytes, spec.id))
+
+    def ensure_vision_model(self, spec: ModelSpec) -> str:
+        """Startet ``llama-server`` mit Bildteil (``--mmproj``) fuer Fotos und Scans."""
+        if self.downloads is None:
+            raise LocalRuntimeError("Es gibt keine Modellablage.")
+        directory = self.downloads.model_directory(spec)
+        projector = next((f for f in spec.files if f.name.startswith("mmproj")), None)
+        weights = next((f for f in spec.files if not f.name.startswith("mmproj")), None)
+        if projector is None or weights is None:
+            raise LocalRuntimeError(f"{spec.label} hat keinen Bildteil.")
+        program = self.ensure_installed(RUNTIME_LLAMA)
+        return self._ensure_server(
+            RUNTIME_LLAMA,
+            spec.id,
+            lambda port: [
+                str(program),
+                "-m",
+                str(directory / weights.name),
+                "--mmproj",
+                str(directory / projector.name),
+                "--image-max-tokens",
+                str(VISION_MAX_IMAGE_TOKENS),
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "-c",
+                str(TEXT_CONTEXT_TOKENS),
+                "--no-webui",
+            ],
+            health_path="/health",
+            slot=SLOT_VISION,
+        )
+
+    def ensure_embedding_model(self, spec: ModelSpec) -> str:
+        """Startet ``llama-server --embedding`` fuer die Bedeutungssuche."""
+        if self.downloads is None:
+            raise LocalRuntimeError("Es gibt keine Modellablage.")
+        program = self.ensure_installed(RUNTIME_LLAMA)
+        model_path = self.downloads.model_directory(spec) / spec.files[0].name
+        return self._ensure_server(
+            RUNTIME_LLAMA,
+            spec.id,
+            lambda port: [
+                str(program),
+                "-m",
+                str(model_path),
+                "--embedding",
+                "--pooling",
+                "cls",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "-c",
+                str(TEXT_CONTEXT_TOKENS),
+                "-b",
+                str(EMBEDDING_BATCH_TOKENS),
+                "-ub",
+                str(EMBEDDING_BATCH_TOKENS),
+                "--no-webui",
+            ],
+            health_path="/health",
+            slot=SLOT_EMBEDDING,
+        )
+
+    def stop_slot(self, slot: str) -> None:
+        """Beendet einen Nebenserver, etwa das Bildmodell nach dem Lesen - es haelt Gigabytes."""
+        with self._server_lock:
+            server = self._servers.pop(slot, None)
+            if server is not None:
+                self._stop(server)
+
     def running_model(self, runtime_id: str) -> str | None:
         server = self._servers.get(runtime_id)
         return server.model_id if server and server.alive() else None
 
     def _ensure_server(
-        self, runtime_id: str, model_id: str, argv_for: Callable[[int], list[str]], *, health_path: str
+        self,
+        runtime_id: str,
+        model_id: str,
+        argv_for: Callable[[int], list[str]],
+        *,
+        health_path: str,
+        slot: str | None = None,
     ) -> str:
         label = RUNTIME_CATALOG[runtime_id].label
+        key = slot or runtime_id
         with self._server_lock:
-            server = self._servers.get(runtime_id)
+            server = self._servers.get(key)
             if server and server.alive() and server.model_id == model_id:
                 return server.base_url
             if server:
                 self._stop(server)
-                self._servers.pop(runtime_id, None)
+                self._servers.pop(key, None)
             port = free_port()
             argv = argv_for(port)
             log_dir = self.root / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
-            log_path = log_dir / f"{runtime_id}.log"
+            log_path = log_dir / f"{key}.log"
             log = log_path.open("wb")
             try:
                 process = self.popen(
@@ -655,7 +753,7 @@ class LocalRuntimeManager:
             if not self._wait_healthy(server, health_path):
                 self._stop(server)
                 raise LocalRuntimeError(f"{label} ist nicht rechtzeitig bereit geworden. Details stehen in {log_path}.")
-            self._servers[runtime_id] = server
+            self._servers[key] = server
             return server.base_url
 
     def _wait_healthy(self, server: _Server, health_path: str) -> bool:

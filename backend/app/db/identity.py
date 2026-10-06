@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +21,19 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.time import utc_now
 
 from .base import Base
+
+# Gut unterscheidbare Fachfarben; ein neues Fach bekommt eine davon zufaellig.
+# Sie ist nur der Startwert und laesst sich unter /faecher jederzeit aendern.
+SUBJECT_COLORS = (
+    "#E11D48", "#F97316", "#F59E0B", "#84CC16", "#22C55E", "#14B8A6",
+    "#06B6D4", "#0EA5E9", "#3B82F6", "#6366F1", "#8B5CF6", "#A855F7",
+    "#D946EF", "#EC4899", "#78716C", "#0F766E",
+)
+
+
+def random_subject_color() -> str:
+    return random.choice(SUBJECT_COLORS)
+
 
 if TYPE_CHECKING:
     from .academic import CalendarEvent, Exam, Grade, Homework, Lesson
@@ -176,7 +190,7 @@ class Subject(Base):
     teacher_id: Mapped[int | None] = mapped_column(ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     short_name: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    color: Mapped[str] = mapped_column(String(20), nullable=False, default="#3B82F6", server_default="#3B82F6")
+    color: Mapped[str] = mapped_column(String(20), nullable=False, default=random_subject_color, server_default="#3B82F6")
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String(64), nullable=False, default="manual", server_default="manual")
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)

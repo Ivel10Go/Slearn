@@ -52,6 +52,7 @@ E:\lernraum-trainer\venv\Scripts\python.exe -m pip install -r trainer\requiremen
 | --- | --- | --- |
 | `TRAINER_PYTHON` | leer | Pfad zum Trainer-Python (`…\venv\Scripts\python.exe`). Leer = Training nicht eingerichtet, `POST /assistant/training/run` antwortet 503 |
 | `TRAINER_DIR` | `trainer/` im Repository | Ordner mit `lernraum_trainer.py` |
+| `MATERIAL_INDEXER_ENABLED` | `false` (Desktop: immer an) | Schreibt Fotos und Scans im Hintergrund ab und rechnet Einbettungen. Auf einem Server ohne eingebautes Bildmodell geht das über den eingetragenen Online-KI-Dienst |
 | `TRAINER_CACHE_PATH` | `<MODEL_STORAGE_PATH>/trainer-cache` | Hugging-Face-Ablage der unquantisierten Basisgewichte (Qwen2.5 3B ≈ 6 GB) |
 
 ## Frontend

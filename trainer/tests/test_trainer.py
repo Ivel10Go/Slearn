@@ -116,6 +116,30 @@ class VerhaltenspruefungTest(unittest.TestCase):
         self.assertEqual(len(t.action_rows(zeilen)), t.EVAL_GENERATE_MAX)
 
 
+class MaterialFragenTest(unittest.TestCase):
+    def test_nur_eine_echte_frage_wird_genommen(self) -> None:
+        self.assertEqual(t.clean_question('Frage: "Was beschreibt die Ableitung?"\nZweite Zeile'), "Was beschreibt die Ableitung?")
+        self.assertIsNone(t.clean_question("Die Ableitung ist die Steigung."))
+        self.assertIsNone(t.clean_question("Was?"))
+
+    def test_belegt_heisst_aus_dem_passenden_auszug_und_nicht_aus_einem_ablenker(self) -> None:
+        auszug = "Ableitung: Steigung der Tangente am Graphen einer Funktion"
+        ablenker = ["Die Zelle besitzt einen Zellkern und Mitochondrien"]
+        self.assertTrue(t.grounded("Die Ableitung beschreibt die Steigung der Tangente am Graphen.", auszug, ablenker))
+        self.assertFalse(t.grounded("Die Zelle besitzt einen Zellkern und Mitochondrien.", auszug, ablenker))
+        # Allgemeines ohne Inhalt lehrt nichts.
+        self.assertFalse(t.grounded("Ja, genau.", auszug, ablenker))
+
+    def test_erzeugte_fragen_ueberleben_ein_anhalten(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            job = Path(tmp)
+            t.append_done(job, {"task_id": "q1", "keep": True, "messages": []})
+            t.append_done(job, {"task_id": "q2", "keep": False})
+            erledigt = t.read_done(job)
+            self.assertEqual(set(erledigt), {"q1", "q2"})
+            self.assertTrue(erledigt["q1"]["keep"])
+
+
 class GgufNamenTest(unittest.TestCase):
     def test_peft_namen_werden_zu_llama_cpp_namen(self) -> None:
         self.assertEqual(

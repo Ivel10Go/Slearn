@@ -253,6 +253,8 @@ export interface CalendarFeed {
   message: string;
 }
 
+export type MaterialKind = "aufschrieb" | "arbeitsblatt" | "loesung" | "sonstiges";
+
 export interface DocumentRecord {
   id: number;
   filename: string;
@@ -262,6 +264,13 @@ export interface DocumentRecord {
   mime_type: string | null;
   created_at: string;
   processed_at: string | null;
+  /** Beim Einlesen erkannt, von Hand korrigierbar. */
+  material_kind: MaterialKind | null;
+  material_topic: string | null;
+  material_date: string | null;
+  subject_id: number | null;
+  /** text | pdf | ocr_local | ocr_online */
+  text_source: string | null;
 }
 
 export interface DocumentSource {

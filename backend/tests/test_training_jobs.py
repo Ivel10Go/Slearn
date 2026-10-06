@@ -344,3 +344,45 @@ def test_gescheiterte_runde_wird_nicht_automatisch_wiederholt(
 
     assert (stand["status"], stand["error"]) == ("failed", "CUDA out of memory")
     assert len(trainer["calls"]) == 1
+
+
+def _absaetze(db: Session, user_id: int, anzahl: int, start: int = 0) -> None:
+    from app.db.entities import Document, DocumentChunk
+
+    for nummer in range(start, start + anzahl):
+        dokument = Document(
+            user_id=user_id, filename=f"AB {nummer}.pdf", storage_path="x", source="upload", status="indexed",
+            material_kind="arbeitsblatt",
+        )
+        db.add(dokument)
+        db.flush()
+        inhalt = f"Arbeitsblatt {nummer}: Aufgabe zur Bruchrechnung mit Kürzen, Erweitern und Hauptnenner " * 3
+        db.add(DocumentChunk(user_id=user_id, document_id=dokument.id, chunk_index=0, content=inhalt))
+    db.commit()
+
+
+def test_material_allein_reicht_und_neues_material_startet_eine_neue_runde(
+    app_context: tuple[TestClient, Session, User], trainer: dict[str, Any]
+) -> None:
+    client, db, user = app_context
+    login(client)
+    _absaetze(db, user.id, 10)
+    url = "/api/v1/assistant/training/conditions"
+    client.put("/api/v1/assistant/training/auto", json={"enabled": True})
+    client.put("/api/v1/assistant/training/consent", json={"enabled": True})
+
+    # Ohne Materialfreigabe zaehlt Material nicht.
+    assert client.post(url, json={"allowed": True}).json() is None
+    assert client.put("/api/v1/assistant/training/materials", json={"enabled": True}).json()["materials"] is True
+
+    lauf = client.post(url, json={"allowed": True}).json()
+    run_dir = trainer["runner"].runs_root(user.id) / lauf["run_id"]
+    assert (run_dir / "data" / "qa_tasks.jsonl").read_text(encoding="utf-8").count("\n") == 10
+    _fertig(run_dir, eval_loss=0.5, eval_loss_base=1.0)
+    trainer["processes"][-1].returncode = 0
+    assert client.get("/api/v1/assistant/training/run").json()["status"] == "done"
+
+    _absaetze(db, user.id, 9, start=10)
+    assert client.post(url, json={"allowed": True}).json()["run_id"] == lauf["run_id"]
+    _absaetze(db, user.id, 1, start=19)
+    assert client.post(url, json={"allowed": True}).json()["run_id"] != lauf["run_id"]

@@ -2,7 +2,7 @@ import hashlib
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.deps import AppSettings, CurrentUser, DatabaseSession
@@ -15,6 +15,7 @@ router = APIRouter(prefix="/api/v1/files", tags=["files"])
 
 @router.post("", response_model=FileUploadResponse, status_code=status.HTTP_201_CREATED)
 def upload_file(
+    request: Request,
     current_user: CurrentUser,
     db: DatabaseSession,
     settings: AppSettings,
@@ -67,6 +68,11 @@ def upload_file(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database unavailable") from exc
 
     index_uploaded_document(db, current_user.id, doc, settings)
+    # Ein Foto oder Scan wartet jetzt auf das Abschreiben: den Indexer wecken,
+    # statt bis zu seinem naechsten Durchlauf zu warten.
+    indexer = getattr(request.app.state, "material_indexer", None)
+    if indexer is not None and doc.status == "queued":
+        indexer.wake()
 
     return FileUploadResponse(
         id=doc.id,

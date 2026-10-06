@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { FileText, FolderTree, LoaderCircle, MessageSquareText, RefreshCw, Search, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -11,17 +11,19 @@ import { FormError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SectionBanner } from "@/components/manage/row-actions";
-import { getDocuments, searchDocuments, uploadFile, type DocumentSearchInput } from "@/lib/api";
+import { getDocuments, searchDocuments, updateDocumentMaterial, uploadFile, type DocumentSearchInput } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { useAction, useList } from "@/lib/use-collection";
 import { cn } from "@/lib/utils";
-import type { DocumentRecord, DocumentSearchResult, FileUploadResult } from "@/lib/types";
+import type { DocumentRecord, DocumentSearchResult, FileUploadResult, MaterialKind } from "@/lib/types";
 
 /** `POST /v1/files` nimmt eine Datei entgegen. Das Backend kennt keine Größengrenze über HTTP. */
 const MAX_UPLOAD_HINWEIS = 10 * 1024 * 1024;
 
 const STATUS_LABEL: Record<string, string> = {
   indexed: "Indexiert",
+  queued: "Wird abgeschrieben",
+  needs_model: "Bildmodell fehlt",
   pending: "In Arbeit",
   processed: "Verarbeitet",
   error: "Fehler",
@@ -30,6 +32,30 @@ const STATUS_LABEL: Record<string, string> = {
 
 function statusLabel(status: string) {
   return STATUS_LABEL[status] ?? status;
+}
+
+const ART_LABEL: Record<MaterialKind, string> = {
+  aufschrieb: "Aufschrieb",
+  arbeitsblatt: "Arbeitsblatt",
+  loesung: "Lösung",
+  sonstiges: "Sonstiges",
+};
+
+const QUELLE_LABEL: Record<string, string> = {
+  ocr_local: "abgeschrieben auf diesem Rechner",
+  ocr_online: "abgeschrieben vom KI-Dienst",
+  pdf: "aus dem PDF",
+  text: "Textdatei",
+};
+
+/** Fotos, Scans und PDFs gehen ins Abschreiben; Text wird sofort gelesen. */
+const ERLAUBTE_DATEIEN = ".txt,.md,.markdown,.pdf,.png,.jpg,.jpeg,.webp";
+/** Solange etwas abgeschrieben wird, alle 8 s nachsehen - eine Seite dauert etwa eine Minute. */
+const NACHSEHEN_MS = 8_000;
+
+function formatDatum(iso: string) {
+  const [jahr, monat, tag] = iso.split("-");
+  return `${tag}.${monat}.${jahr}`;
 }
 
 /**
@@ -51,6 +77,27 @@ export function DocumentsView() {
   const [suchText, setSuchText] = useState("");
   const [datei, setDatei] = useState<File | null>(null);
   const [uploadHinweis, setUploadHinweis] = useState<string | null>(null);
+  const [artFehler, setArtFehler] = useState<string | null>(null);
+
+  const { reload } = sammlung;
+  const wartet = sammlung.items.some((dokument) => dokument.status === "queued");
+  useEffect(() => {
+    if (!wartet) {
+      return;
+    }
+    const timer = window.setInterval(() => void reload(), NACHSEHEN_MS);
+    return () => window.clearInterval(timer);
+  }, [wartet, reload]);
+
+  async function artSetzen(id: number, art: MaterialKind) {
+    try {
+      await updateDocumentMaterial(id, { material_kind: art });
+      setArtFehler(null);
+      await reload();
+    } catch {
+      setArtFehler("Die Art ließ sich nicht speichern.");
+    }
+  }
 
   const hochladen = useCallback(async () => {    if (!datei) {
       setUploadHinweis("Wähle zuerst eine Datei aus.");
@@ -136,9 +183,9 @@ export function DocumentsView() {
                 </div>
                 <FormError message={uploadHinweis ?? upload.error} />
                 <p className="text-xs leading-5 text-muted-foreground">
-                  Indexiert werden Textdateien (<span className="font-mono">.txt</span>, <span className="font-mono">.md</span>). Andere
-                  Formate werden gespeichert, aber nicht durchsuchbar gemacht. Ein ganzer Ordner lässt sich unter{" "}
-                  <span className="font-semibold">Einstellungen</span> über eine Dokumentverbindung indexieren.
+                  Text, PDF und Fotos (JPG, PNG, WebP). Fotos und Scans – auch handschriftliche Aufschriebe – schreibt das Bildmodell im
+                  Hintergrund ab; die Art (Aufschrieb, Arbeitsblatt, Lösung) erkennt der Lernraum selbst, und du kannst sie korrigieren. Ein
+                  ganzer Ordner lässt sich unter <span className="font-semibold">Einstellungen</span> über eine Dokumentverbindung indexieren.
                 </p>
               </form>
 
@@ -151,6 +198,11 @@ export function DocumentsView() {
                 <EmptyState icon={FolderTree} title="Noch keine Dokumente" description="Lade eine Datei hoch oder verbinde unter den Einstellungen einen Dokumentordner." />
               ) : (
                 <ul className="space-y-2.5">
+                  {artFehler ? (
+                    <li>
+                      <FormError message={artFehler} />
+                    </li>
+                  ) : null}
                   {sammlung.items.map((dokument) => (
                     <li key={dokument.id} className="flex items-start gap-3 border border-border bg-card/60 p-3.5">
                       <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center bg-muted">
@@ -162,13 +214,46 @@ export function DocumentsView() {
                           <Badge variant={dokument.status === "error" || dokument.status === "failed" ? "warning" : "secondary"}>
                             {statusLabel(dokument.status)}
                           </Badge>
+                          <select
+                            aria-label={`Art von ${dokument.filename}`}
+                            value={dokument.material_kind ?? ""}
+                            onChange={(event) => void artSetzen(dokument.id, event.target.value as MaterialKind)}
+                            className="h-6 rounded-[5px] border border-border bg-background px-1.5 text-xs"
+                          >
+                            {dokument.material_kind ? null : <option value="">Art …</option>}
+                            {(Object.keys(ART_LABEL) as MaterialKind[]).map((art) => (
+                              <option key={art} value={art}>
+                                {ART_LABEL[art]}
+                              </option>
+                            ))}
+                          </select>
                         </div>
+                        {dokument.material_topic || dokument.material_date ? (
+                          <p className="mt-1 text-[13px]">
+                            {dokument.material_topic}
+                            {dokument.material_topic && dokument.material_date ? <span className="text-muted-foreground"> · </span> : null}
+                            {dokument.material_date ? <span className="text-muted-foreground">{formatDatum(dokument.material_date)}</span> : null}
+                          </p>
+                        ) : null}
+                        {dokument.status === "needs_model" ? (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Für Fotos und Scans lädst du unter{" "}
+                            <Link href="/ki" className="underline underline-offset-2">
+                              KI &amp; Modelle
+                            </Link>{" "}
+                            das Bildmodell Qwen2.5-VL. Danach wird es automatisch abgeschrieben.
+                          </p>
+                        ) : null}
                         <p className="mt-1 text-xs font-semibold text-muted-foreground">
                           {dokument.source === "upload" ? "hochgeladen" : `aus ${dokument.source}`}
                           <span className="text-border"> · </span>
                           {dokument.processed_at ? `verarbeitet ${formatDateTime(dokument.processed_at)}` : `angelegt ${formatDateTime(dokument.created_at)}`}
                         </p>
-                        {dokument.mime_type ? <p className="mt-0.5 text-xs text-muted-foreground">{dokument.mime_type}</p> : null}
+                        {dokument.text_source ? (
+                          <p className="mt-0.5 text-xs text-muted-foreground">{QUELLE_LABEL[dokument.text_source] ?? dokument.text_source}</p>
+                        ) : dokument.mime_type ? (
+                          <p className="mt-0.5 text-xs text-muted-foreground">{dokument.mime_type}</p>
+                        ) : null}
                       </div>
                     </li>
                   ))}
@@ -259,6 +344,7 @@ function DateiAuswahl({ datei, setDatei, disabled }: { datei: File | null; setDa
       <input
         id="dokument-datei"
         type="file"
+        accept={ERLAUBTE_DATEIEN}
         disabled={disabled}
         onChange={(event) => setDatei(event.target.files?.[0] ?? null)}
         className="block w-full text-sm text-foreground file:mr-3 file:border file:border-border file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-semibold hover:file:bg-accent disabled:opacity-50"
