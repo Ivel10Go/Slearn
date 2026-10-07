@@ -182,6 +182,35 @@ def test_ein_falsches_uv_paket_wird_verworfen(tmp_path: Path) -> None:
     assert not (tmp_path / "trainer-env" / "uv" / UV_VERSION / "uv.exe").exists()
 
 
+def test_ein_kaputtes_archiv_mit_passender_pruefsumme_meldet_sich_auf_deutsch(tmp_path: Path) -> None:
+    kaputt = b"kein zip"
+    setup = make_setup(tmp_path, payload=kaputt)
+    setup.uv_assets = {"windows-x64": RuntimeAsset(UV_URL, hashlib.sha256(kaputt).hexdigest(), len(kaputt), "uv.exe")}
+
+    with pytest.raises(TrainerSetupError, match="entpacken"):
+        setup.install()
+
+    assert not (tmp_path / "trainer-env" / "uv" / f"{UV_VERSION}.staging").exists()
+
+
+def test_ein_abgebrochener_lauf_nimmt_dem_neuen_seinen_prozess_nicht(tmp_path: Path) -> None:
+    setup = make_setup(tmp_path)
+    neuer_prozess = FakeProcess([])
+
+    def abgebrochen_und_neu_gestartet(progress: Any) -> None:
+        # Waehrend der alte Lauf noch endet, hat der neue schon seinen Prozess.
+        setup._progress = type(progress)(active=True, phase="uv")
+        setup._process = neuer_prozess  # type: ignore[assignment]
+        raise TrainerSetupError("Abgebrochen.")
+
+    setup._install_steps = abgebrochen_und_neu_gestartet  # type: ignore[method-assign]
+    with pytest.raises(TrainerSetupError):
+        setup.install()
+
+    # Sonst liesse sich der neue Lauf nicht mehr abbrechen.
+    assert setup._process is neuer_prozess
+
+
 def test_ein_paket_mit_anderer_pruefsumme_bricht_ab(tmp_path: Path) -> None:
     setup = make_setup(tmp_path, steps=Steps(fail_sync=True))
 

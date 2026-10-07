@@ -36,7 +36,9 @@ import logging
 import os
 import shutil
 import subprocess
+import tarfile
 import threading
+import zipfile
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -306,7 +308,11 @@ class TrainerSetup:
         finally:
             progress.active = False
             progress.phase = None
-            self._process = None
+            # Nur den eigenen Lauf aufraeumen: nach Abbrechen und sofortigem
+            # Neustart gehoert ``_process`` schon dem neuen Lauf, und ohne
+            # Griff darauf liesse er sich nicht mehr abbrechen.
+            if self._progress is progress:
+                self._process = None
 
     def _install_steps(self, progress: _Progress) -> None:
         lock = self._lock_path()
@@ -391,7 +397,8 @@ class TrainerSetup:
                     lines.append(line)
                     self._progress.log.append(line)
         code = process.wait()
-        self._process = None
+        if self._process is process:
+            self._process = None
         if self._progress.cancelled:
             raise TrainerSetupError("Abgebrochen.")
         if code != 0:
@@ -457,7 +464,7 @@ class TrainerSetup:
             (staging / ".sha256").write_text(asset.sha256, encoding="utf-8")
             shutil.rmtree(target, ignore_errors=True)
             staging.rename(target)
-        except OSError as exc:
+        except (OSError, zipfile.BadZipFile, tarfile.TarError) as exc:
             shutil.rmtree(staging, ignore_errors=True)
             raise TrainerSetupError(f"Das Installationsprogramm ließ sich nicht entpacken: {exc}") from exc
         except TrainerSetupError:

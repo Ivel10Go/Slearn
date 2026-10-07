@@ -58,6 +58,12 @@ try {
   await expectStatus("GET", "/api/v1/dashboard", 200);
   await expectStatus("GET", "/api/v1/greeting", 200);
   await expectStatus("GET", "/api/v1/progress/insights", 200);
+  // Router, die erst in create_app() per Namen importiert werden - genau die
+  // fehlen PyInstaller am ehesten.
+  await expectStatus("POST", "/api/v1/study/planner/preview", 200, {});
+  await expectStatus("GET", "/api/v1/account/export", 200);
+  await expectStatus("GET", "/api/v1/assistant/routes", 200);
+  await expectStatus("GET", "/api/v1/assistant/training/setup", 200);
   console.log("Rauchtest bestanden.");
 } catch (error) {
   console.error(output);

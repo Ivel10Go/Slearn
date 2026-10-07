@@ -176,12 +176,12 @@ Für Lint-/Type-Caches im Notfall auf ein anderes Laufwerk legen, falls C: wiede
 
 ## Baseline-Status (vor jeder Änderung)
 
-Nicht als Regressionen fehlinterpretieren. Alle Zahlen am 30.09.2026 gegen `HEAD` verifiziert, nicht aus Commit-Nachrichten übernommen:
+Nicht als Regressionen fehlinterpretieren. Alle Zahlen am 07.10.2026 gegen `HEAD` verifiziert, nicht aus Commit-Nachrichten übernommen:
 
-- `npm.cmd test` → **1 Fehlschlag**, 103 grün (104 Tests, 9 Dateien): `lib/types.test.ts` › „lehnt fehlerhafte API-Daten ab". Der Test prüft, dass `normalizeDashboard()` kaputte API-Daten ablehnt — die Zod-Schemas sind Stubs, also tut es das nicht.
+- `npm.cmd test` → **1 Fehlschlag**, 321 grün (322 Tests, 23 Dateien): `lib/types.test.ts` › „lehnt fehlerhafte API-Daten ab". Der Test prüft, dass `normalizeDashboard()` kaputte API-Daten ablehnt — die Zod-Schemas sind Stubs, also tut es das nicht.
 - `npm.cmd run lint` → **22 Fehler**, ausschließlich `@typescript-eslint/no-explicit-any`, verteilt auf **7 in `lib/schemas.ts` + 15 in `lib/types.ts`**. Absichtliche Arbeitsumgehung, kommentiert in `lib/types.ts:8`: die Zod-Schemas sind `z.object({}).passthrough()`-Stubs, die nichts validieren. Die Aufgaben- und Fortschrittsschemas sind inzwischen echte Schemas, deshalb bleibt die Zahl trotz mehr Code gleich — die 22 sind alle in den Stub-Dateien. `typecheck` ist dagegen sauber.
-- `python -m pytest` (aus `backend/`) → **188 grün**, `ruff` sauber, `mypy` sauber über 63 Dateien.
-- Worker-Tests: 4 grün, aus dem **Repo-Root**.
+- `python -m pytest` (aus `backend/`) → **717 grün** (Stand 07.10.2026), `ruff` sauber, `mypy` sauber über 124 Dateien.
+- Worker-Tests: 46 grün, aus dem **Repo-Root**. Trainer-Tests (`trainer/tests`): 14 grün. Desktop `npm run check`: 17 grün.
 
 Die beiden roten Frontend-Befehle sind inzwischen **kein herrenloser Ausnahmezustand mehr**: `.github/ci/known-failures.mjs` benennt genau diese eine Test-ID und die zwei (Datei, Regel)-Paare mit einer Obergrenze je Datei. Wer eine Zahl hier oben verändert, muss sie dort mitverändern, sonst fällt der Job.
 
@@ -219,7 +219,7 @@ Der Browser ruft **ausschließlich** `/api/backend/v1/...` auf. `isValidProxyPat
 
 - ruff: `line-length = 120`, `target-version = "py312"`, Regeln `E4,E7,E9,F,I` — **`I` erzwingt Importsortierung**, die häufigste Lint-Ursache.
 - mypy: `warn_return_any`, `no_implicit_optional`, `check_untyped_defs` — ein `-> None` fehlt nicht zufällig.
-- pytest: `asyncio_mode = "auto"` (async-Tests ohne Marker), `testpaths = ["tests"]`. Es gibt nur `tests/conftest.py` + `tests/test_backend.py` (160 Testfunktionen, 188 Tests nach Parametrisierung).
+- pytest: `asyncio_mode = "auto"` (async-Tests ohne Marker), `testpaths = ["tests"]`. Neben `tests/conftest.py` gibt es 15 Testdateien (`test_backend.py` ist die größte; dazu u. a. `test_planner.py`, `test_assistant.py`, `test_training*.py`, `test_account.py`).
 - **Backend-Tests brauchen kein Postgres**: `conftest.py` legt pro Test eine SQLite-DB in `tmp_path` an, fährt `alembic upgrade head` und überschreibt `get_db` per `dependency_overrides`.
 - **FastAPI-Dependencies als `Annotated`-Alias, nie zusätzlich mit `= Depends()`**: `deps.py` definiert `CurrentUser`/`DatabaseSession`/`AppSettings` bereits als `Annotated[X, Depends(...)]`. Ein zusätzliches `= Depends()`-Default lässt FastAPI mit `AssertionError: Cannot specify Depends in Annotated and default value together` abstürzen — **beim Import von `app.main`, also startet der ganze Container nicht**. Parameter mit `Annotated`-Alias daher immer ohne Default deklarieren; ein Parameter mit Default (z. B. `file: UploadFile = File(...)`) muss **hinten** stehen.
 - **Neue Router müssen in `create_app()` registriert werden** (`app/main.py`), sonst sind alle Routen 404 — der Import in der Funktion allein registriert nichts. Das hat den kompletten `/api/v1/integrations`-Block initially unerreichbar gemacht.
@@ -340,7 +340,7 @@ Die Datei gilt **ausschließlich** für den Worker-Build (`docker-compose.yml:11
 - **Der Umzug nach `backend/` war kein Geschmack, sondern eine Folge der Root-`.dockerignore`.** Die Datei lässt alles außer `worker/` aus dem Kontext; ein Skript im Root hätte also nur per Bind-Mount funktioniert — und damit genau die zweite Quelle der Wahrheit wiederhergestellt, die abgeschafft werden sollte. Im Backend-Kontext ist es eine ganz normale `COPY . .`-Datei.
 - **Das Skript macht `cd "$(dirname "$0")"`, damit `alembic.ini` unabhängig vom Arbeitsverzeichnis gefunden wird**, und es läuft als `sh <pfad>`, nicht direkt: ein Checkout unter Windows garantiert keine Ausführungsrechte. `set -eu` lässt Uvicorn bewusst nicht starten, wenn das Upgrade scheitert — ein Backend gegen ein nicht migriertes Schema ist schlimmer als kein Backend.
 - **`.gitattributes` mit `*.sh text eol=lf` ist Pflicht, nicht Kosmetik.** Ohne sie legt `core.autocrlf=true` beim Windows-Checkout CRLF in die Arbeitskopie, und `dash` bricht an `set -eu` mit `Illegal option -` ab — das Backend startet dann gar nicht, und der Fehler zeigt auf das falsche System.
-- **Neue Migration: neue Revision in `backend/alembic/versions/`.** Es sind **6**, keine neue dazugekommen: `LearningProgress.confidence`/`last_reviewed_at` und die Wochenziel-Präferenz gab es schon, deshalb brauchte die Fortschritts-Welle keine.
+- **Neue Migration: neue Revision in `backend/alembic/versions/`.** Es sind inzwischen **15** (Stand `20261007_0015`). Die Fortschritts-Welle brauchte damals keine neue: `LearningProgress.confidence`/`last_reviewed_at` und die Wochenziel-Präferenz gab es schon, deshalb brauchte die Fortschritts-Welle keine.
 
 ## CI und die akzeptierte Baseline
 
