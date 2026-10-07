@@ -1313,3 +1313,32 @@ export async function fetchSpeechAudio(text: string, voiceId?: string): Promise<
 export async function getAiRuntime(): Promise<AiRuntimePayload | null> {
   return parseAiRuntime(await apiRequest("/v1/ai-runtime"));
 }
+
+/* ------------------------------------------------------------ Eigene Daten */
+
+/**
+ * Die Datenauskunft als ZIP. Nicht ueber `apiRequest`, weil die Antwort kein
+ * JSON ist - der Fehlerfall dagegen schon, deshalb dieselbe Meldungslogik.
+ */
+export async function downloadAccountExport(): Promise<{ blob: Blob; filename: string }> {
+  let response: Response;
+  try {
+    response = await fetch(endpoint("/v1/account/export"), { cache: "no-store", credentials: "include" });
+  } catch {
+    throw new ApiError("Die Verbindung zum Lernraum konnte nicht hergestellt werden.", 0);
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => undefined);
+    throw new ApiError(responseMessage(payload, `Der Export ist fehlgeschlagen (${response.status}).`), response.status);
+  }
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "lernraum-daten.zip";
+  return { blob: await response.blob(), filename };
+}
+
+export async function deleteAccount(confirm: string, password?: string): Promise<void> {
+  await apiRequest("/v1/account/delete", {
+    method: "POST",
+    body: JSON.stringify(password ? { confirm, password } : { confirm }),
+  });
+}
