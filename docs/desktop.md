@@ -37,7 +37,21 @@ npm run dist              # macOS: desktop/dist/Lernraum-<version>-<arch>.dmg (A
 
 `npm run dist` friert das Backend in einem eigenen venv ein (`desktop/.venv-backend`, nur `backend/requirements.txt`), baut die Oberfläche mit `next build --webpack` als Standalone-Server und packt beides mit electron-builder. `npm run smoke:backend` startet das eingefrorene Backend gegen eine leere Datenbank und prüft Migrationen, Ersteinrichtung und Dashboard. Der Workflow `.github/workflows/desktop.yml` baut alle drei Installer (Windows x64, macOS arm64, macOS x64) bei einem `v*`-Tag oder per Hand.
 
-Die Installer sind **unsigniert**: Windows zeigt beim ersten Start einen SmartScreen-Hinweis (*Weitere Informationen → Trotzdem ausführen*), macOS verlangt einmal *Rechtsklick → Öffnen*. Für eine Verteilung ohne Warnung braucht es ein Codesigning-Zertifikat bzw. eine Apple-Developer-Mitgliedschaft (Notarisierung).
+## Signieren und Veröffentlichen
+
+**Signieren ist optional und hängt an Repository-Secrets.** Sind sie gesetzt, signiert electron-builder im Workflow selbst; fehlen sie, entsteht ein unsignierter Installer:
+
+| Secret | Wofür |
+| --- | --- |
+| `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` | Windows-Codesigning-Zertifikat (`.pfx`, base64) |
+| `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD` | Apple „Developer ID Application“ (`.p12`, base64) |
+| `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | Notarisierung |
+
+Ohne Signatur zeigt Windows beim ersten Start einen SmartScreen-Hinweis (*Weitere Informationen → Trotzdem ausführen*), macOS verlangt einmal *Rechtsklick → Öffnen*, und der Mac-Updater kann nicht installieren.
+
+**Veröffentlichen:** Ein Tag `v<version>` muss zu `desktop/package.json` passen, sonst bricht der Workflow ab (der Updater vergleicht genau diese Version). Bei einem Tag lädt electron-builder die Installer und die Update-Metadaten (`latest.yml`, `latest-mac.yml`) in ein **Release-Entwurf** (`releaseType: draft` in `electron-builder.yml`). Erst wenn der Entwurf auf GitHub veröffentlicht ist, sehen ihn `releases/latest` und die automatischen Updates.
+
+**Automatische Updates** (`desktop/lib/updates.js`, electron-updater): 30 s nach dem Start und danach alle sechs Stunden, Download im Hintergrund, Installation beim nächsten Neustart. Vor der ersten Migration der neuen Version sichert die App die Datenbank. Abschaltbar mit `LERNRAUM_DISABLE_UPDATES`.
 
 ## Entwickeln
 

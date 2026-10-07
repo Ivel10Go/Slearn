@@ -37,6 +37,52 @@ Alle Umgebungsvariablen des Compose-Stacks. `.env.example` ist die kommentierte 
 | `CORS_ORIGINS` | `http://localhost:3000` | Erlaubte Direktzugriffs-Origins |
 | `LOG_LEVEL` | `INFO` | Backend-Logging |
 | `SCHOOL_TIMEZONE` | `Europe/Berlin` | IANA-Zeitzone für Schul- und Kalenderdaten |
+| `WEBUNTIS_SYNC_ENABLED` | `false` (Compose: `true`) | Stundenplan planmäßig im Backend abrufen |
+| `WEBUNTIS_SYNC_INTERVAL_SECONDS` | `86400` | Abstand zweier planmäßiger Abrufe (höchstens 604800) |
+| `REMINDER_SCHEDULER_ENABLED` | `false` (Compose: `true`) | Erinnerungen an fällige Aufgaben und Klausuren im Hintergrund prüfen |
+| `REMINDER_INTERVAL_SECONDS` | `300` | Abstand der Erinnerungsläufe (60 bis 86400) |
+
+Werte ohne Eintrag unter `environment:` in `docker-compose.yml` erreichen das Backend im Compose-Stack nicht, auch wenn sie in `.env` stehen. Das betrifft derzeit unter anderem alle `WEB_PUSH_*`-, `SPEECH_MAX_*`-, `TRAINER_*`-Werte sowie `LOCAL_RUNTIMES_ENABLED`, `MATERIAL_INDEXER_ENABLED` und `FFMPEG_BINARY_PATH`.
+
+### Benachrichtigungen (Web-Push, optional)
+
+| Variable | Standardwert | Zweck |
+| --- | --- | --- |
+| `WEB_PUSH_VAPID_SUBJECT` | leer | Kontakt des Betreibers, `mailto:` oder `https://`; Pflicht für Push |
+| `WEB_PUSH_VAPID_PRIVATE_KEY` | leer | Privater VAPID-Schlüssel. Ohne ihn laufen Erinnerungen nur über die geöffnete Seite |
+| `WEB_PUSH_VAPID_PUBLIC_KEY` | leer | Optional; muss zum privaten Schlüssel passen, sonst wird er daraus berechnet |
+| `WEB_PUSH_TIMEOUT_SECONDS` | `10` | Zeitlimit eines Push-Versands (1 bis 120) |
+
+### KI und lokale Modelle
+
+| Variable | Standardwert | Zweck |
+| --- | --- | --- |
+| `AI_LOCAL_FIRST` | `true` | Lokales Modell vor Online-Provider versuchen |
+| `AI_LOCAL_TIMEOUT_SECONDS` | `60` | Budget eines lokalen Modelllaufs, wenn er der einzige Weg ist |
+| `AI_LOCAL_FAST_TIMEOUT_SECONDS` | `15` | Kürzeres Budget, wenn danach noch ein Online-Provider wartet |
+| `AI_GENERATE_TIMEOUT_SECONDS` | `30` | Budget einer Generierung beim Online-Provider |
+| `MODEL_STORAGE_PATH` | `/var/lib/school-assistant/models` | Ablage für Modelle, Laufzeiten, Adapter und Trainingsrunden |
+| `MODELS_HOST_PATH` | `./data/models` | Host-Quelle für `MODEL_STORAGE_PATH` (nur Compose) |
+| `MODEL_DOWNLOAD_TIMEOUT_SECONDS` | `60` | Lese-Timeout je Block beim Modell-Download |
+| `MODEL_MIN_FREE_BYTES` | `536870912` | Freier Speicher, den ein Download nie unterschreitet |
+| `LOCAL_RUNTIMES_ENABLED` | `false` (Desktop: `true`) | llama-server, whisper-server und Piper mit fester Version und Prüfsumme von GitHub laden und selbst starten |
+| `MATERIAL_INDEXER_ENABLED` | `false` (Desktop: immer an) | Schreibt Fotos und Scans im Hintergrund ab und rechnet Einbettungen. Auf einem Server ohne eingebautes Bildmodell geht das über den eingetragenen Online-KI-Dienst |
+
+### Sprache (optional)
+
+| Variable | Standardwert | Zweck |
+| --- | --- | --- |
+| `SPEECH_ENABLED` | `true` (Compose: `false`) | Sprachfunktionen anbieten |
+| `WHISPER_SERVER_URL` | leer | Adresse eines whisper.cpp-Servers; im Container `host.docker.internal` statt `localhost` |
+| `WHISPER_SERVER_TIMEOUT_SECONDS` | `120` | Zeitlimit einer Erkennung |
+| `WHISPER_LANGUAGE` | leer (Compose: `de`) | Sprache der Erkennung; leer = automatisch, eingebaute Laufzeit dann fest Deutsch |
+| `PIPER_BINARY_PATH` | leer | Pfad zum Piper-Programm für die Sprachausgabe |
+| `FFMPEG_BINARY_PATH` | `ffmpeg` | Wandelt WebM/MP4-Aufnahmen in 16-kHz-WAV; im Backend-Image enthalten |
+| `SPEECH_MAX_UPLOAD_BYTES` | `12582912` | Größte Aufnahme (12 MiB) |
+| `SPEECH_MAX_SECONDS` | `120` | Längste Aufnahme (5 bis 600 s) |
+| `SPEECH_MAX_TEXT_CHARACTERS` | `4000` | Längster Vorlesetext |
+| `SPEECH_STT_MODEL_ID` | leer | Whisper-Modell erzwingen; leer = automatisch |
+| `SPEECH_TTS_VOICE_ID` | leer | Stimme erzwingen; leer = eine deutsche geladene Stimme |
 
 ### LoRA-Training (optional, nur NVIDIA)
 
@@ -52,7 +98,7 @@ E:\lernraum-trainer\venv\Scripts\python.exe -m pip install -r trainer\requiremen
 | --- | --- | --- |
 | `TRAINER_PYTHON` | leer | Pfad zum Trainer-Python (`…\venv\Scripts\python.exe`). Leer = Training nicht eingerichtet, `POST /assistant/training/run` antwortet 503 |
 | `TRAINER_DIR` | `trainer/` im Repository | Ordner mit `lernraum_trainer.py` |
-| `MATERIAL_INDEXER_ENABLED` | `false` (Desktop: immer an) | Schreibt Fotos und Scans im Hintergrund ab und rechnet Einbettungen. Auf einem Server ohne eingebautes Bildmodell geht das über den eingetragenen Online-KI-Dienst |
+| `TRAINER_ENV_PATH` | `<MODEL_STORAGE_PATH>/trainer-env` | Wohin die Desktop-App die Trainer-Umgebung selbst einrichtet (~6 GB); ein gesetztes `TRAINER_PYTHON` hat Vorrang |
 | `TRAINER_CACHE_PATH` | `<MODEL_STORAGE_PATH>/trainer-cache` | Hugging-Face-Ablage der unquantisierten Basisgewichte (Qwen2.5 3B ≈ 6 GB) |
 
 ## Frontend

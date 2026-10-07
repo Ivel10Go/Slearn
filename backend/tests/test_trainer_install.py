@@ -246,6 +246,20 @@ def test_entfernen_loescht_die_umgebung(tmp_path: Path) -> None:
     assert setup.status().state == STATE_MISSING
 
 
+def test_entfernen_laesst_fremde_dateien_im_ordner_stehen(tmp_path: Path) -> None:
+    """Zeigt der Pfad versehentlich auf einen benutzten Ordner, bleibt dessen Inhalt."""
+    setup = make_setup(tmp_path)
+    setup.install()
+    fremd = tmp_path / "trainer-env" / "Hausaufgaben.txt"
+    fremd.write_text("bleibt", encoding="utf-8")
+
+    setup.remove()
+
+    assert fremd.read_text(encoding="utf-8") == "bleibt"
+    assert not (tmp_path / "trainer-env" / "venv").exists()
+    assert setup.status().state == STATE_MISSING
+
+
 def test_der_runner_nimmt_die_eingerichtete_umgebung_aber_von_hand_gewinnt(tmp_path: Path) -> None:
     setup = make_setup(tmp_path)
     eingerichtet = TrainingRunner(Settings(model_storage_path=str(tmp_path / "modelle")), setup=setup)

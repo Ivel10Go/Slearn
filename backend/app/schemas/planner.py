@@ -10,7 +10,8 @@ from app.schemas.common import UTCResponseModel
 # * ``homework``    eine offene Hausaufgabe, fuer die noch kein Block existiert
 # * ``exam_topic``  ein Klausurthema, das noch keine Aufgabe hat
 # * ``exam_review`` eine Klausur ohne Themen: ein allgemeiner Wiederholungsblock
-PlannerItemKind = Literal["task", "homework", "exam_topic", "exam_review"]
+# * ``review``      ein Thema, dessen Wiederholung laut Lernstand faellig ist
+PlannerItemKind = Literal["task", "homework", "exam_topic", "exam_review", "review"]
 
 CLOCK_PATTERN = r"^([01]\d|2[0-3]):[0-5]\d$"
 
@@ -43,6 +44,8 @@ class PlannerRequest(BaseModel):
     exam_lead_days: int = Field(default=10, ge=1, le=60)
     # Auch Aufgaben neu verteilen, die schon einen Termin in der Zukunft haben.
     replan_scheduled: bool = False
+    # Faellige Wiederholungen aus dem Lernstand (``/fortschritt``) mit einplanen.
+    include_reviews: bool = True
 
     @model_validator(mode="after")
     def latest_after_earliest(self) -> Self:

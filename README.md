@@ -13,12 +13,14 @@ Es gibt Lernraum in zwei Formen:
 
 ## Desktop-App
 
-**Installieren:** Den Installer für dein System herunterladen (`Lernraum-Setup-<version>.exe` für Windows, `Lernraum-<version>-<arch>.dmg` für macOS) und starten. Beim ersten Start fragt Lernraum nur nach deinem Namen.
+**Installieren:** Den Installer für dein System von der [Release-Seite](https://github.com/Ivel10Go/School-assistant/releases/latest) herunterladen (`Lernraum-Setup-<version>.exe` für Windows, `Lernraum-<version>-<arch>.dmg` für macOS, `arm64` für Apple Silicon, `x64` für Intel) und starten. Beim ersten Start fragt Lernraum nur nach deinem Namen.
 
-Die Installer sind noch nicht signiert:
+**Updates** lädt die App selbst über GitHub-Releases: Sie sieht beim Start und danach alle sechs Stunden nach, lädt eine neue Version im Hintergrund und installiert sie beim nächsten Neustart. Vorher sichert sie die Datenbank.
+
+Ob ein Installer signiert ist, hängt davon ab, ob für den Release ein Zertifikat hinterlegt war. Ist er es nicht, gilt:
 
 - **Windows:** Beim ersten Start *Weitere Informationen → Trotzdem ausführen* wählen.
-- **macOS:** Die App einmal mit *Rechtsklick → Öffnen* starten.
+- **macOS:** Die App einmal mit *Rechtsklick → Öffnen* starten. Automatische Updates funktionieren unter macOS nur bei einer signierten App; sonst die neue Version von der Release-Seite installieren.
 
 **Deine Daten** liegen unter `%APPDATA%\Lernraum` (Windows) bzw. `~/Library/Application Support/Lernraum` (macOS). In der App findest du den Ordner unter *Einstellungen → Daten auf diesem Rechner*. Zum Sichern Lernraum beenden und den ganzen Ordner kopieren. Eine Deinstallation lässt die Daten liegen.
 

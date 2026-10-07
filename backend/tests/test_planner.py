@@ -315,6 +315,102 @@ def test_uebernahme_verkettet_klausurthemen(app_context: tuple[TestClient, Sessi
     assert client.post("/api/v1/study/planner/apply", json=body).json()["created_count"] == 0
 
 
+def make_topic(
+    db: Session, user: User, name: str, confidence: float, reviewed: datetime | None, subject: Subject | None = None
+) -> Topic:
+    topic = Topic(user_id=user.id, subject_id=subject.id if subject is not None else None, name=name)
+    db.add(topic)
+    db.commit()
+    db.add(LearningProgress(user_id=user.id, topic_id=topic.id, confidence=confidence, last_reviewed_at=reviewed))
+    db.commit()
+    return topic
+
+
+def test_faellige_wiederholung_wird_eingeplant(app_context: tuple[TestClient, Session, User]) -> None:
+    _, db, user = app_context
+    subject = Subject(user_id=user.id, name="Geschichte", color="#000000")
+    db.add(subject)
+    db.commit()
+    # "sicher" = 7 Tage: zuletzt am Mittwoch davor, also faellig am Mittwoch.
+    make_topic(db, user, "Weimarer Republik", 0.5, at(-5, 10), subject)
+    # "unsicher" = 1 Tag, vor zehn Tagen: laengst verpasst, also gleich am Montag.
+    make_topic(db, user, "Vormärz", 0.0, at(-10, 10), subject)
+
+    result = plan_for(db, user, days=7)
+
+    reviews = [block for block in all_blocks(result) if block["kind"] == "review"]
+    assert [(block["title"], block["start"].date()) for block in reviews] == [
+        ("Vormärz wiederholen", at(0, 0).date()),
+        ("Weimarer Republik wiederholen", at(2, 0).date()),
+    ]
+    assert all(block["priority"] == 0 for block in reviews)
+    # Frist ist das Ende des Zeitraums, nicht der Faelligkeitstag.
+    assert {block["deadline"].date() for block in reviews} <= {at(6, 0).date(), at(7, 0).date()}
+    assert len({block["deadline"] for block in reviews}) == 1
+    assert {block["subject_name"] for block in reviews} == {"Geschichte"}
+    # Mit abgeschalteter Option keine Wiederholungen.
+    assert not [block for block in all_blocks(plan_for(db, user, days=7, include_reviews=False)) if block["kind"] == "review"]
+
+
+def test_nicht_faellige_wiederholung_wird_nicht_eingeplant(app_context: tuple[TestClient, Session, User]) -> None:
+    _, db, user = app_context
+    # "gefestigt" = 30 Tage: faellig erst weit nach dem Zeitraum.
+    make_topic(db, user, "Bruchrechnung", 1.0, at(-1, 10))
+    # Ohne Wiederholungsdatum gibt es keinen Termin - und damit keinen Block.
+    make_topic(db, user, "Prozente", 0.0, None)
+
+    result = plan_for(db, user, days=7)
+
+    assert all_blocks(result) == []
+    assert result["unplaced"] == []
+
+
+def test_wiederholung_wird_beim_zweiten_uebernehmen_nicht_doppelt_angelegt(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _, db, user = app_context
+    topic = make_topic(db, user, "Photosynthese", 0.25, at(-5, 10))
+    request = PlannerRequest.model_validate({"days": 7})
+
+    first = build_plan(db, user.id, UTC_ZONE, request, apply=True, now=MONDAY)
+    db.commit()
+    assert first.created_count == 1
+    task = db.scalars(select(StudyPlanTask).where(StudyPlanTask.topic_id == topic.id)).one()
+    assert task.exam_id is None and task.homework_id is None
+    assert task.title == "Photosynthese wiederholen"
+
+    second = build_plan(db, user.id, UTC_ZONE, request, apply=True, now=MONDAY)
+    db.commit()
+    assert second.created_count == 0
+    assert len(db.scalars(select(StudyPlanTask).where(StudyPlanTask.topic_id == topic.id)).all()) == 1
+
+
+def test_wiederholung_entfaellt_wenn_das_thema_fuer_eine_klausur_geplant_wird(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    _, db, user = app_context
+    subject = Subject(user_id=user.id, name="Physik", color="#000000")
+    db.add(subject)
+    db.commit()
+    make_topic(db, user, "Optik", 0.0, at(-3, 10), subject)
+    db.add(Exam(user_id=user.id, subject_id=subject.id, title="Physik-Test", date=at(4, 8)))
+    db.commit()
+
+    kinds = [block["kind"] for block in all_blocks(plan_for(db, user, days=7))]
+
+    assert kinds == ["exam_topic"]
+
+
+def test_fremder_lernstand_wird_ignoriert(app_context: tuple[TestClient, Session, User]) -> None:
+    _, db, user = app_context
+    other = User(username="fremd", password_hash="x", is_active=True)
+    db.add(other)
+    db.commit()
+    make_topic(db, other, "Fremdes Thema", 0.0, at(-3, 10))
+
+    assert all_blocks(plan_for(db, user, days=7)) == []
+
+
 def test_fremder_plan_ist_404_und_ungueltige_zeiten_422(app_context: tuple[TestClient, Session, User]) -> None:
     client, db, user = app_context
     login(client)

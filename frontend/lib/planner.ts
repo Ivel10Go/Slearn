@@ -5,7 +5,7 @@ import { apiRequest } from "./api";
 
 /*
  * Der Wochenplaner (`/api/v1/study/planner`): verteilt offene Aufgaben,
- * Hausaufgaben und Klausurthemen auf die freie Zeit neben Unterricht und
+ * Hausaufgaben, Klausurthemen und faellige Wiederholungen auf die freie Zeit neben Unterricht und
  * Terminen.
  *
  * Eigene Datei statt `api.ts`/`schemas.ts`, wie beim Assistenten: der Bereich
@@ -13,7 +13,7 @@ import { apiRequest } from "./api";
  * Datei, deren `any`-Obergrenze die CI zaehlt.
  */
 
-export type PlannerItemKind = "task" | "homework" | "exam_topic" | "exam_review";
+export type PlannerItemKind = "task" | "homework" | "exam_topic" | "exam_review" | "review";
 
 export interface PlannerOptions {
   days: number;
@@ -28,6 +28,7 @@ export interface PlannerOptions {
   exam_topic_minutes: number;
   exam_lead_days: number;
   replan_scheduled: boolean;
+  include_reviews: boolean;
 }
 
 /** Dieselben Werte wie `PlannerRequest` im Backend. */
@@ -44,9 +45,10 @@ export const DEFAULT_PLANNER_OPTIONS: PlannerOptions = {
   exam_topic_minutes: 45,
   exam_lead_days: 10,
   replan_scheduled: false,
+  include_reviews: true,
 };
 
-const kindSchema = z.enum(["task", "homework", "exam_topic", "exam_review"]);
+const kindSchema = z.enum(["task", "homework", "exam_topic", "exam_review", "review"]);
 
 const blockSchema = z.object({
   kind: kindSchema,
@@ -108,6 +110,7 @@ export const KIND_LABEL: Record<PlannerItemKind, string> = {
   homework: "Hausaufgabe",
   exam_topic: "Klausur",
   exam_review: "Klausur",
+  review: "Wiederholung",
 };
 
 async function post(path: "preview" | "apply", options: PlannerOptions): Promise<PlannerResult> {

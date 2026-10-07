@@ -176,6 +176,16 @@ export function WeekPlannerCard({ onApplied }: { onApplied?: () => void }) {
               />
               Schon geplante Aufgaben neu verteilen
             </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={optionen.include_reviews}
+                onChange={(event) => setze("include_reviews", event.target.checked)}
+                disabled={laeuft !== null}
+                className="h-4 w-4 border-input bg-card accent-[var(--foreground)]"
+              />
+              Fällige Wiederholungen einplanen
+            </label>
             <Button type="button" variant="link" size="sm" onClick={() => setMehr((offen) => !offen)} aria-expanded={mehr}>
               {mehr ? "Weniger Einstellungen" : "Mehr Einstellungen"}
             </Button>

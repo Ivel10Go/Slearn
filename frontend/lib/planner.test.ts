@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PLANNER_OPTIONS,
   isNewBlock,
+  KIND_LABEL,
   mergeOptions,
   plannerResultSchema,
   summarizePlan,
@@ -33,6 +34,31 @@ describe("Wochenplaner", () => {
     expect(isNewBlock(block({}))).toBe(false);
     expect(isNewBlock(block({ kind: "homework", task_id: null }))).toBe(true);
     expect(isNewBlock(block({ kind: "exam_topic", task_id: 9 }))).toBe(false);
+    expect(isNewBlock(block({ kind: "review", task_id: null }))).toBe(true);
+  });
+
+  it("liest Wiederholungsblöcke und benennt sie", () => {
+    const result = plannerResultSchema.parse({
+      applied: false,
+      window_start: "2026-10-05",
+      window_end: "2026-10-11",
+      days: [
+        {
+          date: "2026-10-05",
+          budget_minutes: 120,
+          planned_minutes: 20,
+          blocks: [block({ kind: "review", title: "Optik wiederholen", task_id: null, topic_id: 3, priority: 0 })],
+          busy: [],
+        },
+      ],
+      unplaced: [],
+      planned_count: 1,
+    });
+
+    expect(result.days[0].blocks[0].kind).toBe("review");
+    expect(KIND_LABEL.review).toBe("Wiederholung");
+    expect(DEFAULT_PLANNER_OPTIONS.include_reviews).toBe(true);
+    expect(mergeOptions({ include_reviews: false }).include_reviews).toBe(false);
   });
 
   it("fasst den Vorschlag zusammen", () => {

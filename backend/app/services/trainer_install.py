@@ -482,5 +482,14 @@ class TrainerSetup:
         with self._lock:
             if self._progress.active:
                 raise TrainerSetupError("Die Einrichtung läuft gerade. Erst abbrechen, dann entfernen.")
-            shutil.rmtree(self.root, ignore_errors=True)
+            # Nur, was die Einrichtung selbst anlegt - nie den ganzen Ordner:
+            # zeigt TRAINER_ENV_PATH versehentlich auf D:\ oder das
+            # Benutzerverzeichnis, wuerde rmtree(root) dort alles loeschen.
+            for name in ("venv", "uv", "python", "cache"):
+                shutil.rmtree(self.root / name, ignore_errors=True)
+            (self.root / MARKER_FILE).unlink(missing_ok=True)
+            try:
+                self.root.rmdir()  # nur, wenn jetzt leer
+            except OSError:
+                pass
             self._progress = _Progress()

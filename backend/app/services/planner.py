@@ -1,10 +1,24 @@
 """Wochenplaner: Stundenplan + offene Aufgaben + Klausuren -> Lernplan.
 
-Der Planer verteilt Arbeit auf echte freie Zeit. Er kennt drei Quellen:
+Der Planer verteilt Arbeit auf echte freie Zeit. Er kennt vier Quellen:
 
 * **offene Lernaufgaben** ohne Termin (oder mit einem verpassten),
 * **offene Hausaufgaben**, fuer die es noch keinen Block gibt,
-* **anstehende Klausuren**, deren Themen noch keine Aufgabe haben.
+* **anstehende Klausuren**, deren Themen noch keine Aufgabe haben,
+* **faellige Wiederholungen**: Themen, deren ``next_review_on`` (aus
+  ``progress.next_review_on``, also derselben Stufentabelle wie die
+  Fortschrittskarte) im Zeitraum liegt oder schon verpasst ist. Ein Block
+  ``review`` fruehestens an diesem Tag, Frist ist das Ende des Zeitraums,
+  Prioritaet ``REVIEW_PRIORITY`` = 0 - nie ueber einem Klausurthema.
+
+**Idempotenz der Wiederholungen** haengt am Thema, nicht am Titel: ein Thema
+bekommt keinen Wiederholungsblock, solange es eine offene Aufgabe
+(``pending``/``in_progress``) mit diesem ``topic_id`` und ohne
+``homework_id`` gibt. Das trifft den eigenen Block vom letzten ``apply``
+(``exam_id`` leer) ebenso wie ein offenes Klausurthema - wer das Thema ohnehin
+fuer die Klausur lernt, wiederholt es dabei. Eine eigene Spalte waere eine
+Migration fuer eine Frage, die die vorhandenen Felder schon beantworten.
+Themen, die derselbe Lauf als Klausurthema plant, fallen ebenfalls heraus.
 
 Frei ist, was zwischen ``earliest``/``latest`` liegt und weder Unterricht
 noch Termin noch eine schon terminierte Aufgabe ist. Nach der letzten Stunde
@@ -48,6 +62,7 @@ from app.db.entities import (
     CalendarEvent,
     Exam,
     Homework,
+    LearningProgress,
     Lesson,
     StudyPlan,
     StudyPlanTask,
@@ -64,10 +79,15 @@ from app.schemas.planner import (
     PlannerUnplaced,
 )
 from app.services import grades as grades_service
+from app.services import progress as progress_service
 from app.services import study as study_service
 
 DEFAULT_PLAN_TITLE = "Wochenplan"
 HOMEWORK_PRIORITY = 3
+# Unter jedem Klausurthema (``exam_priority`` liefert mindestens 0): eine
+# Wiederholung ist Pflege, keine Frist.
+REVIEW_PRIORITY = 0
+REVIEW_MINUTES = 20
 SLOT_STEP_MINUTES = 5
 
 
@@ -433,6 +453,62 @@ def _collect_exams(
     return items
 
 
+def _collect_reviews(
+    db: Session, user_id: int, zone: ZoneInfo, days: list[_Day], window_end: datetime, skip_topics: set[int]
+) -> list[_Item]:
+    """Themen, deren naechste Wiederholung im Zeitraum faellig ist oder verpasst wurde.
+
+    Der Termin kommt aus ``progress.next_review_on`` - dieselbe Stufentabelle wie
+    auf ``/fortschritt``. Ohne ``last_reviewed_at`` gibt es keinen Termin und
+    damit keinen Block.
+    """
+    first_day, last_day = days[0].day, days[-1].day
+    open_topics = set(
+        db.scalars(
+            select(StudyPlanTask.topic_id).where(
+                StudyPlanTask.user_id == user_id,
+                StudyPlanTask.topic_id.is_not(None),
+                StudyPlanTask.homework_id.is_(None),
+                StudyPlanTask.status.in_(("pending", "in_progress")),
+            )
+        ).all()
+    )
+    rows = db.scalars(
+        select(LearningProgress)
+        .join(Topic, Topic.id == LearningProgress.topic_id)
+        .options(joinedload(LearningProgress.topic).joinedload(Topic.subject))
+        .where(
+            LearningProgress.user_id == user_id,
+            Topic.user_id == user_id,
+            LearningProgress.last_reviewed_at.is_not(None),
+        )
+        .order_by(LearningProgress.topic_id)
+    ).all()
+
+    items: list[_Item] = []
+    for row in rows:
+        if row.topic_id in open_topics or row.topic_id in skip_topics:
+            continue
+        due_on = progress_service.next_review_on(row.last_reviewed_at, float(row.confidence), zone)
+        if due_on is None or due_on > last_day:
+            continue
+        not_before, _ = day_window(max(first_day, due_on), zone)
+        items.append(
+            _Item(
+                key=f"review:{row.topic_id}",
+                kind="review",
+                title=f"{row.topic.name} wiederholen",
+                minutes=REVIEW_MINUTES,
+                priority=REVIEW_PRIORITY,
+                deadline=window_end,
+                not_before=not_before,
+                topic=row.topic,
+                subject_name=_subject_name(row.topic),
+            )
+        )
+    return items
+
+
 # --------------------------------------------------------------------------
 # Verteilen
 # --------------------------------------------------------------------------
@@ -545,7 +621,7 @@ def _target_plan(db: Session, user_id: int, plan_id: int | None, *, create: bool
         plan = StudyPlan(
             user_id=user_id,
             title=DEFAULT_PLAN_TITLE,
-            description="Vom Wochenplaner angelegt: Hausaufgaben und Klausurvorbereitung.",
+            description="Vom Wochenplaner angelegt: Hausaufgaben, Klausurvorbereitung und Wiederholungen.",
         )
         db.add(plan)
         db.flush()
@@ -589,6 +665,11 @@ def _apply(
             task.due_date = as_utc(datetime.combine(local_day, end_of_day, tzinfo=zone))
         if item.topic is not None:
             task.topic_id = item.topic.id
+        if item.kind == "review":
+            # Ohne ``exam_id`` und ``homework_id``: genau daran erkennt der naechste
+            # Lauf, dass die Wiederholung schon geplant ist.
+            task.description = "Wiederholung nach Lernstand"
+            task.due_date = item.deadline
         db.add(task)
         db.flush()
         task_ids[item.key] = task.id
@@ -619,11 +700,15 @@ def build_plan(
     moment = as_utc(now or utc_now())
     plan = _target_plan(db, user_id, request.study_plan_id, create=False)
     days, window_end = _build_days(db, user_id, zone, request, moment)
+    exam_items = _collect_exams(db, user_id, zone, request, moment, window_end)
     items = [
         *_collect_tasks(db, user_id, zone, request, days, moment, window_end),
         *_collect_homework(db, user_id, request, moment, window_end),
-        *_collect_exams(db, user_id, zone, request, moment, window_end),
+        *exam_items,
     ]
+    if request.include_reviews:
+        planned_topics = {item.topic.id for item in exam_items if item.topic is not None}
+        items.extend(_collect_reviews(db, user_id, zone, days, window_end, planned_topics))
     for index, item in enumerate(items):
         item.order = index
     placements, unplaced = _schedule(items, days, request, moment)

@@ -79,6 +79,12 @@ services:
       # bewusst aus, damit ein nativer Start keine ungefragten Nebenwirkungen
       # hat, im Compose-Stack an.
       REMINDER_SCHEDULER_ENABLED: "${REMINDER_SCHEDULER_ENABLED:-true}"
+      # Web-Push. Ohne Schluesselpaar (leer) bleibt es bei lokalen
+      # Benachrichtigungen der offenen Seite; ohne diese Zeilen kaeme ein in
+      # .env gesetzter Schluessel im Container nie an (kein env_file).
+      WEB_PUSH_VAPID_PUBLIC_KEY: "${WEB_PUSH_VAPID_PUBLIC_KEY:-}"
+      WEB_PUSH_VAPID_PRIVATE_KEY: "${WEB_PUSH_VAPID_PRIVATE_KEY:-}"
+      WEB_PUSH_VAPID_SUBJECT: "${WEB_PUSH_VAPID_SUBJECT:-}"
       # Lokale Modelle. Muss read/write sein, sonst liegen die Gewichte nach
       # einem Neustart nur im Container-Overlay und sind weg.
       MODEL_STORAGE_PATH: "/var/lib/school-assistant/models"

@@ -27,11 +27,11 @@
 
 ## Desktop-App (Windows + macOS)
 
-- [ ] Zielplattform festlegen: Tauri (Empfehlung) oder Electron
-- [ ] Backend + SQLite/embedded Postgres statt Docker einbetten
-- [ ] Signierte Installer: MSI/NSIS (Windows), DMG notarized (macOS)
-- [ ] Auto-Update ohne Datenverlust
-- [ ] Systray, Auto-Start, Offline-Verhalten
+- [x] Zielplattform festlegen: Tauri (Empfehlung) oder Electron — Electron (`desktop/`)
+- [x] Backend + SQLite/embedded Postgres statt Docker einbetten — PyInstaller-Backend mit SQLite
+- [ ] Signierte Installer: MSI/NSIS (Windows), DMG notarized (macOS) — Workflow signiert, sobald die Secrets gesetzt sind; **Zertifikate fehlen noch**
+- [x] Auto-Update ohne Datenverlust — `desktop/lib/updates.js`, Datenbanksicherung vor dem Update
+- [x] Systray, Auto-Start, Offline-Verhalten
 
 ## Lokale KI-Modelle für Lernplan-Erstellung
 
