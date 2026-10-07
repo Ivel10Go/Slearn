@@ -1,16 +1,13 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BookOpen,
   Bot,
-  CalendarClock,
-  CalendarDays,
   FileText,
   Home,
-  Layers,
   ListChecks,
   MessageSquareText,
   Settings,
@@ -20,7 +17,6 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getInitials } from "@/lib/format";
 import { isNavigationHrefActive } from "@/lib/navigation";
-import { useActiveSection } from "@/lib/use-active-section";
 import type { UserResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -38,9 +34,11 @@ interface NavItem {
 }
 
 /**
- * Die Navigation in zwei Gruppen.
+ * Die Navigation: die Uebersicht, dann die eigenen Seiten.
  *
- * "Heute" sind die Anker des Dashboards - das, was am Lerntag ansteht.
+ * Die frueheren Eintraege "Stundenplan", "Hausaufgaben", "Pruefungen" und
+ * "Termine" waren nur Anker im Dashboard - vier Punkte, die alle auf dieselbe
+ * Seite fuehrten. Sie sind entfallen; das Dashboard zeigt alles auf einen Blick.
  * "Bibliothek" sind die eigenen Seiten, auf denen angelegt und verwaltet wird.
  * Die Einstellungen stehen getrennt unten, weil sie keine Tagesfrage
  * beantworten. "KI & Modelle" hat eine eigene Seite, weil KI-Dienst, lokale
@@ -51,16 +49,7 @@ interface NavItem {
 const navigationGroups: { label: string | null; items: NavItem[] }[] = [
   {
     label: null,
-    items: [{ label: "Übersicht", mobile: "Start", href: "/#overview", icon: Home }],
-  },
-  {
-    label: "Heute",
-    items: [
-      { label: "Stundenplan", mobile: "Plan", href: "/#schedule", icon: CalendarDays },
-      { label: "Hausaufgaben", mobile: "Aufgaben", href: "/#homework", icon: BookOpen },
-      { label: "Prüfungen", mobile: "Prüfungen", href: "/#exams", icon: Layers },
-      { label: "Termine", mobile: "Termine", href: "/#calendar", icon: CalendarClock },
-    ],
+    items: [{ label: "Übersicht", mobile: "Start", href: "/", icon: Home }],
   },
   {
     label: "Bibliothek",
@@ -83,8 +72,14 @@ const navigationGroups: { label: string | null; items: NavItem[] }[] = [
 const settingsItem: NavItem = { label: "Einstellungen", mobile: "Mehr", href: "/settings", icon: Settings };
 const mobileNavigation = [...navigationGroups.flatMap((group) => group.items), settingsItem];
 
-/** Die Anker, die das Dashboard verlinkt, in Dokumentreihenfolge. */
-const sectionIds = ["overview", "focus", "study-tasks", "schedule", "homework", "exams", "calendar"] as const;
+/**
+ * Aktiv ist ein Eintrag allein ueber den Pfad. Der Hash zaehlt nicht mehr:
+ * Links wie `/#study-tasks` aus den Benachrichtigungen springen nur innerhalb
+ * der Uebersicht, und die soll dabei markiert bleiben.
+ */
+function isActive(pathname: string, href: string) {
+  return isNavigationHrefActive(pathname, href, "");
+}
 
 /**
  * Das Zeichen der App: der Kopf des Faultiers (Entwurf C1 hell / C2 dunkel,
@@ -124,21 +119,7 @@ function SidebarLink({ item, active }: { item: NavItem; active: boolean }) {
 
 export function AppShell({ children, user }: AppShellProps) {
   const pathname = usePathname();
-  const [currentHash, setCurrentHash] = useState("");
-  const scrolledSection = useActiveSection(sectionIds, pathname === "/");
   const displayName = user?.username ?? "Lernende:r";
-  // Der Hash aus der URL gilt sofort, der Scrollzustand uebernimmt danach.
-  const activeHash = scrolledSection ? `#${scrolledSection}` : currentHash;
-
-  useEffect(() => {
-    const updateHash = () => setCurrentHash(window.location.hash);
-    const frame = window.requestAnimationFrame(updateHash);
-    window.addEventListener("hashchange", updateHash);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("hashchange", updateHash);
-    };
-  }, [pathname]);
 
   return (
     <div className="app-surface min-h-screen bg-background text-foreground">
@@ -167,7 +148,7 @@ export function AppShell({ children, user }: AppShellProps) {
               {group.label ? <p className="mb-1 px-2.5 text-[11px] font-medium text-muted-foreground/80">{group.label}</p> : null}
               <div className="space-y-px">
                 {group.items.map((item) => (
-                  <SidebarLink key={item.href} item={item} active={isNavigationHrefActive(pathname, item.href, activeHash)} />
+                  <SidebarLink key={item.href} item={item} active={isActive(pathname, item.href)} />
                 ))}
               </div>
             </div>
@@ -175,7 +156,7 @@ export function AppShell({ children, user }: AppShellProps) {
         </nav>
 
         <div className="space-y-px border-t border-border px-2.5 py-2.5">
-          <SidebarLink item={settingsItem} active={isNavigationHrefActive(pathname, settingsItem.href, activeHash)} />
+          <SidebarLink item={settingsItem} active={isActive(pathname, settingsItem.href)} />
           <div className="flex items-center gap-2.5 px-2.5 pt-1.5">
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-secondary text-[10px] font-semibold text-secondary-foreground">
               {getInitials(displayName)}
@@ -218,7 +199,7 @@ export function AppShell({ children, user }: AppShellProps) {
       </div>
 
       {/*
-        Elf Eintraege passen nicht in ein Raster auf 375px. Deshalb waagerecht
+        Acht Eintraege passen nicht in ein Raster auf 375px. Deshalb waagerecht
         scrollbar mit fester Mindestbreite je Eintrag - man sieht, dass es
         weitergeht, statt dass ein Teil der Navigation fehlt.
       */}
@@ -229,7 +210,7 @@ export function AppShell({ children, user }: AppShellProps) {
         <div className="mx-auto flex max-w-lg snap-x gap-0.5 overflow-x-auto">
           {mobileNavigation.map((item) => {
             const Icon = item.icon;
-            const active = isNavigationHrefActive(pathname, item.href, activeHash);
+            const active = isActive(pathname, item.href);
             return (
               <Link
                 key={item.href}
