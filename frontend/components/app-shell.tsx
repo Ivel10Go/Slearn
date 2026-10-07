@@ -34,36 +34,30 @@ interface NavItem {
 }
 
 /**
- * Die Navigation: die Uebersicht, dann die eigenen Seiten.
+ * Die Navigation: der Assistent zuerst, dann wenig daneben.
  *
- * Die frueheren Eintraege "Stundenplan", "Hausaufgaben", "Pruefungen" und
- * "Termine" waren nur Anker im Dashboard - vier Punkte, die alle auf dieselbe
- * Seite fuehrten. Sie sind entfallen; das Dashboard zeigt alles auf einen Blick.
- * "Bibliothek" sind die eigenen Seiten, auf denen angelegt und verwaltet wird.
- * Die Einstellungen stehen getrennt unten, weil sie keine Tagesfrage
- * beantworten. "KI & Modelle" hat eine eigene Seite, weil KI-Dienst, lokale
- * Modelle und Stimmen zusammen eine Entscheidung sind und in den Einstellungen
- * die halbe Seite fuellten. Der fruehere Punkt "Nutzung" ist in die Kennzahlenleiste oben
- * im Dashboard aufgegangen - er zeigte dieselben drei Zahlen ein zweites Mal.
+ * Die Startseite ist der Assistent - man sagt, was ansteht, und er traegt ein,
+ * plant und hakt ab. "Übersicht" (frueher die Startseite) und "Lernplan"
+ * sind zum Nachschauen da und stehen deshalb direkt darunter. Alles, was man
+ * selten braucht, steht unter "Mehr": dort wird von Hand verwaltet, und genau
+ * das soll der Assistent einem abnehmen. Die Einstellungen stehen getrennt
+ * unten, weil sie keine Tagesfrage beantworten.
  */
 const navigationGroups: { label: string | null; items: NavItem[] }[] = [
   {
     label: null,
-    items: [{ label: "Übersicht", mobile: "Start", href: "/", icon: Home }],
-  },
-  {
-    label: "Bibliothek",
     items: [
+      { label: "Assistent", mobile: "Assistent", href: "/", icon: MessageSquareText },
+      { label: "Übersicht", mobile: "Heute", href: "/uebersicht", icon: Home },
       { label: "Lernplan", mobile: "Lernen", href: "/lernen", icon: ListChecks },
-      { label: "Fächer", mobile: "Fächer", href: "/faecher", icon: BookOpen },
-      { label: "Dokumente", mobile: "Dokumente", href: "/dokumente", icon: FileText },
-      { label: "Fortschritt", mobile: "Fortschritt", href: "/fortschritt", icon: TrendingUp },
     ],
   },
   {
-    label: "Werkzeuge",
+    label: "Mehr",
     items: [
-      { label: "Assistent", mobile: "Assistent", href: "/assistent", icon: MessageSquareText },
+      { label: "Fortschritt", mobile: "Fortschritt", href: "/fortschritt", icon: TrendingUp },
+      { label: "Dokumente", mobile: "Dokumente", href: "/dokumente", icon: FileText },
+      { label: "Fächer", mobile: "Fächer", href: "/faecher", icon: BookOpen },
       { label: "KI & Modelle", mobile: "KI", href: "/ki", icon: Bot },
     ],
   },
@@ -199,7 +193,7 @@ export function AppShell({ children, user }: AppShellProps) {
       </div>
 
       {/*
-        Acht Eintraege passen nicht in ein Raster auf 375px. Deshalb waagerecht
+        Acht Eintraege passen nicht in ein Raster auf 375px. Der Assistent steht vorn; waagerecht
         scrollbar mit fester Mindestbreite je Eintrag - man sieht, dass es
         weitergeht, statt dass ein Teil der Navigation fehlt.
       */}

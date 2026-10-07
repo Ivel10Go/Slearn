@@ -1,19 +1,16 @@
 "use client";
 
-import { AppShell } from "@/components/app-shell";
-import { AssistantView } from "@/components/assistant/assistant-view";
-import { useSession } from "@/lib/use-session";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 /**
- * Der Lern-Assistent. Frueher stand hier nur „Frag deine Unterlagen“ als Karte
- * im Dashboard und auf /dokumente; jetzt ist es ein Gespraech mit Gedaechtnis,
- * Sprache und Eintraegen.
+ * Der Assistent ist die Startseite. Alte Links (Lesezeichen, Benachrichtigungen,
+ * `/assistent?frage=…`) landen dort - die Frage wird mitgenommen.
  */
-export default function AssistentPage() {
-  const user = useSession();
-  return (
-    <AppShell user={user}>
-      <AssistantView />
-    </AppShell>
-  );
+export default function AssistentWeiterleitung() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace(`/${window.location.search}`);
+  }, [router]);
+  return null;
 }

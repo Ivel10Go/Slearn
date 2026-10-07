@@ -110,7 +110,7 @@ export function darfLokalAnzeigen(permission: string | undefined, verborgen: boo
  * keinen neuen Anker. Faellt eine neue Art hinzu, ist das hier eine Zeile.
  */
 export function ankerFuer(art: NotificationKind): string {
-  return art === "exam_due" ? "/#calendar" : "/#study-tasks";
+  return art === "exam_due" ? "/uebersicht#calendar" : "/uebersicht#study-tasks";
 }
 
 /** Wie eine Art auf Deutsch heisst. Fuer die Einstellungen und das Log. */

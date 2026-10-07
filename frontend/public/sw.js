@@ -21,7 +21,7 @@
 // 4. **`showNotification` wird nur aufgerufen, wenn der Browser gefragt hat.**
 //    Ein `Notification` ohne Erlaubnis ist ein Versuch, der mit einer Ausnahme
 //    endet - im Worker endet sie im Nirgends.
-const CACHE_NAME = "lernraum-static-v10";
+const CACHE_NAME = "lernraum-static-v11";
 const APP_SHELL = ["/offline/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {

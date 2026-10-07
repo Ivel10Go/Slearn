@@ -324,7 +324,7 @@ export function DocumentsView() {
             <CardDescription className="mt-1">Fragen zu deinen Unterlagen beantwortet jetzt der Assistent – mit Quellen, Gedächtnis und Sprache.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href="/assistent" className={buttonVariants({ variant: "outline" })}>
+            <Link href="/" className={buttonVariants({ variant: "outline" })}>
               <MessageSquareText aria-hidden="true" />
               Zum Assistenten
             </Link>

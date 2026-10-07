@@ -11,7 +11,7 @@ import type { Subject } from "@/lib/types";
 
 /*
  * Abfrage aus dem eigenen Material und das Lernprofil - beides in der
- * Seitenleiste von /assistent.
+ * Seitenleiste des Assistenten (Startseite).
  *
  * Die Abfrage ist bewusst kein Chat: eine Frage, ein Antwortfeld, ein Urteil
  * mit der Stelle aus dem Material. Das Ergebnis aendert den Lernstand des

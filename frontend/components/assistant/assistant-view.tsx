@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { AudioLines, Check, CornerDownLeft, LoaderCircle, Mic, PhoneOff, Plus, RotateCcw, Square, ThumbsDown, ThumbsUp, Trash2, Volume2, VolumeX, X } from "lucide-react";
+import { AudioLines, Check, ChevronDown, CornerDownLeft, LoaderCircle, Mic, PhoneOff, Plus, RotateCcw, Square, ThumbsDown, ThumbsUp, Trash2, Undo2, Volume2, VolumeX, Wand2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +30,8 @@ import {
   routeKey,
   saveHistory,
   sendAssistantMessage,
+  undoAgentStep,
+  type AgentStep,
   type AssistantMemory,
   type AssistantProposal,
   type AssistantReply,
@@ -37,6 +39,8 @@ import {
   type ChatMessage,
 } from "@/lib/assistant";
 import { FAULTIER_TEXT, faultierZustand, type FaultierZustand } from "@/lib/faultier";
+import { agentVorschlaege, heutePunkte } from "@/lib/heute";
+import type { DashboardData } from "@/lib/types";
 import { beschreibeAufnahme } from "@/lib/speech";
 import { PHASEN_TEXT, useConversation } from "@/lib/use-conversation";
 import { useSpeech } from "@/lib/use-speech";
@@ -46,9 +50,14 @@ import { cn } from "@/lib/utils";
  * Der Assistent: ein Gespraech mit dem gewaehlten Modell ueber Unterlagen,
  * Stundenplan, Pruefungen und Hausaufgaben.
  *
- * - **Vorschlaege statt stiller Eintraege.** Bittet man ihn, etwas einzutragen,
- *   erscheint eine Karte mit "Eintragen" - das Modell kann sich bei
- *   "naechsten Donnerstag" verrechnen, und das sieht man so vorher.
+ * - **Er handelt selbst.** Mit "Selbst erledigen" (Standard an) traegt er
+ *   Pruefungen, Hausaufgaben und Termine gleich ein, plant die Woche und hakt
+ *   Erledigtes ab. Jeder Schritt steht unter der Antwort mit "Rueckgaengig" -
+ *   das Modell kann sich bei "naechsten Donnerstag" verrechnen, und so ist ein
+ *   Fehler ein Klick statt eines Formulars. Ausgeschaltet bleibt es beim
+ *   Vorschlag mit "Eintragen".
+ * - **Startseite.** Die Ansicht ist die Startseite (`/`): oben ein Satz zum
+ *   Tag, darunter das Gespraech, ueber der Eingabe Vorschlaege aus den Daten.
  * - **Sprechen.** Halten zum Sprechen schickt das Transkript direkt ab. Mit
  *   "Antworten vorlesen" liest die lokale Stimme jede neue Antwort vor; das
  *   Einschalten ist die Nutzergeste, die der Browser fuer die Wiedergabe will.
@@ -61,18 +70,21 @@ import { cn } from "@/lib/utils";
  */
 
 type ProposalState = "offen" | "laeuft" | "eingetragen" | "verworfen";
+type StepState = "erledigt" | "laeuft" | "zurueck";
 
 interface ViewMessage extends ChatMessage {
   id: number;
   reply?: AssistantReply;
   proposalStates?: ProposalState[];
   proposalNotes?: (string | null)[];
+  stepStates?: StepState[];
   /** Der Daumen zu dieser Antwort - nur mit Trainingsfreigabe sichtbar. */
   bewertung?: "good" | "bad" | null;
 }
 
 const AUTO = "auto";
 const VORLESEN_KEY = "lernraum-assistent-vorlesen";
+const SELBST_KEY = "lernraum-assistent-selbst";
 /** So lange freut sich das Faultier nach einem Eintrag. */
 const FREUDE_MS = 2500;
 
@@ -90,7 +102,15 @@ function nurText(messages: ViewMessage[]): ChatMessage[] {
   return messages.map(({ role, content }) => ({ role, content }));
 }
 
-export function AssistantView() {
+interface AssistantViewProps {
+  /** Die Tagesdaten fuer Ueberblick und Vorschlaege; ohne sie gibt es allgemeine Vorschlaege. */
+  data?: DashboardData | null;
+  username?: string | null;
+  /** Nach jedem eigenen Schritt: die Tagesdaten neu laden, damit der Ueberblick stimmt. */
+  onGeaendert?: () => void;
+}
+
+export function AssistantView({ data = null, username = null, onGeaendert }: AssistantViewProps) {
   const [profilStand, setProfilStand] = useState(0);
   const [messages, setMessages] = useState<ViewMessage[]>([]);
   const [eingabe, setEingabe] = useState("");
@@ -101,6 +121,8 @@ export function AssistantView() {
   const freudeTimer = useRef<number | null>(null);
   const [auswahl, setAuswahl] = useState<string>(AUTO);
   const [vorlesen, setVorlesen] = useState(false);
+  // Standard an: der Assistent soll mehr machen als man selbst.
+  const [selbst, setSelbst] = useState(true);
   const sprache = useSpeech();
   const listenEnde = useRef<HTMLDivElement | null>(null);
   const messagesRef = useRef<ViewMessage[]>([]);
@@ -118,10 +140,11 @@ export function AssistantView() {
       setMessages(geladen);
       try {
         setVorlesen(window.localStorage.getItem(VORLESEN_KEY) === "1");
+        setSelbst(window.localStorage.getItem(SELBST_KEY) !== "0");
       } catch {
         // ohne Speicher bleibt Vorlesen aus
       }
-      // Eine Frage aus der Dashboard-Karte (`/assistent?frage=…`) wird einmal gestellt.
+      // Eine Frage aus der Uebersicht (`/?frage=…`) wird einmal gestellt.
       const frage = new URLSearchParams(window.location.search).get("frage");
       if (frage?.trim()) {
         window.history.replaceState(null, "", window.location.pathname);
@@ -217,11 +240,20 @@ export function AssistantView() {
       setSendet(true);
       setFehler(null);
       try {
-        const antwort = await sendAssistantMessage(historyForRequest(nurText(verlauf)), parseRouteKey(auswahl), ausGespraech);
+        const antwort = await sendAssistantMessage(historyForRequest(nurText(verlauf)), parseRouteKey(auswahl), ausGespraech, selbst);
         const neu = mitId(
           { role: "assistant", content: antwort.reply },
-          { reply: antwort, proposalStates: antwort.proposals.map(() => "offen"), proposalNotes: antwort.proposals.map(() => null) },
+          {
+            reply: antwort,
+            proposalStates: antwort.proposals.map(() => "offen"),
+            proposalNotes: antwort.proposals.map(() => null),
+            stepStates: antwort.done.map(() => "erledigt"),
+          },
         );
+        if (antwort.done.length > 0) {
+          freuen();
+          onGeaendert?.();
+        }
         const fertig = [...verlauf, neu];
         setMessages(fertig);
         saveHistory(nurText(fertig));
@@ -236,7 +268,7 @@ export function AssistantView() {
         setSendet(false);
       }
     },
-    [auswahl, sendet, kannAusgabe, sprechen, vorlesen, freuen],
+    [auswahl, sendet, kannAusgabe, sprechen, vorlesen, freuen, selbst, onGeaendert],
   );
 
   useEffect(() => {
@@ -296,6 +328,42 @@ export function AssistantView() {
     }
   }
 
+  function selbstUmschalten() {
+    const neu = !selbst;
+    setSelbst(neu);
+    try {
+      window.localStorage.setItem(SELBST_KEY, neu ? "1" : "0");
+    } catch {
+      // nur eine Bequemlichkeit
+    }
+  }
+
+  function schrittSetzen(messageId: number, index: number, state: StepState) {
+    setMessages((aktuell) =>
+      aktuell.map((message) => {
+        if (message.id !== messageId || !message.stepStates) {
+          return message;
+        }
+        const states = [...message.stepStates];
+        states[index] = state;
+        return { ...message, stepStates: states };
+      }),
+    );
+  }
+
+  async function zuruecknehmen(message: ViewMessage, index: number, step: AgentStep) {
+    schrittSetzen(message.id, index, "laeuft");
+    setFehler(null);
+    try {
+      await undoAgentStep(step, message.reply?.training_example_id ?? null);
+      schrittSetzen(message.id, index, "zurueck");
+      onGeaendert?.();
+    } catch (ursache) {
+      schrittSetzen(message.id, index, "erledigt");
+      setFehler(fehlertext(ursache, "Das ließ sich nicht zurücknehmen."));
+    }
+  }
+
   function vorschlagSetzen(messageId: number, index: number, state: ProposalState, note: string | null = null) {
     setMessages((aktuell) =>
       aktuell.map((message) => {
@@ -317,6 +385,7 @@ export function AssistantView() {
       const ergebnis = await applyAssistantProposal(proposal, beispiel);
       vorschlagSetzen(messageId, index, "eingetragen", ergebnis.message);
       freuen();
+      onGeaendert?.();
     } catch (ursache) {
       vorschlagSetzen(messageId, index, "offen", fehlertext(ursache, "Der Eintrag ist fehlgeschlagen."));
     }
@@ -347,41 +416,42 @@ export function AssistantView() {
   });
   const letzteAntwortId = [...messages].reverse().find((message) => message.role === "assistant")?.id;
 
+  const vorschlaege = agentVorschlaege(data, new Date());
+  const punkte = data ? heutePunkte(data, new Date()) : [];
+  const vorname = username?.split(/[\s._-]/)[0];
+
   return (
     <div className="space-y-4">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Assistent</h1>
-          <p className="mt-0.5 max-w-2xl text-[13px] leading-5 text-muted-foreground">
-            Frag zu deinen Unterlagen, plane deine Woche oder lass Prüfungen, Hausaufgaben und Termine eintragen. Tippen oder sprechen.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <label htmlFor="assistent-modell" className="sr-only">
-            Modell
-          </label>
-          <Select id="assistent-modell" value={auswahl} onChange={(event) => setAuswahl(event.target.value)} className="h-8 w-auto min-w-48">
-            <option value={AUTO}>Automatisch (lokal zuerst)</option>
-            {(routes ?? []).map((route) => (
-              <option key={routeKey(route)} value={routeKey(route)}>
-                {route.local_model_id
-                  ? `${route.name} (auf diesem Rechner)`
-                  : `${route.name} · ${route.model}${route.source === "local" ? " (lokal)" : " (online)"}`}
-              </option>
-            ))}
-          </Select>
-          <Button type="button" size="sm" variant="outline" onClick={neuesGespraech} disabled={messages.length === 0 && !fehler}>
+      <header className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-[22px] font-semibold leading-8 tracking-tight">{vorname ? `Hallo ${vorname}, was soll ich erledigen?` : "Was soll ich erledigen?"}</h1>
+            <p className="mt-0.5 max-w-2xl text-[13px] leading-5 text-muted-foreground">
+              Sag es einfach – ich trage ein, plane deine Woche und hake ab. Du musst nichts mehr selbst anklicken.
+            </p>
+          </div>
+          <Button type="button" size="sm" variant="ghost" onClick={neuesGespraech} disabled={messages.length === 0 && !fehler}>
             <RotateCcw aria-hidden="true" />
             Neues Gespräch
           </Button>
         </div>
+        {punkte.length > 0 ? (
+          <dl className="grid overflow-hidden rounded-lg border border-border sm:grid-cols-3" aria-label="Heute">
+            {punkte.map((punkt, index) => (
+              <div key={punkt.label} className={cn("min-w-0 px-4 py-2.5", index > 0 && "border-border max-sm:border-t sm:border-l")}>
+                <dt className="text-xs text-muted-foreground">{punkt.label}</dt>
+                <dd className="truncate text-[13px] font-medium">{punkt.text}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <Card className="flex min-h-[60vh] flex-col">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <Card className="flex min-h-[62vh] flex-col">
           <CardContent className="flex flex-1 flex-col gap-3 p-0">
             <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4" aria-live="polite">
-              {messages.length === 0 && !sendet ? <Leer ohneModell={ohneModell} zustand={zustand} onBeispiel={(text) => void senden(text)} /> : null}
+              {messages.length === 0 && !sendet ? <Leer ohneModell={ohneModell} zustand={zustand} selbst={selbst} /> : null}
               {messages.map((message) =>
                 message.role === "user" ? (
                   <div key={message.id} className="flex justify-end">
@@ -398,6 +468,7 @@ export function AssistantView() {
                     onStopp={sprache.schweigen}
                     onEintragen={(index, proposal) => void eintragen(message.id, index, proposal, message.reply?.training_example_id ?? null)}
                     onVerwerfen={(index) => verwerfen(message, index)}
+                    onZuruecknehmen={(index, step) => void zuruecknehmen(message, index, step)}
                     onBewerten={(wert) => bewerten(message, wert)}
                   />
                 ),
@@ -405,7 +476,7 @@ export function AssistantView() {
               {sendet ? (
                 <p className="flex items-center gap-2.5 text-[13px] text-muted-foreground" role="status">
                   <Faultier zustand="denken" groesse={28} />
-                  Denkt nach … (beim ersten Mal startet das Modell, das dauert ein paar Sekunden)
+                  Ich kümmere mich darum … (beim ersten Mal startet das Modell, das dauert ein paar Sekunden)
                 </p>
               ) : null}
               <div ref={listenEnde} />
@@ -455,150 +526,190 @@ export function AssistantView() {
             ) : null}
 
             <form onSubmit={absenden} className="space-y-2 border-t border-border p-3">
+              <div className="flex flex-wrap gap-1.5" aria-label="Vorschläge">
+                {vorschlaege.map((vorschlag) => (
+                  <button
+                    key={vorschlag}
+                    type="button"
+                    onClick={() => void senden(vorschlag)}
+                    disabled={sendet}
+                    className="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-foreground hover:text-foreground disabled:opacity-50"
+                  >
+                    {vorschlag}
+                  </button>
+                ))}
+              </div>
               <label htmlFor="assistent-eingabe" className="sr-only">
                 Nachricht an den Assistenten
               </label>
-              <Textarea
-                id="assistent-eingabe"
-                rows={2}
-                value={eingabe}
-                onChange={(event) => setEingabe(event.target.value)}
-                onKeyDown={tastendruck}
-                placeholder="z. B. „Trag die Mathe-Klausur nächsten Freitag ein“ oder „Erklär mir den Zellzyklus aus meinem Skript“"
-                disabled={sendet}
-                className="resize-none"
-              />
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  {!gespraech.aktiv ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={gespraech.starten}
-                      disabled={!gespraechMoeglich || sendet}
-                      title={gespraechMoeglich ? "Freihändig reden: zuhören, antworten, vorlesen" : sprache.grundEingabe || sprache.grundAusgabe}
-                    >
-                      <AudioLines aria-hidden="true" />
-                      Gespräch starten
-                    </Button>
-                  ) : null}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={laeuftAufnahme ? "default" : "outline"}
-                    disabled={!sprache.kannEingabe || sendet || wirdErkannt || gespraech.aktiv}
-                    aria-pressed={laeuftAufnahme}
-                    onPointerDown={(event) => {
+              <div className="flex items-end gap-2">
+                <Textarea
+                  id="assistent-eingabe"
+                  rows={2}
+                  value={eingabe}
+                  onChange={(event) => setEingabe(event.target.value)}
+                  onKeyDown={tastendruck}
+                  placeholder="z. B. „Mathe-Klausur nächsten Freitag“, „Plan meine Woche“ oder „Bio erledigt“"
+                  disabled={sendet}
+                  className="resize-none"
+                />
+                <Button
+                  type="button"
+                  size="icon"
+                  variant={laeuftAufnahme ? "default" : "outline"}
+                  disabled={!sprache.kannEingabe || sendet || wirdErkannt || gespraech.aktiv}
+                  aria-pressed={laeuftAufnahme}
+                  aria-label={laeuftAufnahme ? "Loslassen zum Senden" : "Gedrückt halten und sprechen"}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    sprache.aufnehmen();
+                  }}
+                  onPointerUp={sprache.beenden}
+                  onPointerLeave={() => (laeuftAufnahme ? sprache.beenden() : undefined)}
+                  onPointerCancel={() => (laeuftAufnahme ? sprache.beenden() : undefined)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
                       sprache.aufnehmen();
-                    }}
-                    onPointerUp={sprache.beenden}
-                    onPointerLeave={() => (laeuftAufnahme ? sprache.beenden() : undefined)}
-                    onPointerCancel={() => (laeuftAufnahme ? sprache.beenden() : undefined)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        sprache.aufnehmen();
-                      }
-                    }}
-                    onKeyUp={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        sprache.beenden();
-                      }
-                    }}
-                    title={sprache.kannEingabe ? "Gedrückt halten und sprechen" : sprache.grundEingabe}
-                  >
-                    {laeuftAufnahme ? <Square aria-hidden="true" /> : wirdErkannt ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Mic aria-hidden="true" />}
-                    {laeuftAufnahme ? "Loslassen zum Senden" : wirdErkannt ? "Wird erkannt …" : "Halten zum Sprechen"}
-                  </Button>
+                    }
+                  }}
+                  onKeyUp={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      sprache.beenden();
+                    }
+                  }}
+                  title={sprache.kannEingabe ? "Gedrückt halten und sprechen" : sprache.grundEingabe}
+                >
+                  {laeuftAufnahme ? <Square aria-hidden="true" /> : wirdErkannt ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Mic aria-hidden="true" />}
+                </Button>
+                <Button type="submit" size="icon" disabled={sendet || !eingabe.trim()} aria-label="Senden">
+                  {sendet ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CornerDownLeft aria-hidden="true" />}
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={selbst ? "default" : "ghost"}
+                  aria-pressed={selbst}
+                  onClick={selbstUmschalten}
+                  title={selbst ? "Trägt ein, plant und hakt ab, ohne zu fragen – mit Rückgängig" : "Schlägt nur vor; du trägst selbst ein"}
+                >
+                  <Wand2 aria-hidden="true" />
+                  {selbst ? "Erledigt selbst" : "Nur Vorschläge"}
+                </Button>
+                {!gespraech.aktiv ? (
                   <Button
                     type="button"
                     size="sm"
-                    variant={vorlesen ? "default" : "ghost"}
-                    aria-pressed={vorlesen}
-                    onClick={vorlesenUmschalten}
-                    disabled={!sprache.kannAusgabe}
-                    title={sprache.kannAusgabe ? "Neue Antworten automatisch vorlesen" : sprache.grundAusgabe}
+                    variant="ghost"
+                    onClick={gespraech.starten}
+                    disabled={!gespraechMoeglich || sendet}
+                    title={gespraechMoeglich ? "Freihändig reden: zuhören, antworten, vorlesen" : sprache.grundEingabe || sprache.grundAusgabe}
                   >
-                    {vorlesen ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}
-                    Antworten vorlesen
+                    <AudioLines aria-hidden="true" />
+                    Gespräch
                   </Button>
-                  {laeuftAufnahme ? <span className="text-xs text-muted-foreground">{beschreibeAufnahme(sprache.aufnahmeZustand, sprache.sekunden)}</span> : null}
-                </div>
-                <Button type="submit" size="sm" disabled={sendet || !eingabe.trim()}>
-                  {sendet ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CornerDownLeft aria-hidden="true" />}
-                  Senden
+                ) : null}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={vorlesen ? "default" : "ghost"}
+                  aria-pressed={vorlesen}
+                  onClick={vorlesenUmschalten}
+                  disabled={!sprache.kannAusgabe}
+                  title={sprache.kannAusgabe ? "Neue Antworten automatisch vorlesen" : sprache.grundAusgabe}
+                >
+                  {vorlesen ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}
+                  Vorlesen
                 </Button>
+                {laeuftAufnahme ? <span className="text-xs text-muted-foreground">{beschreibeAufnahme(sprache.aufnahmeZustand, sprache.sekunden)}</span> : null}
               </div>
               {sprache.fehler ? (
                 <p className="text-xs text-muted-foreground" role="status">
                   {sprache.fehler}
                 </p>
               ) : null}
-              {!sprache.kannEingabe || !sprache.kannAusgabe ? (
-                <p className="text-[11px] leading-4 text-muted-foreground">
-                  {!sprache.kannEingabe ? `Sprechen: ${sprache.grundEingabe || "nicht verfügbar"} ` : ""}
-                  {!sprache.kannAusgabe ? `Vorlesen: ${sprache.grundAusgabe || "nicht verfügbar"} ` : ""}
-                  Modelle und Stimmen richtest du unter{" "}
-                  <Link href="/ki" className="underline underline-offset-2 hover:text-foreground">
-                    KI &amp; Modelle
-                  </Link>{" "}
-                  ein.
-                </p>
-              ) : null}
             </form>
           </CardContent>
         </Card>
 
-        <div className="space-y-4 self-start">
+        <div className="space-y-3 self-start">
           <div className="hidden flex-col items-center gap-1 pt-2 lg:flex">
-            <Faultier zustand={zustand} groesse={132} koerper folgen beschriftung={`Faultier-Assistent: ${FAULTIER_TEXT[zustand]}`} />
+            <Faultier zustand={zustand} groesse={120} koerper folgen beschriftung={`Faultier-Assistent: ${FAULTIER_TEXT[zustand]}`} />
             <p className="text-xs text-muted-foreground">{FAULTIER_TEXT[zustand]}</p>
           </div>
-          <AbfrageCard onErgebnis={() => setProfilStand((stand) => stand + 1)} />
-          <LernprofilCard refreshKey={profilStand} />
-          <GedaechtnisCard messages={messages} />
+          <Aufklappen titel="Modell">
+            <label htmlFor="assistent-modell" className="sr-only">
+              Modell
+            </label>
+            <Select id="assistent-modell" value={auswahl} onChange={(event) => setAuswahl(event.target.value)} className="h-8 w-full">
+              <option value={AUTO}>Automatisch (lokal zuerst)</option>
+              {(routes ?? []).map((route) => (
+                <option key={routeKey(route)} value={routeKey(route)}>
+                  {route.local_model_id
+                    ? `${route.name} (auf diesem Rechner)`
+                    : `${route.name} · ${route.model}${route.source === "local" ? " (lokal)" : " (online)"}`}
+                </option>
+              ))}
+            </Select>
+            <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+              Modelle und Stimmen richtest du unter{" "}
+              <Link href="/ki" className="underline underline-offset-2 hover:text-foreground">
+                KI &amp; Modelle
+              </Link>{" "}
+              ein.
+            </p>
+          </Aufklappen>
+          <Aufklappen titel="Abfrage">
+            <AbfrageCard onErgebnis={() => setProfilStand((stand) => stand + 1)} />
+          </Aufklappen>
+          <Aufklappen titel="Lernprofil">
+            <LernprofilCard refreshKey={profilStand} />
+          </Aufklappen>
+          <Aufklappen titel="Was ich über dich weiß">
+            <GedaechtnisCard messages={messages} />
+          </Aufklappen>
         </div>
       </div>
     </div>
   );
 }
 
-function Leer({ ohneModell, zustand, onBeispiel }: { ohneModell: boolean; zustand: FaultierZustand; onBeispiel: (text: string) => void }) {
-  const beispiele = [
-    "Was steht diese Woche an?",
-    "Trag die Bio-Klausur am nächsten Donnerstag ein.",
-    "Fasse mein Skript zum Zellzyklus zusammen.",
-    "Ich lerne am besten abends mit Karteikarten.",
-  ];
+/** Eine eingeklappte Nebensache - die Seite zeigt zuerst nur das Gespraech. */
+function Aufklappen({ titel, children }: { titel: string; children: ReactNode }) {
+  return (
+    <details className="group rounded-lg border border-border">
+      <summary className="flex cursor-pointer select-none list-none items-center justify-between px-3 py-2 text-[13px] font-medium [&::-webkit-details-marker]:hidden">
+        {titel}
+        <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+      </summary>
+      <div className="border-t border-border p-2 [&>div]:border-0">{children}</div>
+    </details>
+  );
+}
+
+function Leer({ ohneModell, zustand, selbst }: { ohneModell: boolean; zustand: FaultierZustand; selbst: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
       <Faultier zustand={zustand} groesse={104} koerper folgen className="mb-1 lg:hidden" />
-      <p className="text-sm font-semibold">Worüber möchtest du reden?</p>
+      <p className="text-sm font-semibold">Sag mir, was ansteht.</p>
       <p className="max-w-md text-xs leading-5 text-muted-foreground">
-        Der Assistent kennt deine Dokumente, deinen Stundenplan, Prüfungen, Hausaufgaben und Termine. Was er über dich lernt, siehst du rechts.
+        Ich kenne deinen Stundenplan, Hausaufgaben, Prüfungen, Termine und Unterlagen.{" "}
+        {selbst
+          ? "Was ich eintrage, plane oder abhake, erledige ich gleich selbst – du kannst jeden Schritt rückgängig machen."
+          : "Gerade schlage ich nur vor; eingetragen wird erst auf deinen Klick."}
       </p>
       {ohneModell ? (
         <p className="max-w-md text-xs leading-5 text-muted-foreground">
-          Noch kein Modell verbunden – ohne Modell antwortet er nur aus deinen Daten.{" "}
+          Noch kein Modell verbunden – Wochenplan und Abhaken klappen trotzdem, für alles andere{" "}
           <Link href="/ki" className="underline underline-offset-2 hover:text-foreground">
             Modell verbinden
           </Link>
+          .
         </p>
       ) : null}
-      <div className="flex max-w-lg flex-wrap justify-center gap-1.5">
-        {beispiele.map((beispiel) => (
-          <button
-            key={beispiel}
-            type="button"
-            onClick={() => onBeispiel(beispiel)}
-            className="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
-          >
-            {beispiel}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
@@ -613,10 +724,11 @@ interface AssistentNachrichtProps {
   onStopp: () => void;
   onEintragen: (index: number, proposal: AssistantProposal) => void;
   onVerwerfen: (index: number) => void;
+  onZuruecknehmen: (index: number, step: AgentStep) => void;
   onBewerten: (wert: "good" | "bad") => void;
 }
 
-function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen, onStopp, onEintragen, onVerwerfen, onBewerten }: AssistentNachrichtProps) {
+function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen, onStopp, onEintragen, onVerwerfen, onZuruecknehmen, onBewerten }: AssistentNachrichtProps) {
   const reply = message.reply;
   const herkunft = reply ? describeSource(reply.source, reply.model) : null;
   return (
@@ -624,6 +736,38 @@ function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen
       <Faultier zustand={zustand ?? "ruhe"} still={zustand === null} groesse={28} className="mt-0.5" />
       <div className="min-w-0 flex-1 space-y-2">
         <p className="whitespace-pre-wrap text-[13px] leading-6">{message.content}</p>
+
+        {reply && reply.done.length > 0 ? (
+          <ul className="space-y-1.5" aria-label="Erledigt">
+            {reply.done.map((step, index) => {
+              const state = message.stepStates?.[index] ?? "erledigt";
+              return (
+                <li
+                  key={`${step.kind}-${step.id}-${index}`}
+                  className={cn("flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-1.5", state === "zurueck" && "opacity-50")}
+                >
+                  <p className="flex min-w-0 items-center gap-1.5 text-[13px]">
+                    <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span className="text-muted-foreground">{step.message}:</span>
+                    <span className="truncate font-medium">{step.title}</span>
+                  </p>
+                  {state === "zurueck" ? (
+                    <Badge variant="outline">Zurückgenommen</Badge>
+                  ) : step.kind === "week_plan" ? (
+                    <Link href="/lernen" className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">
+                      Ansehen
+                    </Link>
+                  ) : step.undoable ? (
+                    <Button type="button" size="sm" variant="ghost" onClick={() => onZuruecknehmen(index, step)} disabled={state === "laeuft"}>
+                      {state === "laeuft" ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Undo2 aria-hidden="true" />}
+                      Rückgängig
+                    </Button>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
 
         {reply && reply.proposals.length > 0 ? (
           <ul className="space-y-1.5">

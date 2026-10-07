@@ -67,8 +67,8 @@ describe("Der lokale Weg", () => {
 
 describe("Die Anker", () => {
   it("fuehren zu den Karten der Einzelseite", () => {
-    expect(ankerFuer("study_task_due")).toBe("/#study-tasks");
-    expect(ankerFuer("exam_due")).toBe("/#calendar");
+    expect(ankerFuer("study_task_due")).toBe("/uebersicht#study-tasks");
+    expect(ankerFuer("exam_due")).toBe("/uebersicht#calendar");
     expect(bezeichnung("study_task_due")).toBe("Lernaufgabe");
     expect(bezeichnung("exam_due")).toBe("Prüfung");
   });

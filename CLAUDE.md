@@ -15,7 +15,8 @@ Several feature waves have been merged since AGENTS.md was last updated: grades,
 - **Backend tests now span** `tests/test_backend.py`, `tests/test_rewards.py`, `tests/test_assistant.py`, `tests/test_training.py` and `tests/test_planner.py`.
 - **The baseline test and lint counts are not stable.** The source of truth is `.github/ci/known-failures.mjs`, which records the accepted failing test ID and the per-file `any` ceilings. Change it whenever the real output changes.
 - **The backend lifespan starts two independent threads:** `IntegrationSyncScheduler` (WebUntis, opt-in via `WEBUNTIS_SYNC_ENABLED`) and `ReminderScheduler` (`app/services/notification_scheduler.py`). `create_app()` also always builds `app.state.model_downloads` (`ModelDownloadManager`) and `app.state.speech` (`SpeechService`). Both exist even when no model or runtime is present.
-- **The frontend has real routes in addition to the dashboard anchors:** `/lernen`, `/faecher`, `/dokumente`, `/assistent`, `/settings`, and `/offline`.
+- **The home page `/` is the assistant** (branch `feature/assistent-zuerst`); the old dashboard lives on `/uebersicht`, and `/assistent` redirects to `/`. Other routes: `/lernen`, `/faecher`, `/dokumente`, `/fortschritt`, `/ki`, `/settings`, `/offline`. See "Assistent zuerst" in AGENTS.md.
+- **Backend tests also include** `tests/test_agent.py` (fixed commands, auto-apply, undo).
 
 ## Big picture
 

@@ -5106,7 +5106,7 @@ def test_send_push_stellt_die_vorgeschriebene_anfrage(tmp_path: Path) -> None:
     """
     settings = _vapid_settings(tmp_path)
     gesehen: list[httpx.Request] = []
-    nutzlast = {"title": "Lernaufgabe fällig", "body": "heute fällig · 30 Minuten", "url": "/#study-tasks"}
+    nutzlast = {"title": "Lernaufgabe fällig", "body": "heute fällig · 30 Minuten", "url": "/uebersicht#study-tasks"}
 
     def handler(request: httpx.Request) -> httpx.Response:
         gesehen.append(request)
@@ -5463,7 +5463,7 @@ def test_eine_faellige_aufgabe_erzeugt_genau_eine_erinnerung(
     assert zeilen[0].title == "Klassenarbeit Mathe lernen"
     assert "heute fällig" in zeilen[0].body
     assert "30 Minuten" in zeilen[0].body
-    assert zeilen[0].url == "/#study-tasks"
+    assert zeilen[0].url == "/uebersicht#study-tasks"
     assert zeilen[0].dedupe_key.endswith(":2026-09-30")
     assert zeilen[0].push_status == "skipped"
     assert zeilen[0].delivered_at is None
@@ -5663,7 +5663,7 @@ def test_eine_klausur_in_der_nachsten_woche_erzeugt_eine_erinnerung(
     assert zeile is not None
     assert zeile.kind == "exam_due"
     assert zeile.title == "Klausur Mathe"
-    assert zeile.url == "/#calendar"
+    assert zeile.url == "/uebersicht#calendar"
     assert "am 02.10.2026" in zeile.body
 
 
@@ -6195,7 +6195,7 @@ def test_die_offene_seite_holt_und_quittiert_ihre_erinnerungen(
     warteschlange = app_client.get("/api/v1/notifications").json()
     assert len(warteschlange) == 1
     assert warteschlange[0]["kind"] == "study_task_due"
-    assert warteschlange[0]["url"] == "/#study-tasks"
+    assert warteschlange[0]["url"] == "/uebersicht#study-tasks"
     assert warteschlange[0]["read_at"] is None
 
     quittiert = app_client.post("/api/v1/notifications/read", json={"ids": [warteschlange[0]["id"]]})
@@ -6215,7 +6215,7 @@ def test_eine_fremde_erinnerung_gibt_404(app_client: TestClient, app_context: tu
             kind="exam_due",
             title="Fremd",
             body="Fremd",
-            url="/#calendar",
+            url="/uebersicht#calendar",
             target_id=1,
             dedupe_key="exam_due:1:2026-09-30",
         )

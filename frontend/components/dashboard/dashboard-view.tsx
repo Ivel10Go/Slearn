@@ -383,7 +383,7 @@ function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
 
 /**
  * Der Einstieg in den Assistenten. Frueher stand hier „Frag deine Unterlagen“
- * mit eigener Antwortflaeche; jetzt fuehrt die Frage auf `/assistent`, wo sie
+ * mit eigener Antwortflaeche; jetzt fuehrt die Frage auf die Startseite (den Assistenten), wo sie
  * sofort gestellt wird und das Gespraech weitergeht.
  */
 function AssistantCard() {
@@ -393,7 +393,7 @@ function AssistantCard() {
   function handleAsk(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const questionText = question.trim();
-    router.push(questionText ? `/assistent?frage=${encodeURIComponent(questionText)}` : "/assistent");
+    router.push(questionText ? `/?frage=${encodeURIComponent(questionText)}` : "/");
   }
 
   return (
@@ -401,13 +401,13 @@ function AssistantCard() {
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 pb-3">
         <div className="min-w-0 space-y-0.5">
           <CardTitle>
-            <Link href="/assistent" className="hover:underline hover:underline-offset-2">
+            <Link href="/" className="hover:underline hover:underline-offset-2">
               Assistent
             </Link>
           </CardTitle>
           <CardDescription className="text-xs">Unterlagen, Planung, Einträge – auch per Sprache.</CardDescription>
         </div>
-        <Link href="/assistent" aria-label="Zum Assistenten" className="-my-2 shrink-0">
+        <Link href="/" aria-label="Zum Assistenten" className="-my-2 shrink-0">
           <Faultier groesse={44} koerper />
         </Link>
       </CardHeader>

@@ -110,10 +110,10 @@ MAX_PENDING_PER_READ: Final[int] = 20
 #: Schranke laedt ein Nutzer mit tausend Aufgaben die halbe Tabelle.
 TASK_SCAN_LIMIT: Final[int] = 50
 
-#: Die Anker, auf die eine Erinnerung zeigen darf. Die Navigation ist eine Seite
-#: mit Ankern plus ``/settings``; eine eigene Route gibt es fuer Aufgaben nicht.
-TASK_URL: Final[str] = "/#study-tasks"
-EXAM_URL: Final[str] = "/#calendar"
+#: Die Anker, auf die eine Erinnerung zeigen darf: Abschnitte der Uebersicht
+#: (``/uebersicht``) - die Startseite ist der Assistent und hat keine Anker.
+TASK_URL: Final[str] = "/uebersicht#study-tasks"
+EXAM_URL: Final[str] = "/uebersicht#calendar"
 
 #: Die Einstellungen, die gelten, wenn nichts gespeichert ist. Die Uhrzeit ist
 #: ein spaeter Nachmittag: frueher stuende die Erinnerung zu many Klausuren zu

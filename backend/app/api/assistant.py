@@ -5,6 +5,7 @@ Alle Routen sind auf den Sitzungsnutzer begrenzt:
 * ``GET    /routes``           die waehlbaren KI-Verbindungen (ohne Netzabfrage)
 * ``POST   /chat``             eine Antwort auf den Verlauf
 * ``POST   /actions``          einen Vorschlag eintragen
+* ``POST   /actions/undo``     einen selbst erledigten Schritt zuruecknehmen
 * ``GET    /memories``         was sich der Assistent gemerkt hat
 * ``POST   /memories``         einen Satz von Hand ergaenzen
 * ``DELETE /memories/{id}``    einen Satz vergessen
@@ -26,6 +27,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import AppSettings, CurrentUser, DatabaseSession, TrainerSetupDep, TrainingJobs
 from app.api.helpers import owned_or_404
+from app.core.time import as_utc
 from app.db.assistant import MEMORY_SOURCE_MANUAL, AssistantMemory
 from app.schemas.assistant import (
     ActionApplyRequest,
@@ -33,6 +35,8 @@ from app.schemas.assistant import (
     ActionProposalOut,
     AdaptersRead,
     AdapterVersionRead,
+    AgentStepRead,
+    AgentUndoRequest,
     AssistantChatRequest,
     AssistantChatResponse,
     AssistantRouteRead,
@@ -57,7 +61,7 @@ from app.schemas.assistant import (
 )
 from app.schemas.common import MessageResponse
 from app.schemas.documents import DocumentSourceOut
-from app.services import adapter_store, trainer_install, training_jobs
+from app.services import adapter_store, agent, trainer_install, training_jobs
 from app.services import assistant as assistant_service
 from app.services import grades as grades_service
 from app.services import learner as learner_service
@@ -95,6 +99,19 @@ def chat(
     db: DatabaseSession,
     settings: AppSettings,
 ) -> AssistantChatResponse:
+    question = payload.messages[-1].content if payload.messages[-1].role == "user" else ""
+    if payload.auto_apply and question:
+        # Feste Befehle ("Plan meine Woche", "Bio erledigt") ohne Modell - sofort und ohne Rechenfehler.
+        command = agent.run_command(db, current_user.id, assistant_service.user_zone(current_user, settings), question)
+        if command is not None:
+            return AssistantChatResponse(
+                reply=command.reply,
+                source="fallback",
+                sources=[],
+                proposals=[],
+                memories_added=[],
+                done=[_step_read(step) for step in command.steps],
+            )
     try:
         result = assistant_service.chat(
             db,
@@ -110,6 +127,10 @@ def chat(
         )
     except assistant_service.AssistantActionError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    proposals = result.proposals
+    done: list[AgentStepRead] = []
+    if payload.auto_apply:
+        proposals, done = _apply_proposals(db, current_user.id, result.proposals, result.training_example_id)
     return AssistantChatResponse(
         reply=result.reply,
         source=result.source,
@@ -132,11 +153,83 @@ def chat(
                 subject_name=p.subject_name,
                 description=p.description,
             )
-            for p in result.proposals
+            for p in proposals
         ],
         memories_added=[_memory_read(m) for m in result.memories_added],
         training_example_id=result.training_example_id,
+        done=done,
     )
+
+
+def _step_read(step: agent.AgentStep) -> AgentStepRead:
+    return AgentStepRead(
+        kind=cast(Literal["exam", "homework", "event", "homework_done", "week_plan"], step.kind),
+        id=step.id,
+        title=step.title,
+        message=step.message,
+        undoable=step.undoable,
+    )
+
+
+def _apply_proposals(
+    db: DatabaseSession,
+    user_id: int,
+    proposals: list[assistant_service.ActionProposal],
+    training_example_id: int | None,
+) -> tuple[list[assistant_service.ActionProposal], list[AgentStepRead]]:
+    """Traegt die Vorschlaege selbst ein. Was nicht geht, bleibt ein Vorschlag mit Knopf.
+
+    Ein Fach, das im Satz stand, aber nicht gefunden wurde, bleibt ebenfalls
+    Vorschlag - sonst landete die Mathe-Klausur still ohne Fach im Kalender.
+    """
+    remaining: list[assistant_service.ActionProposal] = []
+    done: list[AgentStepRead] = []
+    example = training_service.owned_example(db, user_id, training_example_id)
+    for proposal in proposals:
+        if proposal.subject_name and proposal.subject_id is None:
+            remaining.append(proposal)
+            continue
+        try:
+            applied = assistant_service.apply_action(db, user_id, proposal)
+        except (LookupError, assistant_service.AssistantActionError):
+            db.rollback()
+            remaining.append(proposal)
+            continue
+        if example is not None:
+            training_service.record_applied(
+                example,
+                {
+                    "kind": proposal.kind,
+                    "title": proposal.title,
+                    "starts_at": as_utc(proposal.starts_at).isoformat(),
+                    "ends_at": as_utc(proposal.ends_at).isoformat() if proposal.ends_at else None,
+                    "all_day": proposal.all_day,
+                    "subject_id": proposal.subject_id,
+                    "description": proposal.description,
+                },
+            )
+            db.commit()
+        done.append(
+            _step_read(agent.AgentStep(kind=applied.kind, id=applied.id, title=applied.title, message=applied.message))
+        )
+    return remaining, done
+
+
+@router.post("/actions/undo", response_model=MessageResponse)
+def undo_action(payload: AgentUndoRequest, current_user: CurrentUser, db: DatabaseSession) -> MessageResponse:
+    """Nimmt zurueck, was der Assistent selbst eingetragen oder abgehakt hat."""
+    try:
+        message = agent.undo(db, current_user.id, payload.kind, payload.id)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found") from exc
+    except agent.AgentUndoError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    # Zuruecknehmen ist dasselbe Signal wie Verwerfen: der Vorschlag lag daneben.
+    example = training_service.owned_example(db, current_user.id, payload.training_example_id)
+    if example is not None and payload.kind != agent.DONE_HOMEWORK_COMPLETED:
+        training_service.record_rejected(example)
+        db.commit()
+    return MessageResponse(message=message)
 
 
 @router.post("/actions", response_model=ActionApplyResponse, status_code=status.HTTP_201_CREATED)

@@ -23,6 +23,9 @@ class AssistantChatRequest(BaseModel):
     local_model_id: str | None = Field(default=None, max_length=64)
     #: Gespraechsmodus: kurze, vorlesbare Antwort.
     voice: bool = False
+    #: Der Assistent handelt selbst: Vorschlaege werden gleich eingetragen und
+    #: feste Befehle ("Plan meine Woche") ausgefuehrt, siehe ``services/agent.py``.
+    auto_apply: bool = False
 
 
 class ActionProposalOut(UTCResponseModel):
@@ -68,6 +71,23 @@ class MemoryCreate(BaseModel):
     content: str = Field(min_length=1, max_length=400)
 
 
+class AgentStepRead(BaseModel):
+    """Etwas, das der Assistent selbst getan hat - mit ``undoable`` fuer "Rueckgaengig"."""
+
+    kind: Literal["exam", "homework", "event", "homework_done", "week_plan"]
+    id: int
+    title: str
+    message: str
+    undoable: bool
+
+
+class AgentUndoRequest(BaseModel):
+    kind: Literal["exam", "homework", "event", "homework_done"]
+    id: int
+    #: Aus der Chat-Antwort: ein zurueckgenommener Eintrag zaehlt als verworfen.
+    training_example_id: int | None = None
+
+
 class AssistantChatResponse(BaseModel):
     reply: str
     source: str
@@ -77,6 +97,8 @@ class AssistantChatResponse(BaseModel):
     memories_added: list[MemoryRead]
     grades_shared: bool = False
     training_example_id: int | None = None
+    #: Was der Assistent in dieser Antwort selbst erledigt hat.
+    done: list[AgentStepRead] = Field(default_factory=list)
 
 
 class AssistantRouteRead(BaseModel):

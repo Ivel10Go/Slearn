@@ -5,7 +5,7 @@ import { normalizeSource, type AnswerSource } from "./ai-runtime";
 import { apiRequest } from "./api";
 
 /*
- * Der Lern-Assistent (`/assistent`): Chat, Vorschlaege und Gedaechtnis.
+ * Der Lern-Assistent (Startseite `/`): Chat, Vorschlaege und Gedaechtnis.
  *
  * Eigene Datei statt `api.ts`/`schemas.ts`: der Bereich ist abgeschlossen, und
  * zwei Wellen, die gleichzeitig an `api.ts` anbauen, kommen sich dort am
@@ -40,6 +40,15 @@ const memorySchema = z.object({
   created_at: z.string(),
 });
 
+/** Was der Assistent selbst erledigt hat (``auto_apply``), mit ``undoable`` fuer „Rückgängig“. */
+const doneSchema = z.object({
+  kind: z.enum(["exam", "homework", "event", "homework_done", "week_plan"]),
+  id: z.number().int(),
+  title: z.string(),
+  message: z.string(),
+  undoable: z.boolean(),
+});
+
 const chatResponseSchema = z.object({
   reply: z.string(),
   source: z.string().transform((value) => normalizeSource(value)),
@@ -49,6 +58,7 @@ const chatResponseSchema = z.object({
   memories_added: z.array(memorySchema),
   grades_shared: z.boolean().default(false),
   training_example_id: z.number().int().nullable().optional().default(null),
+  done: z.array(doneSchema).optional().default([]),
 });
 
 const routeSchema = z.object({
@@ -72,6 +82,7 @@ export type AssistantMemory = z.infer<typeof memorySchema>;
 export type AssistantRoute = z.infer<typeof routeSchema>;
 export type AssistantSource = z.infer<typeof sourceSchema>;
 export type AppliedAction = z.infer<typeof appliedSchema>;
+export type AgentStep = z.infer<typeof doneSchema>;
 export interface AssistantReply extends Omit<z.infer<typeof chatResponseSchema>, "source"> {
   source: AnswerSource;
 }
@@ -99,7 +110,11 @@ export function parseRouteKey(key: string): RouteChoice {
   return { kind: "auto" };
 }
 
-export async function sendAssistantMessage(messages: ChatMessage[], choice: RouteChoice, voice = false): Promise<AssistantReply> {
+/**
+ * `autoApply`: der Assistent handelt selbst - Vorschlaege werden gleich
+ * eingetragen, "Plan meine Woche" und "Mathe erledigt" sofort ausgefuehrt.
+ */
+export async function sendAssistantMessage(messages: ChatMessage[], choice: RouteChoice, voice = false, autoApply = false): Promise<AssistantReply> {
   const payload = await apiRequest("/v1/assistant/chat", {
     method: "POST",
     body: JSON.stringify({
@@ -107,9 +122,18 @@ export async function sendAssistantMessage(messages: ChatMessage[], choice: Rout
       integration_id: choice.kind === "integration" ? choice.id : null,
       local_model_id: choice.kind === "local" ? choice.modelId : null,
       voice,
+      auto_apply: autoApply,
     }),
   });
   return chatResponseSchema.parse(payload);
+}
+
+/** Nimmt einen selbst erledigten Schritt zurueck (Eintrag loeschen, Hausaufgabe wieder offen). */
+export async function undoAgentStep(step: AgentStep, trainingExampleId: number | null = null): Promise<void> {
+  await apiRequest("/v1/assistant/actions/undo", {
+    method: "POST",
+    body: JSON.stringify({ kind: step.kind, id: step.id, training_example_id: trainingExampleId }),
+  });
 }
 
 export async function getAssistantRoutes(): Promise<AssistantRoute[]> {
