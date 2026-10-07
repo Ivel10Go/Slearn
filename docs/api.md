@@ -63,6 +63,8 @@ Die nichtöffentliche Backend-Basis lautet `http://backend:8000`. Über das Fron
 | Lernsession | `POST /api/v1/study/tasks/{task_id}/complete` | Aufgabe als erledigt markieren und offene Session abschließen; erzeugt bei einer Serie die nächste Aufgabe |
 | Voraussetzung | `GET, POST /api/v1/study/tasks/{task_id}/dependencies` | Voraussetzungen einer Aufgabe lesen oder `depends_on_task_id` hinzufügen. Zyklen und plangrenzüberschreitende Kanten ergeben 422 |
 | Voraussetzung | `DELETE /api/v1/study/tasks/{task_id}/dependencies/{depends_on_task_id}` | Verknüpfung auflösen, damit die wartende Aufgabe wieder startbar wird |
+| Wochenplan | `POST /api/v1/study/planner/preview` | Vorschlag: offene Aufgaben, Hausaufgaben und Klausurthemen auf freie Zeit neben Unterricht und Terminen verteilen. Schreibt nichts |
+| Wochenplan | `POST /api/v1/study/planner/apply` | Denselben Vorschlag neu rechnen und eintragen: Termine setzen, neue Blöcke im Plan „Wochenplan“ anlegen. Idempotent |
 | Lernplan | `GET, POST /api/v1/study/plans` | Lernpläne listen oder anlegen; die Liste führt `task_count` und `open_task_count` mit |
 | Lernplan | `GET, PATCH, DELETE /api/v1/study/plans/{plan_id}` | Einzelplan verwalten; das Löschen nimmt Aufgaben, Serien, Sessions und Abhängigkeiten mit |
 | Serie | `GET, POST /api/v1/study/series` | Wiederkehrende Aufgaben listen oder anlegen; die erste Occurrence entsteht sofort, jede weitere erst beim Abschluss der vorigen |

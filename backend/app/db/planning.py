@@ -69,6 +69,9 @@ class StudyPlanTask(Base):
     series_id: Mapped[int | None] = mapped_column(
         ForeignKey("study_task_series.id", ondelete="SET NULL"), nullable=True
     )
+    # Gesetzt vom Wochenplaner: der Block, in dem diese Hausaufgabe erledigt
+    # wird. Haelt den Planer idempotent und erledigt die Hausaufgabe mit.
+    homework_id: Mapped[int | None] = mapped_column(ForeignKey("homework.id", ondelete="SET NULL"), nullable=True)
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=30, server_default="30")

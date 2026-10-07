@@ -146,7 +146,7 @@ def test_ohne_grafikkarte_oder_trainer_gibt_es_klartext(
 
     trainer["hardware"] = _hardware()
     trainer["runner"].python = ""
-    assert "TRAINER_PYTHON" in client.post("/api/v1/assistant/training/run", json={}).json()["detail"]
+    assert "Trainer einrichten" in client.post("/api/v1/assistant/training/run", json={}).json()["detail"]
     assert trainer["calls"] == []
 
 

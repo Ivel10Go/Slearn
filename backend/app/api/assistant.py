@@ -24,7 +24,7 @@ from typing import Literal, cast
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.api.deps import AppSettings, CurrentUser, DatabaseSession, TrainingJobs
+from app.api.deps import AppSettings, CurrentUser, DatabaseSession, TrainerSetupDep, TrainingJobs
 from app.api.helpers import owned_or_404
 from app.db.assistant import MEMORY_SOURCE_MANUAL, AssistantMemory
 from app.schemas.assistant import (
@@ -43,6 +43,7 @@ from app.schemas.assistant import (
     QuizQuestionRead,
     QuizResultRead,
     QuizStart,
+    TrainerSetupRead,
     TrainingAutoUpdate,
     TrainingConditions,
     TrainingConsentUpdate,
@@ -56,7 +57,7 @@ from app.schemas.assistant import (
 )
 from app.schemas.common import MessageResponse
 from app.schemas.documents import DocumentSourceOut
-from app.services import adapter_store, training_jobs
+from app.services import adapter_store, trainer_install, training_jobs
 from app.services import assistant as assistant_service
 from app.services import grades as grades_service
 from app.services import learner as learner_service
@@ -278,6 +279,73 @@ def delete_all_training_examples(current_user: CurrentUser, db: DatabaseSession)
     anzahl = training_service.delete_all_examples(db, current_user.id)
     db.commit()
     return MessageResponse(message=f"{anzahl} Beispiele gelöscht.")
+
+
+# --- Trainer-Umgebung -------------------------------------------------------
+
+_SERVER_SETUP_REASON = "Auf einem Server richtet der Betreiber den Trainer ein (TRAINER_PYTHON)."
+
+
+def _setup_read(setup: trainer_install.TrainerSetup | None, runner: training_jobs.TrainingRunner) -> TrainerSetupRead:
+    if setup is None:
+        # Ohne eingebaute Laufzeiten gibt es keine Einrichtung - aber vielleicht ein
+        # von Hand gesetztes TRAINER_PYTHON, und dann ist der Trainer trotzdem bereit.
+        manual = bool(runner.python)
+        return TrainerSetupRead(
+            state="ready" if manual else "unsupported",
+            supported=manual,
+            reason=None if manual else _SERVER_SETUP_REASON,
+            approx_bytes=0,
+            location="",
+            manual_python=manual,
+        )
+    return TrainerSetupRead(**asdict(setup.status()))
+
+
+def _require_setup(setup: trainer_install.TrainerSetup | None) -> trainer_install.TrainerSetup:
+    if setup is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=_SERVER_SETUP_REASON)
+    return setup
+
+
+@router.get("/training/setup", response_model=TrainerSetupRead)
+def trainer_setup_status(
+    current_user: CurrentUser, setup: TrainerSetupDep, runner: TrainingJobs
+) -> TrainerSetupRead:
+    return _setup_read(setup, runner)
+
+
+@router.post("/training/setup", response_model=TrainerSetupRead)
+def start_trainer_setup(current_user: CurrentUser, setup: TrainerSetupDep, runner: TrainingJobs) -> TrainerSetupRead:
+    """Richtet die Trainer-Umgebung im Hintergrund ein (oder aktualisiert sie). Ca. 3 GB Download."""
+    active = _require_setup(setup)
+    if runner.is_busy():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Gerade läuft ein Training. Erst anhalten.")
+    try:
+        active.install_in_background()
+    except trainer_install.TrainerSetupError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return _setup_read(active, runner)
+
+
+@router.post("/training/setup/cancel", response_model=TrainerSetupRead)
+def cancel_trainer_setup(current_user: CurrentUser, setup: TrainerSetupDep, runner: TrainingJobs) -> TrainerSetupRead:
+    active = _require_setup(setup)
+    active.cancel()
+    return _setup_read(active, runner)
+
+
+@router.delete("/training/setup", response_model=TrainerSetupRead)
+def remove_trainer_setup(current_user: CurrentUser, setup: TrainerSetupDep, runner: TrainingJobs) -> TrainerSetupRead:
+    """Loescht die Umgebung (mehrere GB). Adapter, Beispiele und Basisgewichte bleiben."""
+    active = _require_setup(setup)
+    if runner.is_busy():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Gerade läuft ein Training. Erst anhalten.")
+    try:
+        active.remove()
+    except trainer_install.TrainerSetupError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _setup_read(active, runner)
 
 
 # --- Trainingsrunden ---------------------------------------------------------

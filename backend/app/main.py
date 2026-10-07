@@ -48,7 +48,8 @@ from app.services.materials import MaterialIndexer, tools_factory
 from app.services.model_downloads import ModelDownloadManager
 from app.services.notification_scheduler import ReminderScheduler
 from app.services.speech import PiperSynthesizer, SpeechService, WhisperTranscriber
-from app.services.training_jobs import TrainingRunner
+from app.services.trainer_install import TrainerSetup
+from app.services.training_jobs import DEFAULT_TRAINER_DIR, TrainingRunner
 
 logger = logging.getLogger("school_assistant")
 
@@ -259,7 +260,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     # Trainingsrunden (LoRA): immer gebaut wie der Sprachdienst - er muss sagen
     # koennen, *warum* hier nicht trainiert wird.
-    application.state.training_runner = TrainingRunner(active_settings, runtimes=runtimes)
+    # Die Trainer-Umgebung richtet die App selbst ein - nur dort, wo sie auch
+    # Laufzeiten holt (Desktop). Auf dem Server bringt der Betreiber TRAINER_PYTHON mit.
+    trainer_setup = (
+        TrainerSetup(
+            root=Path(active_settings.trainer_env_path)
+            if active_settings.trainer_env_path.strip()
+            else Path(active_settings.model_storage_path) / "trainer-env",
+            trainer_dir=Path(active_settings.trainer_dir) if active_settings.trainer_dir.strip() else DEFAULT_TRAINER_DIR,
+            manual_python=active_settings.trainer_python,
+        )
+        if active_settings.local_runtimes_enabled
+        else None
+    )
+    application.state.trainer_setup = trainer_setup
+    application.state.training_runner = TrainingRunner(active_settings, runtimes=runtimes, setup=trainer_setup)
     if active_settings.cors_origins:
         application.add_middleware(
             CORSMiddleware,
@@ -287,6 +302,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(study.plans_router)
     application.include_router(study.series_router)
     application.include_router(study.router)
+    # Der Wochenplaner: verteilt Aufgaben, Hausaufgaben und Klausurthemen auf
+    # freie Zeit. Eigenes Praefix unter /study, damit er nicht mit
+    # /study/tasks/{task_id} kollidiert.
+    from app.api import planner
+    application.include_router(planner.router)
     # Lernfortschritt und Lernprotokoll. Ohne diese Zeile waeren die
     # Fortschrittskarte und der erste Ort, an dem `LearningProgress`
     # geschrieben wird, nicht erreichbar.

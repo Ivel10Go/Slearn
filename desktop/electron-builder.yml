@@ -31,13 +31,15 @@ extraResources:
     to: frontend/node_modules
     filter:
       - "**/*"
-  # Nur die Skripte des LoRA-Trainers. Sein Python (torch/CUDA, mehrere GB)
-  # liefert die App nicht mit; es steht in trainer.json im Benutzerordner.
+  # Die Skripte des LoRA-Trainers und seine Sperrdatei. Sein Python (torch/CUDA,
+  # mehrere GB) richtet das Backend auf /ki selbst ein (trainer_install.py) -
+  # ohne die *.lock-Datei hier fände es keine Paketliste.
   - from: ../trainer
     to: trainer
     filter:
       - "*.py"
-      - "requirements.txt"
+      - "requirements*.txt"
+      - "requirements-*.lock"
 asar: true
 
 win:

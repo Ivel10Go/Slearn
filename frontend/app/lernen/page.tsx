@@ -5,6 +5,7 @@ import { AppShell } from "@/components/app-shell";
 import { StudyPlansCard } from "@/components/manage/study-plans-card";
 import { StudySeriesCard } from "@/components/manage/study-series-card";
 import { StudyTasksCard } from "@/components/manage/study-tasks-card";
+import { WeekPlannerCard } from "@/components/manage/week-planner-card";
 import { createStudyPlan, deleteStudyPlan, getStudyPlans, renameStudyPlan } from "@/lib/api";
 import { useCollection } from "@/lib/use-collection";
 import { useSession } from "@/lib/use-session";
@@ -45,10 +46,19 @@ function LernenBereich() {
       <header>
         <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Lernen</h1>
         <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">
-          Lernpläne sammeln Aufgaben zu einem Thema. Serien erzeugen daraus wiederkehrende Aufgaben, und eine Prüfung kann ihre Themen
-          direkt in Aufgaben umsetzen.
+          Der Wochenplan verteilt alles Offene auf deine freie Zeit. Lernpläne sammeln Aufgaben zu einem Thema, Serien erzeugen daraus
+          wiederkehrende Aufgaben, und eine Prüfung kann ihre Themen direkt in Aufgaben umsetzen.
         </p>
       </header>
+
+      {/* Der Planer legt Aufgaben an und setzt Termine: danach laden Pläne
+          (neuer Plan "Wochenplan") und Aufgaben über denselben Zähler neu. */}
+      <WeekPlannerCard
+        onApplied={() => {
+          void plaene.reload();
+          setPlanNeu((zaehler) => zaehler + 1);
+        }}
+      />
 
       <div className="grid items-start gap-4 xl:grid-cols-2">
         <div className="space-y-4">

@@ -49,6 +49,7 @@ from app.services import adapter_store, training_data
 from app.services import training as training_service
 from app.services.local_runtimes import LocalRuntimeManager
 from app.services.model_catalog import ModelCatalogError, model_spec
+from app.services.trainer_install import TrainerSetup
 from app.services.training_hardware import BACKEND_CUDA, TrainingHardware, detect_training_hardware
 
 logger = logging.getLogger("school_assistant")
@@ -182,11 +183,15 @@ class TrainingRunner:
         settings: Settings,
         *,
         runtimes: LocalRuntimeManager | None = None,
+        setup: TrainerSetup | None = None,
         popen: Callable[..., subprocess.Popen[bytes]] = subprocess.Popen,
         hardware: Callable[[], TrainingHardware] = detect_training_hardware,
     ) -> None:
         self.storage = Path(settings.model_storage_path)
+        #: Von Hand gesetztes Trainer-Python (``TRAINER_PYTHON``/``trainer.json``).
         self.python = settings.trainer_python.strip()
+        #: Die von der App eingerichtete Umgebung (``trainer_install.py``).
+        self.setup = setup
         self.trainer_dir = Path(settings.trainer_dir) if settings.trainer_dir.strip() else DEFAULT_TRAINER_DIR
         self.cache_dir = (
             Path(settings.trainer_cache_path) if settings.trainer_cache_path.strip() else self.storage / "trainer-cache"
@@ -274,14 +279,28 @@ class TrainingRunner:
 
     # ------------------------------------------------------------ Starten
 
+    def trainer_python(self) -> str:
+        """Von Hand gesetzt schlaegt eingerichtet: wer selbst ein venv pflegt, behaelt es."""
+        if self.python:
+            return self.python
+        installed = self.setup.python_path() if self.setup is not None else None
+        return str(installed) if installed is not None else ""
+
+    def is_busy(self) -> bool:
+        """Laeuft gerade ein Trainer? Dann darf seine Umgebung nicht verschwinden."""
+        return self._alive()
+
     def check_available(self) -> None:
         hardware = self.hardware()
         if not hardware.eligible:
             raise TrainingUnavailableError(hardware.reason)
         if hardware.backend != BACKEND_CUDA:
             raise TrainingUnavailableError("Training läuft vorerst nur auf NVIDIA-Grafikkarten.")
-        if not self.python or not Path(self.python).is_file():
-            raise TrainingUnavailableError("Der Trainer ist nicht eingerichtet (TRAINER_PYTHON fehlt).")
+        python = self.trainer_python()
+        if not python or not Path(python).is_file():
+            raise TrainingUnavailableError(
+                "Der Trainer ist noch nicht eingerichtet. Auf „KI & Modelle“ gibt es dafür „Trainer einrichten“."
+            )
         if not (self.trainer_dir / TRAINER_SCRIPT).is_file():
             raise TrainingUnavailableError(f"{TRAINER_SCRIPT} fehlt in {self.trainer_dir}.")
 
@@ -362,7 +381,7 @@ class TrainingRunner:
         env = {**os.environ, "PYTHONIOENCODING": "utf-8", "HF_HUB_DISABLE_TELEMETRY": "1"}
         try:
             process = self.popen(
-                [self.python, "-u", str(self.trainer_dir / TRAINER_SCRIPT), "--job", str(run)],
+                [self.trainer_python(), "-u", str(self.trainer_dir / TRAINER_SCRIPT), "--job", str(run)],
                 stdin=subprocess.DEVNULL,
                 stdout=log,
                 stderr=subprocess.STDOUT,

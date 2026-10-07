@@ -271,6 +271,12 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("TRAINER_DIR", "trainer_dir"),
     )
+    # Wohin die App die Trainer-Umgebung einrichtet (app/services/trainer_install.py,
+    # ~6 GB); leer = <MODEL_STORAGE_PATH>/trainer-env. Ein TRAINER_PYTHON schlaegt sie.
+    trainer_env_path: str = Field(
+        default="",
+        validation_alias=AliasChoices("TRAINER_ENV_PATH", "trainer_env_path"),
+    )
     # Hugging-Face-Ablage fuer die Basisgewichte (3B = ~6 GB); leer = unter MODEL_STORAGE_PATH.
     trainer_cache_path: str = Field(
         default="",

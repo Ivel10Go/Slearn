@@ -11,6 +11,7 @@ from app.db.entities import User
 from app.db.session import get_db
 from app.services.model_downloads import ModelDownloadManager
 from app.services.speech import SpeechService
+from app.services.trainer_install import TrainerSetup
 from app.services.training_jobs import TrainingRunner
 
 
@@ -128,3 +129,12 @@ def get_training_runner(request: Request) -> TrainingRunner:
 
 
 TrainingJobs = Annotated[TrainingRunner, Depends(get_training_runner)]
+
+
+def get_trainer_setup(request: Request) -> TrainerSetup | None:
+    """Die Einrichtung der Trainer-Umgebung - ``None`` auf dem Server (ohne eingebaute Laufzeiten)."""
+    setup: TrainerSetup | None = getattr(request.app.state, "trainer_setup", None)
+    return setup
+
+
+TrainerSetupDep = Annotated[TrainerSetup | None, Depends(get_trainer_setup)]

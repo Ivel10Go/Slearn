@@ -83,8 +83,19 @@ test("gepackt startet das eingefrorene Backend, sonst Python", () => {
   assert.ok(dev.args[0].endsWith("desktop_main.py"));
 });
 
-test("ohne Trainer-Python bleibt das Training aus", () => {
-  assert.deepEqual(runtime.trainerEnv({ userDataDir: tempDir(), packaged: false, resourcesPath: "", repoRoot: "/repo", env: {} }), {});
+test("ohne trainer.json kennt das Backend trotzdem den Trainer-Ordner", () => {
+  // Die Einrichtung auf /ki braucht die mitgelieferte Sperrdatei - auch ohne eigenes Python.
+  assert.deepEqual(runtime.trainerEnv({ userDataDir: tempDir(), packaged: true, resourcesPath: "/res", repoRoot: "/repo", env: {} }), {
+    TRAINER_DIR: path.join("/res", "trainer"),
+  });
+});
+
+test("trainer.json kann die eingerichtete Umgebung auf ein anderes Laufwerk legen", () => {
+  const dir = tempDir();
+  fs.writeFileSync(path.join(dir, "trainer.json"), JSON.stringify({ env: "E:/lernraum/trainer-env", python: 42 }));
+  const out = runtime.trainerEnv({ userDataDir: dir, packaged: true, resourcesPath: "/res", repoRoot: "/repo", env: {} });
+  assert.equal(out.TRAINER_ENV_PATH, "E:/lernraum/trainer-env");
+  assert.equal(out.TRAINER_PYTHON, undefined);
 });
 
 test("der Trainer kommt aus trainer.json, die Umgebung schlaegt die Datei", () => {

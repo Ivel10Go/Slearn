@@ -143,6 +143,23 @@ class TrainingFeedback(BaseModel):
     event: Literal["rejected", "good", "bad", "cleared"]
 
 
+class TrainerSetupRead(BaseModel):
+    """Die Trainer-Umgebung (``trainer_install.py``): fehlt, wird eingerichtet, ist bereit."""
+
+    state: Literal["unsupported", "missing", "installing", "ready", "outdated", "error"]
+    phase: str | None = None
+    phase_label: str | None = None
+    supported: bool
+    reason: str | None = None
+    error: str | None = None
+    log_tail: list[str] = Field(default_factory=list)
+    approx_bytes: int
+    location: str
+    torch_version: str | None = None
+    installed_at: str | None = None
+    manual_python: bool = False
+
+
 class TrainingRunRead(BaseModel):
     """Eine Trainingsrunde, gelesen aus ihrem Ordner (``training_jobs.py``)."""
 

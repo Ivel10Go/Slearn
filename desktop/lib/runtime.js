@@ -213,34 +213,40 @@ function openLog(file, maxBytes = 5 * 1024 * 1024) {
 const TRAINING_IDLE_SECONDS = 120;
 
 /**
- * Wo der Trainer liegt. Das Trainer-Python (torch mit CUDA, mehrere GB) liefert
- * die App nicht mit; es steht in `trainer.json` im Benutzerordner
- * (`{"python": "...", "cache": "..."}`) oder in `TRAINER_PYTHON`. Ohne beides
- * bleibt das Training aus, und das Backend sagt das auf `/ki`.
+ * Wo der Trainer liegt. Die Skripte und die Paketliste liefert die App mit
+ * (`resources/trainer`), deshalb steht `TRAINER_DIR` immer drin - sonst fände
+ * die Einrichtung auf `/ki` ihre Sperrdatei nicht. Das Trainer-Python (torch
+ * mit CUDA, mehrere GB) richtet das Backend selbst ein; `trainer.json` im
+ * Benutzerordner kann es überschreiben oder umlenken:
+ * `{"python": "...", "cache": "...", "env": "..."}` - `python` ein eigenes venv,
+ * `cache` die Basisgewichte, `env` der Ort der eingerichteten Umgebung (etwa ein
+ * anderes Laufwerk, wenn C: voll ist). Die Umgebungsvariablen schlagen die Datei.
  *
  * @param {{ userDataDir: string, packaged: boolean, resourcesPath: string, repoRoot: string, env?: NodeJS.ProcessEnv }} options
  * @returns {Record<string, string>}
  */
 function trainerEnv({ userDataDir, packaged, resourcesPath, repoRoot, env = process.env }) {
-  /** @type {{ python?: unknown, cache?: unknown }} */
+  /** @type {{ python?: unknown, cache?: unknown, env?: unknown }} */
   let file = {};
   try {
     file = JSON.parse(fs.readFileSync(path.join(userDataDir, "trainer.json"), "utf8"));
   } catch {
     // Keine oder kaputte Datei: dann nur die Umgebung.
   }
-  const python = env.TRAINER_PYTHON || (typeof file.python === "string" ? file.python : "");
-  if (!python) {
-    return {};
-  }
   /** @type {Record<string, string>} */
   const out = {
-    TRAINER_PYTHON: python,
     TRAINER_DIR: env.TRAINER_DIR || (packaged ? path.join(resourcesPath, "trainer") : path.join(repoRoot, "trainer")),
   };
-  const cache = env.TRAINER_CACHE_PATH || (typeof file.cache === "string" ? file.cache : "");
-  if (cache) {
-    out.TRAINER_CACHE_PATH = cache;
+  /** @type {Array<[string, unknown]>} */
+  const optional = [
+    ["TRAINER_PYTHON", env.TRAINER_PYTHON || file.python],
+    ["TRAINER_CACHE_PATH", env.TRAINER_CACHE_PATH || file.cache],
+    ["TRAINER_ENV_PATH", env.TRAINER_ENV_PATH || file.env],
+  ];
+  for (const [key, value] of optional) {
+    if (typeof value === "string" && value) {
+      out[key] = value;
+    }
   }
   return out;
 }

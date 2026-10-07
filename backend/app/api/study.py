@@ -13,6 +13,7 @@ from app.core.config import Settings
 from app.core.time import as_utc, resolve_timezone_name, utc_now, zone_or_utc
 from app.db.entities import (
     Exam,
+    Homework,
     StudyPlan,
     StudyPlanTask,
     StudySession,
@@ -594,6 +595,13 @@ def complete_task(
         open_sessions = [session]
     task.status = "completed"
     task.completed_at = completed_at
+    if task.homework_id is not None:
+        # Ein Block des Wochenplaners erledigt seine Hausaufgabe mit - sonst
+        # stuende sie im Dashboard weiter als offen da.
+        homework = db.get(Homework, task.homework_id)
+        if homework is not None and homework.user_id == current_user.id and not homework.completed:
+            homework.completed = True
+            homework.completed_at = completed_at
     spawned = _spawn_next_occurrence(db, current_user, task)
     try:
         # Die Buchung gehoert in dieselbe Transaktion wie der Abschluss. Sie

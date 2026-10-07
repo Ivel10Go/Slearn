@@ -396,6 +396,51 @@ export async function rollbackTrainingAdapter(): Promise<TrainingAdapters> {
   return adaptersSchema.parse(await apiRequest("/v1/assistant/training/adapters/rollback", { method: "POST" }));
 }
 
+// --- Trainer-Umgebung (einmal einrichten, dann trainieren) ------------------
+
+const trainerSetupSchema = z.object({
+  state: z.enum(["unsupported", "missing", "installing", "ready", "outdated", "error"]),
+  phase: z.string().nullable().optional().default(null),
+  phase_label: z.string().nullable().optional().default(null),
+  supported: z.boolean(),
+  reason: z.string().nullable().optional().default(null),
+  error: z.string().nullable().optional().default(null),
+  log_tail: z.array(z.string()).default([]),
+  approx_bytes: z.number().int(),
+  location: z.string(),
+  torch_version: z.string().nullable().optional().default(null),
+  installed_at: z.string().nullable().optional().default(null),
+  manual_python: z.boolean().default(false),
+});
+
+export type TrainerSetup = z.infer<typeof trainerSetupSchema>;
+
+export async function getTrainerSetup(): Promise<TrainerSetup> {
+  return trainerSetupSchema.parse(await apiRequest("/v1/assistant/training/setup"));
+}
+
+export async function startTrainerSetup(): Promise<TrainerSetup> {
+  return trainerSetupSchema.parse(await apiRequest("/v1/assistant/training/setup", { method: "POST" }));
+}
+
+export async function cancelTrainerSetup(): Promise<TrainerSetup> {
+  return trainerSetupSchema.parse(await apiRequest("/v1/assistant/training/setup/cancel", { method: "POST" }));
+}
+
+export async function removeTrainerSetup(): Promise<TrainerSetup> {
+  return trainerSetupSchema.parse(await apiRequest("/v1/assistant/training/setup", { method: "DELETE" }));
+}
+
+/** Trainieren geht mit fertiger Umgebung - auch mit veralteter, bis jemand aktualisiert. */
+export function trainerBereit(setup: TrainerSetup | null): boolean {
+  return setup !== null && (setup.state === "ready" || setup.state === "outdated");
+}
+
+/** Gigabyte mit einer Nachkommastelle, deutsch. */
+export function gigabyte(bytes: number): string {
+  return `${(bytes / 1024 ** 3).toLocaleString("de-DE", { maximumFractionDigits: 1 })} GB`;
+}
+
 /** Anteil als ganze Prozent, `null` als Gedankenstrich. */
 export function prozent(wert: number | null): string {
   return wert === null ? "–" : `${Math.round(wert * 100)} %`;

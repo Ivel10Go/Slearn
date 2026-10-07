@@ -43,6 +43,20 @@ Vier Planpunkte aus `PLAN.md` sind umgesetzt. Der Branch-Name ist inzwischen His
 - **Ohne `exam.subject_id` oder ohne Themen gibt es 422 mit Klartext**, kein leeres 201. Die Oberfläche zeigt die Meldung an, statt eine leere Liste zu melden.
 - **Der Generator ist beim zweiten Klick idempotent**, solange `only_missing` gilt: übersprungen wird ein Thema, für das im selben Plan für dieselbe Klausur und dasselbe Thema schon eine nicht-stornierte Aufgabe hängt.
 
+## Wochenplaner (`/api/v1/study/planner`)
+
+Stundenplan + offene Aufgaben + Klausuren → Lernplan. Logik `app/services/planner.py` (Regeln im Moduldocstring), Router `app/api/planner.py`, Tests `tests/test_planner.py`, Oberfläche `components/manage/week-planner-card.tsx` oben auf `/lernen` + `lib/planner.ts` (eigene Datei mit echten Zod-Schemas, nicht `api.ts`/`schemas.ts`).
+
+- **Vorschau und Übernahme bekommen denselben Rumpf.** `preview` schreibt nichts (und rollt die Sitzung zurück), `apply` rechnet mit dem aktuellen Zustand neu. Kein serverseitig gespeicherter Vorschlag – der wäre nach jeder neuen Hausaufgabe veraltet.
+- **Deterministisch, kein Modell.** Kleine lokale Modelle verrechnen sich schon bei „nächsten Donnerstag“; eine Woche mit Fristen, Budget und Abhängigkeiten wäre Würfeln.
+- **Drei Quellen:** offene Aufgaben (`pending` in aktiven Plänen; ohne Termin oder mit verpasstem), offene Hausaufgaben fällig bis einen Tag nach dem Zeitraum, Klausuren, deren Vorlauf (`exam_lead_days`) in den Zeitraum fällt. Klausurthemen wie im Generator: schwächstes zuerst, verkettet, `exam_priority()`. Klausur ohne Themen → ein Block `exam_review` statt nichts.
+- **Belegt** sind nicht ausgefallene Stunden (danach `after_school_minutes` Pause), Termine **außer ganztägigen**, und schon terminierte Aufgaben – die zählen auch ins Tagesbudget. `replan_scheduled` verteilt sie stattdessen neu.
+- **Reihenfolge:** Abhängigkeiten (Kahn mit Heap) → früheste Frist → höhere Priorität. Platzierung: erst „ein Block je Klausur und Tag“ vor der Frist, dann ohne Verteilregel vor der Frist, dann nach der Frist (`late`). Nur ohne jeden Platz im Zeitraum → `unplaced` mit Grund; Nachfolger eines unplatzierten Blocks auch.
+- **Idempotenz über die Verknüpfung, nicht über Titel:** Hausaufgabe über `study_plan_tasks.homework_id` (Migration `0015`), Klausurthema über `(exam_id, topic_id)` einer nicht stornierten Aufgabe in *irgendeinem* Plan – der Klausur-Generator und der Planer erkennen ihre Aufgaben gegenseitig.
+- **Erledigen eines Hausaufgaben-Blocks hakt die Hausaufgabe mit ab** (`complete_task`). Umgekehrt wird ein Block, dessen Hausaufgabe anderswo erledigt wurde, nicht mehr geplant (aber nicht gelöscht).
+- Neue Blöcke landen ohne `study_plan_id` im aktiven Plan „Wochenplan“, der beim ersten `apply` entsteht. Vorhandene Aufgaben bleiben in ihrem Plan.
+- Die Einstellungen merkt sich nur der Browser (`localStorage`, `lernraum.wochenplan.optionen`).
+
 ## Lern-Assistent (`/assistent`, `/api/v1/assistant`)
 
 Ersetzt die Karte „Frag deine Unterlagen“ (Dashboard und `/dokumente` verweisen jetzt hierher). Logik in `app/services/assistant.py`, Router `app/api/assistant.py`, Tests `tests/test_assistant.py`, Oberflaeche `components/assistant/assistant-view.tsx` + `lib/assistant.ts` (bewusst nicht in `api.ts`/`schemas.ts`).

@@ -86,3 +86,26 @@ jobs:
             desktop/dist/*.exe
             desktop/dist/*.dmg
           if-no-files-found: error
+
+  release:
+    # Nur bei einem Versions-Tag: sammelt die drei Installer ein und legt sie
+    # als Entwurf eines GitHub-Release ab. Entwurf, damit niemand einen halben
+    # Satz herunterlaedt, falls ein Runner scheitert - veroeffentlicht wird von
+    # Hand, nachdem die Installer einmal gestartet wurden.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: installer
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: installers
+          merge-multiple: true
+      - name: create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${GITHUB_REF_NAME}" installers/*
+          --repo "${GITHUB_REPOSITORY}" --draft --generate-notes
+          --title "Lernraum ${GITHUB_REF_NAME#v}"

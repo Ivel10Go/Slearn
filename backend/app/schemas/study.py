@@ -262,6 +262,8 @@ class StudyTaskRead(UTCResponseModel):
     exam_title: str | None = None
     series_id: int | None = None
     series_recurrence: StudyTaskRecurrence | None = None
+    # Vom Wochenplaner gesetzt: die Hausaufgabe, die dieser Block erledigt.
+    homework_id: int | None = None
     title: str
     description: str | None = None
     duration_minutes: int
