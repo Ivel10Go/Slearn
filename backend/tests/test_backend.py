@@ -7763,13 +7763,16 @@ def test_abo_zeigt_die_eigenen_termine_und_keine_grabsteine(
     client, db, user = app_context
     login(client)
     pfad = client.post("/api/v1/calendar/feed").json()["url_path"]
+    # Relativ zu heute: ein festes Datum faellt nach vier Wochen aus dem Fenster des Abos.
+    tag = date.today() + timedelta(days=3)
+    morgen = tag + timedelta(days=1)
     client.post(
         "/api/v1/calendar/events",
-        json={"title": "Orchester", "start_time": "2026-09-08T10:00:00Z", "end_time": "2026-09-08T12:00:00Z"},
+        json={"title": "Orchester", "start_time": f"{tag}T10:00:00Z", "end_time": f"{tag}T12:00:00Z"},
     )
     wegwerfen = client.post(
         "/api/v1/calendar/events",
-        json={"title": "Wegwerfen", "start_time": "2026-09-09T10:00:00Z", "end_time": "2026-09-09T12:00:00Z"},
+        json={"title": "Wegwerfen", "start_time": f"{morgen}T10:00:00Z", "end_time": f"{morgen}T12:00:00Z"},
     ).json()
     client.delete(f"/api/v1/calendar/events/{wegwerfen['id']}")
 
@@ -7777,7 +7780,7 @@ def test_abo_zeigt_die_eigenen_termine_und_keine_grabsteine(
     assert "Orchester" in text
     assert "Wegwerfen" not in text
     # Zeiten gehen mit Zone hinaus - so braucht der Weg zurueck keine Annahme.
-    assert "DTSTART:20260908T100000Z" in text
+    assert f"DTSTART:{tag:%Y%m%d}T100000Z" in text
 
 
 def test_abo_zeigt_termine_auch_in_der_vergangenheit(app_context: tuple[TestClient, Session, User]) -> None:
@@ -7804,9 +7807,10 @@ def test_abo_zeigt_nur_die_eigenen_termine(app_context: tuple[TestClient, Sessio
     db.add(fremder)
     db.commit()
     login(client)
+    tag = date.today() + timedelta(days=3)
     client.post(
         "/api/v1/calendar/events",
-        json={"title": "Privat", "start_time": "2026-09-08T10:00:00Z", "end_time": "2026-09-08T12:00:00Z"},
+        json={"title": "Privat", "start_time": f"{tag}T10:00:00Z", "end_time": f"{tag}T12:00:00Z"},
     )
     pfad = client.post("/api/v1/calendar/feed").json()["url_path"]
     assert "Privat" in client.get(pfad).text

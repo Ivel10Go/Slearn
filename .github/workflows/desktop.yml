@@ -7,12 +7,19 @@ name: Desktop
 # Architektur auf einem eigenen Runner. Ein DMG mit arm64- und x64-Electron,
 # aber nur einem Backend, wuerde auf dem jeweils anderen Mac nicht starten.
 #
-# Die Installer sind **unsigniert**. Windows zeigt beim ersten Start einen
-# SmartScreen-Hinweis ("Weitere Informationen" -> "Trotzdem ausfuehren"),
-# macOS verlangt einmal Rechtsklick -> "Oeffnen". Signieren braucht ein
-# Codesigning-Zertifikat bzw. eine Apple-Developer-Mitgliedschaft; dann
-# kommen CSC_LINK/CSC_KEY_PASSWORD bzw. APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD
-# als Secrets dazu, ohne dass sich an den Schritten etwas aendert.
+# Signieren: sind die Repository-Secrets gesetzt, signiert electron-builder
+# selbst - ohne sie entsteht wie bisher ein unsignierter Installer (Windows
+# zeigt dann SmartScreen, macOS verlangt Rechtsklick -> "Oeffnen", und der
+# Mac-Updater kann nicht installieren). Die Secrets:
+#   WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD   Windows-Zertifikat (.pfx, base64)
+#   MAC_CSC_LINK, MAC_CSC_KEY_PASSWORD   "Developer ID Application" (.p12, base64)
+#   APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID   Notarisierung
+# Siehe docs/desktop.md, "Signieren und Veroeffentlichen".
+#
+# Veroeffentlichen: ein Tag `v*` laedt Installer und die `latest*.yml` der
+# Auto-Updates in einen Release-*Entwurf*. Erst das Veroeffentlichen des
+# Entwurfs auf GitHub macht das Update fuer installierte Apps sichtbar.
+# `workflow_dispatch` baut nur und laedt die Installer als Artefakt hoch.
 
 on:
   workflow_dispatch:
@@ -20,7 +27,8 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: read
+  # Fuer den Release-Entwurf bei einem Tag; sonst wird nur gelesen.
+  contents: write
 
 jobs:
   installer:
@@ -54,6 +62,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: tag matches app version
+        # Der Updater vergleicht die Version aus package.json. Ein Tag v1.2.0
+        # auf einem Stand mit 1.1.0 waere ein Release, das sich nie anbietet.
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version="$(node -p "require('./desktop/package.json').version")"
+          if [[ "${GITHUB_REF_NAME}" != "v${version}" ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} passt nicht zu desktop/package.json (${version})."
+            exit 1
+          fi
       - name: install frontend
         working-directory: frontend
         run: npm ci
@@ -78,34 +97,29 @@ jobs:
         run: npm run build:frontend
       - name: package
         working-directory: desktop
-        run: npx electron-builder ${{ matrix.builder }} --publish never
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Leere Secrets zaehlen fuer electron-builder als nicht gesetzt.
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Ohne Zertifikat nicht nach einer zufaelligen Identitaet im
+          # Schluesselbund suchen.
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CSC_LINK != '' }}
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then publish=always; else publish=never; fi
+          npx electron-builder ${{ matrix.builder }} --publish "$publish"
       - uses: actions/upload-artifact@v4
         with:
           name: Lernraum-${{ matrix.name }}
           path: |
             desktop/dist/*.exe
             desktop/dist/*.dmg
+            desktop/dist/*.zip
+            desktop/dist/latest*.yml
           if-no-files-found: error
-
-  release:
-    # Nur bei einem Versions-Tag: sammelt die drei Installer ein und legt sie
-    # als Entwurf eines GitHub-Release ab. Entwurf, damit niemand einen halben
-    # Satz herunterlaedt, falls ein Runner scheitert - veroeffentlicht wird von
-    # Hand, nachdem die Installer einmal gestartet wurden.
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: installer
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: installers
-          merge-multiple: true
-      - name: create draft release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >
-          gh release create "${GITHUB_REF_NAME}" installers/*
-          --repo "${GITHUB_REPOSITORY}" --draft --generate-notes
-          --title "Lernraum ${GITHUB_REF_NAME#v}"

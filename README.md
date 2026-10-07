@@ -56,6 +56,7 @@ Betrieb, Backups, HTTPS und Fehlersuche: [docs/server.md](docs/server.md). Alle 
 | `backend/` | FastAPI, SQLAlchemy, Alembic |
 | `worker/` | Datenbank-Healthcheck und Backups |
 | `desktop/` | Electron-Hülle der Desktop-App |
+| `landing/` | Landingpage mit Warteliste, eigene Next.js-App ([docs/landing.md](docs/landing.md)) |
 
 ```bash
 cd backend  && python -m pytest

@@ -22,9 +22,12 @@ const path = require("node:path");
 const {
   BrowserWindow,
   Menu,
+  Notification,
+  Tray,
   app,
   dialog,
   ipcMain,
+  nativeImage,
   nativeTheme,
   powerMonitor,
   session,
@@ -32,6 +35,7 @@ const {
   utilityProcess,
 } = require("electron");
 const runtime = require("./lib/runtime.js");
+const updates = require("./lib/updates.js");
 
 const BACKGROUND = { light: "#ffffff", dark: "#0a0a0a" };
 const isMac = process.platform === "darwin";
@@ -45,6 +49,8 @@ if (process.env.LERNRAUM_USER_DATA) {
 const userDataDir = app.getPath("userData");
 const dataDir = path.join(userDataDir, "data");
 const logDir = path.join(userDataDir, "logs");
+const settingsFile = path.join(userDataDir, "desktop-settings.json");
+let desktopSettings = runtime.loadDesktopSettings(settingsFile);
 
 /** @type {import("node:child_process").ChildProcess | null} */
 let backendProcess = null;
@@ -55,9 +61,15 @@ let mainWindow = null;
 /** @type {BrowserWindow | null} */
 let splashWindow = null;
 let appOrigin = "";
+let shownOnce = false;
 let quitting = false;
 /** @type {NodeJS.Timeout | null} */
 let trainingTimer = null;
+/** @type {Tray | null} */
+let tray = null;
+// Aus dem Autostart: nur das Symbol im Infobereich, kein Fenster.
+const startHidden =
+  runtime.isHiddenLaunch(process.argv) || (isMac && app.getLoginItemSettings().wasOpenedAtLogin === true);
 
 function windowBackground() {
   return nativeTheme.shouldUseDarkColors ? BACKGROUND.dark : BACKGROUND.light;
@@ -69,6 +81,8 @@ function windowBackground() {
 async function startBackend(port) {
   const secrets = runtime.loadOrCreateSecrets(path.join(userDataDir, "secrets.json"));
   fs.mkdirSync(dataDir, { recursive: true });
+  // Neue Programmversion: Datenbank sichern, bevor das Backend migriert.
+  const backup = runtime.backupBeforeUpdate({ dataDir, version: app.getVersion() });
   const { command, args, cwd } = runtime.backendCommand({
     packaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
@@ -78,6 +92,9 @@ async function startBackend(port) {
   });
   const log = runtime.openLog(path.join(logDir, "backend.log"));
   log.write(`\n--- Start ${new Date().toISOString()} ---\n`);
+  if (backup) {
+    log.write(`Sicherung vor dem Update: ${backup}\n`);
+  }
 
   const child = spawn(command, [...args, "--port", String(port), "--watch-parent"], {
     cwd,
@@ -211,8 +228,25 @@ function watchTrainingConditions(port) {
   powerMonitor.on("suspend", report);
 }
 
+/**
+ * Beendet beide Server. Das Versprechen erfuellt sich, wenn das Backend weg
+ * ist - erst dann ist die Datenbank geschlossen und ein Update darf Dateien
+ * ersetzen.
+ *
+ * @returns {Promise<void>}
+ */
 function stopServers() {
   quitting = true;
+  const backend = backendProcess;
+  const exited = backend
+    ? new Promise((resolve) => {
+        const timer = setTimeout(resolve, 10_000);
+        backend.once("exit", () => {
+          clearTimeout(timer);
+          resolve(undefined);
+        });
+      })
+    : Promise.resolve();
   if (trainingTimer) {
     clearInterval(trainingTimer);
     trainingTimer = null;
@@ -226,6 +260,7 @@ function stopServers() {
     backendProcess.kill();
     backendProcess = null;
   }
+  return exited.then(() => undefined);
 }
 
 /** @param {string} message */
@@ -233,7 +268,7 @@ async function fatal(message) {
   if (quitting) {
     return;
   }
-  stopServers();
+  void stopServers();
   splashWindow?.destroy();
   const result = await dialog.showMessageBox({
     type: "error",
@@ -324,7 +359,28 @@ function createMainWindow() {
   mainWindow.once("ready-to-show", () => {
     splashWindow?.destroy();
     splashWindow = null;
-    mainWindow?.show();
+    if (!startHidden || shownOnce) {
+      mainWindow?.show();
+    }
+    shownOnce = true;
+  });
+  // Windows/Linux: Schliessen legt die App in den Infobereich, damit
+  // Erinnerungen und Training weiterlaufen. Beenden geht ueber das Symbol.
+  mainWindow.on("close", (event) => {
+    if (quitting || isMac || !tray || !desktopSettings.closeToTray) {
+      return;
+    }
+    event.preventDefault();
+    mainWindow?.hide();
+    if (!desktopSettings.trayHintShown) {
+      desktopSettings = runtime.saveDesktopSettings(settingsFile, { trayHintShown: true });
+      if (Notification.isSupported()) {
+        new Notification({
+          title: "Lernraum läuft weiter",
+          body: "Erinnerungen kommen weiterhin. Beenden kannst du Lernraum über das Symbol im Infobereich.",
+        }).show();
+      }
+    }
   });
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -409,6 +465,70 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+/* ------------------------------------------------- Infobereich, Autostart */
+
+function showMainWindow() {
+  if (!appOrigin) {
+    return;
+  }
+  if (!mainWindow) {
+    shownOnce = true;
+    createMainWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+/** @param {boolean} enabled */
+function setOpenAtLogin(enabled) {
+  // Unter Windows startet der Eintrag mit `--hidden`; macOS kennt keine
+  // Argumente fuer Anmeldeobjekte und meldet stattdessen `wasOpenedAtLogin`.
+  app.setLoginItemSettings({ openAtLogin: enabled, args: isMac ? [] : [runtime.HIDDEN_ARGUMENT] });
+  desktopSettings = runtime.saveDesktopSettings(settingsFile, { openAtLogin: enabled });
+  refreshTrayMenu();
+  return desktopSettings;
+}
+
+function refreshTrayMenu() {
+  if (!tray) {
+    return;
+  }
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Lernraum öffnen", click: showMainWindow },
+      { type: "separator" },
+      {
+        label: "Beim Anmelden starten",
+        type: "checkbox",
+        checked: desktopSettings.openAtLogin,
+        click: (item) => void setOpenAtLogin(item.checked),
+      },
+      ...(updates.supported() ? [{ label: "Nach Updates suchen", click: () => void updates.check({ manual: true }) }] : []),
+      { type: "separator" },
+      { label: "Lernraum beenden", click: () => app.quit() },
+    ]),
+  );
+}
+
+function createTray() {
+  const file = path.join(__dirname, "assets", isMac ? "trayTemplate.png" : "tray.png");
+  const image = nativeImage.createFromPath(file);
+  if (image.isEmpty()) {
+    return;
+  }
+  if (isMac) {
+    image.setTemplateImage(true);
+  }
+  tray = new Tray(image);
+  tray.setToolTip("Lernraum");
+  tray.on("click", showMainWindow);
+  refreshTrayMenu();
+}
+
 function registerIpc() {
   ipcMain.on("lernraum:set-theme", (_event, theme) => {
     if (theme === "light" || theme === "dark" || theme === "system") {
@@ -419,12 +539,33 @@ function registerIpc() {
   ipcMain.handle("lernraum:open-data-folder", async () => {
     await shell.openPath(dataDir);
   });
+  ipcMain.handle("lernraum:get-settings", () => ({
+    openAtLogin: desktopSettings.openAtLogin,
+    closeToTray: desktopSettings.closeToTray,
+    updatesSupported: updates.supported(),
+  }));
+  ipcMain.handle("lernraum:set-open-at-login", (_event, enabled) => {
+    if (typeof enabled === "boolean") {
+      setOpenAtLogin(enabled);
+    }
+    return { openAtLogin: desktopSettings.openAtLogin };
+  });
+  ipcMain.handle("lernraum:set-close-to-tray", (_event, enabled) => {
+    if (typeof enabled === "boolean") {
+      desktopSettings = runtime.saveDesktopSettings(settingsFile, { closeToTray: enabled });
+    }
+    return { closeToTray: desktopSettings.closeToTray };
+  });
+  ipcMain.handle("lernraum:check-updates", () => updates.check({ manual: true }));
+  ipcMain.handle("lernraum:update-status", () => updates.status());
 }
 
 /* ------------------------------------------------------------------- Start */
 
 async function start() {
-  createSplash();
+  if (!startHidden) {
+    createSplash();
+  }
   buildMenu();
   registerIpc();
   try {
@@ -438,7 +579,21 @@ async function start() {
     return;
   }
   configurePermissions();
+  createTray();
+  // Ohne Symbol im Infobereich gaebe es keinen Weg zum Fenster.
+  if (!tray) {
+    shownOnce = true;
+  }
   createMainWindow();
+  updates.start({
+    logDir,
+    getWindow: () => mainWindow,
+    beforeInstall: async () => {
+      // Erst die Server beenden: unter Windows ersetzt der Installer sonst
+      // Dateien, die das Backend noch geoeffnet hat.
+      await stopServers();
+    },
+  });
 }
 
 // Eine Instanz: ein zweiter Start holt das vorhandene Fenster nach vorn, statt
@@ -447,30 +602,26 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) {
-        mainWindow.restore();
-      }
-      mainWindow.focus();
-    }
+    showMainWindow();
   });
 
   app.whenReady().then(start);
 
   app.on("activate", () => {
     // macOS: Klick aufs Dock-Symbol bei geschlossenem Fenster.
-    if (!mainWindow && appOrigin) {
-      createMainWindow();
-    }
+    showMainWindow();
   });
 
   app.on("window-all-closed", () => {
     // Auf dem Mac bleibt die App im Dock, wie dort ueblich; die Server laufen
-    // weiter, damit das naechste Fenster sofort da ist.
-    if (!isMac) {
+    // weiter, damit das naechste Fenster sofort da ist. Mit Symbol im
+    // Infobereich ebenso - dorthin hat das Schliessen sie gelegt.
+    if (!isMac && (!tray || !desktopSettings.closeToTray)) {
       app.quit();
     }
   });
 
-  app.on("before-quit", stopServers);
+  app.on("before-quit", () => {
+    void stopServers();
+  });
 }

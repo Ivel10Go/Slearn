@@ -13,6 +13,10 @@ files:
   - preload.js
   - splash.html
   - lib/runtime.js
+  - lib/updates.js
+  - assets/tray.png
+  - assets/trayTemplate.png
+  - assets/trayTemplate@2x.png
   - package.json
 extraResources:
   - from: resources/backend
@@ -42,6 +46,15 @@ extraResources:
       - "requirements-*.lock"
 asar: true
 
+# Updates kommen aus den GitHub-Releases dieses Repositorys. `desktop.yml`
+# laedt bei einem Tag `v*` Installer und `latest*.yml` als Entwurf hoch; erst
+# wenn der Entwurf veroeffentlicht ist, sehen die installierten Apps ihn.
+publish:
+  provider: github
+  owner: Ivel10Go
+  repo: School-assistant
+  releaseType: draft
+
 win:
   target: nsis
   icon: assets/icon.ico
@@ -62,13 +75,21 @@ nsis:
 mac:
   # Die Architektur kommt vom Aufruf (`--arm64`/`--x64`), nicht von hier: das
   # eingefrorene Backend gibt es nur fuer die Architektur des bauenden Macs.
-  target: dmg
+  # Das ZIP braucht der Updater (er installiert kein DMG), das DMG die
+  # Erstinstallation.
+  target:
+    - dmg
+    - zip
   category: public.app-category.education
   icon: assets/icon.icns
   artifactName: Lernraum-${version}-${arch}.${ext}
   hardenedRuntime: true
   entitlements: assets/entitlements.mac.plist
   entitlementsInherit: assets/entitlements.mac.plist
+  # Signiert und notarisiert wird, sobald die Secrets im Workflow gesetzt sind
+  # (CSC_LINK/CSC_KEY_PASSWORD, APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/
+  # APPLE_TEAM_ID) - electron-builder erkennt sie selbst. Ohne sie entsteht
+  # eine unsignierte App wie bisher.
   extendInfo:
     NSMicrophoneUsageDescription: Lernraum nutzt das Mikrofon nur, wenn du eine Frage diktierst.
 

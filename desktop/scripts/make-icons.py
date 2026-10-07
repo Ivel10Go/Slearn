@@ -81,6 +81,27 @@ def render(size: int, margin: float, radius: float, head_width: float, hell: boo
     return image.resize((size, size), Image.LANCZOS)
 
 
+def tray_icons(assets: Path) -> None:
+    """Symbole fuer den Infobereich.
+
+    Windows/Linux: das App-Symbol, randlos (32 px, Windows skaliert selbst).
+    macOS: ein *Template*-Bild - nur Schwarz mit Alpha, die Menueleiste faerbt
+    es selbst hell oder dunkel. Dafuer wird der helle Kopf zur Silhouette.
+    """
+    render(32, margin=0, radius=6, head_width=28).save(assets / "tray.png")
+    for size, name in ((22, "trayTemplate.png"), (44, "trayTemplate@2x.png")):
+        source = render(size, margin=0, radius=0, head_width=size).convert("RGBA")
+        template = Image.new("RGBA", source.size, (0, 0, 0, 0))
+        pixels = template.load()
+        for y in range(source.height):
+            for x in range(source.width):
+                red, green, blue, alpha = source.getpixel((x, y))
+                light = (red + green + blue) / 3
+                if alpha and light > 128:
+                    pixels[x, y] = (0, 0, 0, int(255 * min(1, (light - 128) / 64)))
+        template.save(assets / name)
+
+
 def main() -> None:
     # macOS-Symbole haben einen Rand von etwa 10 % - ohne ihn wirkt das Symbol
     # im Dock groesser als alle anderen.
@@ -93,6 +114,7 @@ def main() -> None:
     # randlos und der Kopf in der inneren Sicherheitszone (~65 %).
     for px in (192, 512):
         render(px, margin=0, radius=0, head_width=px * 0.65).save(PUBLIC_ICONS / f"icon-{px}.png")
+    tray_icons(assets)
     print(f"Symbole geschrieben: {assets}, {PUBLIC_ICONS}")
 
 
