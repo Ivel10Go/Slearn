@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { AutoPlanCard } from "@/components/manage/auto-plan-card";
 import { StudyPlansCard } from "@/components/manage/study-plans-card";
 import { StudySeriesCard } from "@/components/manage/study-series-card";
 import { StudyTasksCard } from "@/components/manage/study-tasks-card";
@@ -46,12 +47,18 @@ function LernenBereich() {
         <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Lernen</h1>
         <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">
           Lernpläne sammeln Aufgaben zu einem Thema. Serien erzeugen daraus wiederkehrende Aufgaben, und eine Prüfung kann ihre Themen
-          direkt in Aufgaben umsetzen.
+          direkt in Aufgaben umsetzen. „Lernplan erstellen“ verteilt alles, was ansteht, auf deine freie Zeit.
         </p>
       </header>
 
       <div className="grid items-start gap-4 xl:grid-cols-2">
         <div className="space-y-4">
+          <AutoPlanCard
+            onApplied={() => {
+              void plaene.reload();
+              setPlanNeu((zaehler) => zaehler + 1);
+            }}
+          />
           <StudyPlansCard
             plans={plaene.items}
             status={plaene.status}

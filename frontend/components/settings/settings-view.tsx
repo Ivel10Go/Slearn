@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { BackupStatusCard } from "@/components/settings/backup-status-card";
+import { PrivacyCard } from "@/components/settings/privacy-card";
 import { DesktopCard } from "@/components/settings/desktop-card";
 import { NotificationSettingsCard } from "@/components/settings/notification-settings-card";
 import { Badge } from "@/components/ui/badge";
@@ -1265,7 +1266,10 @@ writing,
       <div role="tabpanel" id={`einstellungen-${tab}`} aria-labelledby={`einstellungen-tab-${tab}`}>
         {tab === "allgemein" ? (
           <div className="grid items-start gap-4 lg:grid-cols-2">
-            <AccountCard user={user} onLogout={onLogout} isLoggingOut={isLoggingOut} />
+            <div className="space-y-4">
+              <AccountCard user={user} onLogout={onLogout} isLoggingOut={isLoggingOut} />
+              <PrivacyCard />
+            </div>
             <div className="space-y-4">
               <ThemeCard />
               <DesktopCard />

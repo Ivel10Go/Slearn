@@ -4,10 +4,11 @@
 /**
  * Die schmale Bruecke zwischen Seite und Desktop-App.
  *
- * Die Seite bekommt genau drei Dinge (Typ in `frontend/lib/desktop.ts`): die
- * Plattform, das Design an den Fensterrahmen melden und den Datenordner
- * oeffnen. Kein `ipcRenderer`, kein Node - die Seite ist dieselbe wie im
- * Browser und soll hier nicht mehr koennen als dort.
+ * Die Seite bekommt nur das, was die Einstellungen brauchen (Typ in
+ * `frontend/lib/desktop.ts`): Plattform und Version, das Design an den
+ * Fensterrahmen melden, den Datenordner oeffnen, Autostart und Infobereich
+ * schalten, nach Updates suchen. Kein `ipcRenderer`, kein Node - die Seite
+ * ist dieselbe wie im Browser und soll hier nicht mehr koennen als dort.
  */
 
 const { contextBridge, ipcRenderer } = require("electron");
@@ -26,6 +27,13 @@ contextBridge.exposeInMainWorld("lernraumDesktop", {
   /** @param {"light" | "dark" | "system"} theme */
   setTheme: (theme) => ipcRenderer.send("lernraum:set-theme", theme),
   openDataFolder: () => ipcRenderer.invoke("lernraum:open-data-folder"),
+  getSettings: () => ipcRenderer.invoke("lernraum:get-settings"),
+  /** @param {boolean} enabled */
+  setOpenAtLogin: (enabled) => ipcRenderer.invoke("lernraum:set-open-at-login", Boolean(enabled)),
+  /** @param {boolean} enabled */
+  setCloseToTray: (enabled) => ipcRenderer.invoke("lernraum:set-close-to-tray", Boolean(enabled)),
+  checkForUpdates: () => ipcRenderer.invoke("lernraum:check-updates"),
+  getUpdateStatus: () => ipcRenderer.invoke("lernraum:update-status"),
 });
 
 // Plattform-Attribute **vor** dem ersten Rendern setzen. Kaeme das erst aus

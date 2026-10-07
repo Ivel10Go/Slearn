@@ -412,6 +412,27 @@ class TrainingRunner:
             shutil.rmtree(run)
             return True
 
+    def forget(self, user_id: int) -> None:
+        """Beim Loeschen des Kontos: Trainer beenden, Runden und Adapter entfernen.
+
+        Hart beendet statt ``STOP``: ein Checkpoint, der gleich geloescht wird,
+        muss nicht erst gespeichert werden.
+        """
+        with self._lock:
+            process, run = self._process, self._run_dir
+            if process is not None and run is not None and run.parent == self.runs_root(user_id):
+                if process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=SHUTDOWN_WAIT_SECONDS)
+                if self._watcher is not None:
+                    self._watcher.join(timeout=10)
+            adapters = self.storage / "adapters" / str(int(user_id))
+            if self.runtimes is not None and adapters.is_dir():
+                for root in adapters.iterdir():
+                    self.runtimes.set_text_adapter(root.name, None)
+            shutil.rmtree(self.runs_root(user_id), ignore_errors=True)
+            shutil.rmtree(adapters, ignore_errors=True)
+
     # ------------------------------------------------------------ Automatik
 
     def load(self, db: Session, user_id: int, zone: ZoneInfo) -> training_data.TrainingDataset:

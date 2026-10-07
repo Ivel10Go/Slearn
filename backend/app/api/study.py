@@ -23,6 +23,10 @@ from app.db.entities import (
 )
 from app.schemas.common import MessageResponse
 from app.schemas.study import (
+    AutoPlanDay,
+    AutoPlanItem,
+    AutoPlanRequest,
+    AutoPlanResponse,
     StudyPlanCreate,
     StudyPlanRead,
     StudyPlanStatus,
@@ -43,6 +47,7 @@ from app.schemas.study import (
 )
 from app.services import rewards as rewards_service
 from app.services import study as study_service
+from app.services import study_planner
 from app.services.study import StudyPlanError
 
 plans_router = APIRouter(prefix="/api/v1/study/plans", tags=["study"])
@@ -287,6 +292,75 @@ def create_plan(payload: StudyPlanCreate, current_user: CurrentUser, db: Databas
         db.rollback()
         raise _conflict("Study plan could not be created") from exc
     return _plan_read(plan, {})
+
+
+@plans_router.post("/generate", response_model=AutoPlanResponse)
+def generate_plan(
+    payload: AutoPlanRequest, current_user: CurrentUser, db: DatabaseSession, settings: AppSettings
+) -> AutoPlanResponse:
+    """Der automatische Lernplan aus Stundenplan, offenen Aufgaben und Klausuren.
+
+    Ohne ``apply`` ein Vorschlag, der nichts schreibt - die Oberflaeche zeigt
+    ihn erst an. Mit ``apply`` entstehen die Aufgaben (in einem neuen Plan
+    oder ``study_plan_id``), und bisher ungeplante offene Aufgaben bekommen
+    einen Termin. Logik in ``app/services/study_planner.py``.
+    """
+    zone = _zone(current_user, settings)
+    plan: StudyPlan | None = None
+    if payload.study_plan_id is not None:
+        plan = owned_or_404(db, StudyPlan, payload.study_plan_id, current_user.id)
+    proposal = study_planner.propose(db, current_user.id, zone, payload.days, payload.daily_minutes)
+    if payload.apply and proposal.items:
+        if plan is None:
+            first, last = proposal.days[0].day, proposal.days[-1].day
+            plan = StudyPlan(
+                user_id=current_user.id,
+                title=f"Lernplan {first:%d.%m.} – {last:%d.%m.}",
+                description="Automatisch aus Stundenplan, Hausaufgaben, Klausuren und Wiederholungen erstellt.",
+                status="active",
+                starts_on=as_utc(proposal.days[0].start),
+                ends_on=as_utc(proposal.days[-1].start),
+            )
+            db.add(plan)
+            db.flush()
+        study_planner.apply(db, current_user.id, zone, proposal, plan)
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise _conflict("Der Lernplan konnte nicht gespeichert werden") from exc
+    overbooked = set(proposal.overbooked)
+    return AutoPlanResponse(
+        applied=payload.apply and bool(proposal.items),
+        study_plan_id=plan.id if plan is not None and payload.apply and proposal.items else None,
+        items=[
+            AutoPlanItem(
+                kind=item.kind,
+                title=item.title,
+                description=item.description,
+                duration_minutes=item.duration_minutes,
+                starts_at=as_utc(item.starts_at) if item.starts_at else utc_now(),
+                due_on=item.latest,
+                priority=item.priority,
+                exam_id=item.exam_id,
+                topic_id=item.topic_id,
+                homework_id=item.homework_id,
+                task_id=item.task_id,
+            )
+            for item in proposal.items
+        ],
+        days=[
+            AutoPlanDay(
+                day=slot.day,
+                starts_at=as_utc(slot.start),
+                capacity_minutes=slot.capacity,
+                planned_minutes=slot.used,
+                overbooked=slot.day in overbooked,
+            )
+            for slot in proposal.days
+        ],
+        skipped=proposal.skipped,
+    )
 
 
 @plans_router.get("/{plan_id}", response_model=StudyPlanRead)

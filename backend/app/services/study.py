@@ -322,6 +322,7 @@ def read_tasks(db: Session, user_id: int, tasks: list[StudyPlanTask]) -> list[St
                 topic_name=task.topic.name if task.topic else None,
                 exam_id=task.exam_id,
                 exam_title=titles.get(task.exam_id) if task.exam_id is not None else None,
+                homework_id=task.homework_id,
                 series_id=task.series_id,
                 series_recurrence=cast(StudyTaskRecurrence, series.recurrence) if series else None,
                 title=task.title,

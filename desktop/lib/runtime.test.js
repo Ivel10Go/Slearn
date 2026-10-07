@@ -106,3 +106,44 @@ test("trainiert wird nur am Netz und wenn der Rechner ruht", () => {
   assert.equal(runtime.trainingAllowed({ onBattery: true, idleSeconds: ruhig * 10 }), false);
   assert.equal(runtime.trainingAllowed({ onBattery: false, idleSeconds: ruhig - 1 }), false);
 });
+
+test("Desktop-Einstellungen: Standard ohne Autostart, Aenderungen bleiben erhalten", () => {
+  const file = path.join(tempDir(), "desktop-settings.json");
+  assert.deepEqual(runtime.loadDesktopSettings(file), { openAtLogin: false, closeToTray: true, trayHintShown: false });
+  runtime.saveDesktopSettings(file, { openAtLogin: true });
+  runtime.saveDesktopSettings(file, { trayHintShown: true, unbekannt: true });
+  assert.deepEqual(runtime.loadDesktopSettings(file), { openAtLogin: true, closeToTray: true, trayHintShown: true });
+  fs.writeFileSync(file, "{kaputt");
+  assert.equal(runtime.loadDesktopSettings(file).openAtLogin, false);
+});
+
+test("Start aus dem Autostart erkennt das Argument --hidden", () => {
+  assert.equal(runtime.isHiddenLaunch(["lernraum.exe", "--hidden"]), true);
+  assert.equal(runtime.isHiddenLaunch(["lernraum.exe"]), false);
+});
+
+test("vor einem Update wird die Datenbank samt WAL gesichert, beim ersten Start nicht", () => {
+  const dataDir = tempDir();
+  // Erster Start: keine Datenbank, nichts zu sichern - aber die Version wird gemerkt.
+  assert.equal(runtime.backupBeforeUpdate({ dataDir, version: "1.0.0" }), null);
+  fs.writeFileSync(path.join(dataDir, "lernraum.db"), "alt");
+  fs.writeFileSync(path.join(dataDir, "lernraum.db-wal"), "wal");
+  // Gleiche Version: nichts.
+  assert.equal(runtime.backupBeforeUpdate({ dataDir, version: "1.0.0" }), null);
+  // Neue Version: Sicherung mit beiden Dateien.
+  const target = runtime.backupBeforeUpdate({ dataDir, version: "1.1.0" });
+  assert.ok(target && path.basename(target).startsWith("vor-update-1.0.0-"));
+  assert.equal(fs.readFileSync(path.join(target, "lernraum.db"), "utf8"), "alt");
+  assert.equal(fs.readFileSync(path.join(target, "lernraum.db-wal"), "utf8"), "wal");
+  assert.equal(runtime.backupBeforeUpdate({ dataDir, version: "1.1.0" }), null);
+});
+
+test("es bleiben nur die letzten Update-Sicherungen liegen", () => {
+  const dataDir = tempDir();
+  fs.writeFileSync(path.join(dataDir, "lernraum.db"), "x");
+  for (let index = 0; index < runtime.KEEP_UPDATE_BACKUPS + 2; index += 1) {
+    runtime.backupBeforeUpdate({ dataDir, version: `1.${index}.0`, now: new Date(Date.UTC(2026, 9, 1, index)) });
+  }
+  const left = fs.readdirSync(path.join(dataDir, "backups"));
+  assert.equal(left.length, runtime.KEEP_UPDATE_BACKUPS);
+});

@@ -328,6 +328,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Zeile waere der Upload-Dialog auf /faecher ein Formular ins Leere.
     from app.api import timetable
     application.include_router(timetable.router)
+    # Datenauskunft und Kontoloeschung (DSGVO). Ohne diese Zeile fuehrten die
+    # Knoepfe in den Einstellungen ins Leere.
+    from app.api import account
+    application.include_router(account.router)
     return application
 
 

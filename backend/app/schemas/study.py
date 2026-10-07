@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Literal, Self, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -260,6 +260,7 @@ class StudyTaskRead(UTCResponseModel):
     topic_name: str | None = None
     exam_id: int | None = None
     exam_title: str | None = None
+    homework_id: int | None = None
     series_id: int | None = None
     series_recurrence: StudyTaskRecurrence | None = None
     title: str
@@ -321,3 +322,45 @@ class StudySessionRead(UTCResponseModel):
     completed_at: datetime | None = None
     duration_minutes: int | None = None
     notes: str | None = None
+
+
+class AutoPlanRequest(BaseModel):
+    """Der automatische Lernplan. Ohne ``apply`` nur ein Vorschlag, nichts wird geschrieben."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    days: int = Field(default=14, ge=1, le=28)
+    daily_minutes: int = Field(default=90, ge=15, le=300)
+    apply: bool = False
+    # In einen vorhandenen Plan schreiben; ohne Angabe entsteht ein neuer.
+    study_plan_id: int | None = None
+
+
+class AutoPlanItem(UTCResponseModel):
+    kind: Literal["homework", "exam", "review", "task"]
+    title: str
+    description: str | None = None
+    duration_minutes: int
+    starts_at: datetime
+    due_on: date
+    priority: int
+    exam_id: int | None = None
+    topic_id: int | None = None
+    homework_id: int | None = None
+    task_id: int | None = None
+
+
+class AutoPlanDay(UTCResponseModel):
+    day: date
+    starts_at: datetime
+    capacity_minutes: int
+    planned_minutes: int
+    overbooked: bool
+
+
+class AutoPlanResponse(BaseModel):
+    applied: bool
+    study_plan_id: int | None = None
+    items: list[AutoPlanItem]
+    days: list[AutoPlanDay]
+    skipped: int

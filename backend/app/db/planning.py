@@ -66,6 +66,7 @@ class StudyPlanTask(Base):
     study_plan_id: Mapped[int] = mapped_column(ForeignKey("study_plans.id", ondelete="CASCADE"), nullable=False)
     topic_id: Mapped[int | None] = mapped_column(ForeignKey("topics.id", ondelete="SET NULL"), nullable=True)
     exam_id: Mapped[int | None] = mapped_column(ForeignKey("exams.id", ondelete="SET NULL"), nullable=True)
+    homework_id: Mapped[int | None] = mapped_column(ForeignKey("homework.id", ondelete="SET NULL"), nullable=True)
     series_id: Mapped[int | None] = mapped_column(
         ForeignKey("study_task_series.id", ondelete="SET NULL"), nullable=True
     )
