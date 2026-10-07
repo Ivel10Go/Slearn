@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { getDesktopBridge, toDesktopTheme } from "./desktop";
+import { describeUpdateStatus, getDesktopBridge, toDesktopTheme } from "./desktop";
 
 describe("Desktop-Bruecke", () => {
   afterEach(() => {
@@ -27,5 +27,24 @@ describe("Desktop-Bruecke", () => {
     expect(toDesktopTheme("system")).toBe("system");
     expect(toDesktopTheme(undefined)).toBe("system");
     expect(toDesktopTheme("sepia")).toBe("system");
+  });
+});
+
+describe("Update-Stand", () => {
+  it("sagt nichts, wenn die App keine Updates kann", () => {
+    expect(describeUpdateStatus(null)).toBe("");
+    expect(describeUpdateStatus({ state: "idle", supported: false, appVersion: "1.0.0" })).toBe("");
+  });
+
+  it("nennt die Version eines geladenen Updates", () => {
+    expect(describeUpdateStatus({ state: "downloaded", supported: true, version: "1.2.0", appVersion: "1.1.0" })).toBe(
+      "Version 1.2.0 ist bereit und wird beim nächsten Neustart installiert.",
+    );
+  });
+
+  it("zeigt die Fehlermeldung des Updaters", () => {
+    expect(
+      describeUpdateStatus({ state: "error", supported: true, appVersion: "1.1.0", message: "Keine Verbindung zum Update-Server." }),
+    ).toBe("Keine Verbindung zum Update-Server.");
   });
 });

@@ -255,8 +255,144 @@ function trainingAllowed({ onBattery, idleSeconds }) {
   return !onBattery && idleSeconds >= TRAINING_IDLE_SECONDS;
 }
 
+/* -------------------------------------------------------- Einstellungen */
+
+/**
+ * Was die Desktop-App selbst behaelt (nicht das Backend): Autostart und ob
+ * das Schliessen des Fensters die App im Infobereich weiterlaufen laesst.
+ * Standard: kein Autostart - eine App, die sich ungefragt in den Systemstart
+ * eintraegt, ist genau das, was man nicht will.
+ */
+const DEFAULT_DESKTOP_SETTINGS = Object.freeze({
+  openAtLogin: false,
+  closeToTray: true,
+  trayHintShown: false,
+});
+
+/**
+ * @typedef {{ openAtLogin: boolean, closeToTray: boolean, trayHintShown: boolean }} DesktopSettings
+ */
+
+/**
+ * @param {string} file
+ * @returns {DesktopSettings}
+ */
+function loadDesktopSettings(file) {
+  /** @type {Record<string, unknown>} */
+  let stored = {};
+  try {
+    stored = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    // Keine oder kaputte Datei: Standardwerte.
+  }
+  /** @type {DesktopSettings} */
+  const settings = { ...DEFAULT_DESKTOP_SETTINGS };
+  for (const key of /** @type {(keyof DesktopSettings)[]} */ (Object.keys(DEFAULT_DESKTOP_SETTINGS))) {
+    if (typeof stored[key] === "boolean") {
+      settings[key] = /** @type {boolean} */ (stored[key]);
+    }
+  }
+  return settings;
+}
+
+/**
+ * @param {string} file
+ * @param {Partial<DesktopSettings>} patch
+ * @returns {DesktopSettings}
+ */
+function saveDesktopSettings(file, patch) {
+  const next = { ...loadDesktopSettings(file) };
+  for (const key of /** @type {(keyof DesktopSettings)[]} */ (Object.keys(DEFAULT_DESKTOP_SETTINGS))) {
+    if (typeof patch[key] === "boolean") {
+      next[key] = /** @type {boolean} */ (patch[key]);
+    }
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  // Erst in eine Nachbardatei, dann umbenennen: ein Absturz mitten im
+  // Schreiben laesst die alte Datei stehen statt einer halben.
+  const temp = `${file}.tmp`;
+  fs.writeFileSync(temp, JSON.stringify(next, null, 2), "utf8");
+  fs.renameSync(temp, file);
+  return next;
+}
+
+/** Start ohne Fenster (Autostart): nur das Symbol im Infobereich. */
+const HIDDEN_ARGUMENT = "--hidden";
+
+/** @param {readonly string[]} argv */
+function isHiddenLaunch(argv) {
+  return argv.includes(HIDDEN_ARGUMENT);
+}
+
+/* ----------------------------------------------------- Sicherung beim Update */
+
+/** So viele Sicherungen vor einem Update bleiben liegen. */
+const KEEP_UPDATE_BACKUPS = 3;
+const UPDATE_BACKUP_PREFIX = "vor-update-";
+
+/**
+ * Sichert die Datenbank, wenn diese Programmversion zum ersten Mal startet.
+ *
+ * Ein Update bringt neue Migrationen mit, und die laufen beim naechsten Start
+ * des Backends. Geht dabei etwas schief, liegt hier der Stand davor - samt
+ * WAL-Dateien, sonst fehlten die zuletzt geschriebenen Zeilen. Laeuft vor dem
+ * Backend, damit niemand gleichzeitig in die Datei schreibt.
+ *
+ * Erster Start ueberhaupt (keine Versionsdatei, keine Datenbank): nichts zu
+ * sichern. Gleiche Version: nichts zu tun.
+ *
+ * @param {{ dataDir: string, version: string, now?: Date }} options
+ * @returns {string | null} der Sicherungsordner oder `null`
+ */
+function backupBeforeUpdate({ dataDir, version, now = new Date() }) {
+  const stateFile = path.join(dataDir, "app-version.json");
+  /** @type {{ version?: unknown }} */
+  let state = {};
+  try {
+    state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+  } catch {
+    // Erste Version mit dieser Datei oder erster Start.
+  }
+  const previous = typeof state.version === "string" ? state.version : null;
+  const database = path.join(dataDir, "lernraum.db");
+  let target = null;
+  if (previous !== version && fs.existsSync(database)) {
+    const stamp = now.toISOString().replace(/[:.]/g, "-");
+    const backups = path.join(dataDir, "backups");
+    target = path.join(backups, `${UPDATE_BACKUP_PREFIX}${previous ?? "unbekannt"}-${stamp}`);
+    fs.mkdirSync(target, { recursive: true });
+    for (const suffix of ["", "-wal", "-shm"]) {
+      const source = `${database}${suffix}`;
+      if (fs.existsSync(source)) {
+        fs.copyFileSync(source, path.join(target, `lernraum.db${suffix}`));
+      }
+    }
+    const old = fs
+      .readdirSync(backups)
+      .filter((name) => name.startsWith(UPDATE_BACKUP_PREFIX))
+      .map((name) => ({ name, time: fs.statSync(path.join(backups, name)).mtimeMs }))
+      .sort((a, b) => b.time - a.time || b.name.localeCompare(a.name))
+      .slice(KEEP_UPDATE_BACKUPS);
+    for (const entry of old) {
+      fs.rmSync(path.join(backups, entry.name), { recursive: true, force: true });
+    }
+  }
+  if (previous !== version) {
+    fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(stateFile, JSON.stringify({ version }, null, 2), "utf8");
+  }
+  return target;
+}
+
 module.exports = {
+  DEFAULT_DESKTOP_SETTINGS,
+  HIDDEN_ARGUMENT,
+  KEEP_UPDATE_BACKUPS,
   PREFERRED_FRONTEND_PORT,
+  backupBeforeUpdate,
+  isHiddenLaunch,
+  loadDesktopSettings,
+  saveDesktopSettings,
   TRAINING_IDLE_SECONDS,
   backendCommand,
   backendEnv,
