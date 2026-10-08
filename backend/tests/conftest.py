@@ -58,6 +58,9 @@ def app_context(tmp_path: Path) -> Iterator[tuple[TestClient, Session, User]]:
         demo_mode=False,
         cookie_secure=False,
         document_storage_path=tmp_path.as_posix(),
+        # Eigene Modellablage je Test: der Standard /var/lib/school-assistant/models
+        # ist auf einem Linux-Runner nicht beschreibbar (unter Windows schon).
+        model_storage_path=(tmp_path / "models").as_posix(),
     )
     application = create_app(settings)
 
@@ -107,4 +110,7 @@ def settings(tmp_path: Path) -> Settings:
         demo_mode=False,
         cookie_secure=False,
         document_storage_path=tmp_path.as_posix(),
+        # Eigene Modellablage je Test: der Standard /var/lib/school-assistant/models
+        # ist auf einem Linux-Runner nicht beschreibbar (unter Windows schon).
+        model_storage_path=(tmp_path / "models").as_posix(),
     )
