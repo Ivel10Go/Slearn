@@ -21,6 +21,8 @@ import {
   type ModelPayload,
 } from "@/lib/models";
 import { cn } from "@/lib/utils";
+import { formatNumber } from "@/lib/format";
+import { t, translateServerText } from "@/lib/i18n";
 
 /*
  * Der Modellkatalog und der Download-Manager, aus `GET /api/v1/models`
@@ -45,7 +47,7 @@ function describeError(cause: unknown) {
   if (cause instanceof Error && cause.message) {
     return cause.message;
   }
-  return "Der Modellkatalog konnte nicht geladen werden.";
+  return t("Der Modellkatalog konnte nicht geladen werden.");
 }
 
 /**
@@ -58,7 +60,7 @@ function describeError(cause: unknown) {
 function ProgressBar({ model }: { model: ModelPayload }) {
   const anteil = modelProgress(model.status);
   const laeuft = model.status.status === "downloading";
-  const beschriftung = `${anteil.toFixed(1).replace(".", ",")} Prozent geladen`;
+  const beschriftung = t("{n} Prozent geladen", { n: formatNumber(anteil, 1) });
   return (
     <div className="space-y-1">
       <div
@@ -68,16 +70,16 @@ function ProgressBar({ model }: { model: ModelPayload }) {
         aria-valuemax={100}
         aria-valuenow={Math.round(anteil)}
         aria-valuetext={beschriftung}
-        aria-label={`Ladefortschritt von ${model.label}`}
+        aria-label={t("Ladefortschritt von {name}", { name: model.label })}
       >
         <div className={cn("h-full bg-foreground", laeuft ? "opacity-70" : "opacity-100")} style={{ width: `${anteil}%` }} />
       </div>
       <p className="text-[11px] font-semibold text-muted-foreground">
-        <span className="tabular-nums">{anteil.toFixed(1).replace(".", ",")} %</span>
+        <span className="tabular-nums">{formatNumber(anteil, 1)} %</span>
         {model.status.bytes_total > 0
-          ? ` von ${formatModelBytes(model.status.bytes_total)}`
-          : " von unbekannter Gesamtgröße"}
-        {model.status.current_file ? ` · gerade ${model.status.current_file}` : ""}
+          ? ` ${t("von {groesse}", { groesse: formatModelBytes(model.status.bytes_total) })}`
+          : t(" von unbekannter Gesamtgröße")}
+        {model.status.current_file ? ` · ${t("gerade {datei}", { datei: model.status.current_file })}` : ""}
       </p>
     </div>
   );
@@ -123,23 +125,25 @@ function ModelRow({
       <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground">
         <span className="tabular-nums">{formatModelBytes(model.size_bytes)}</span>
         <span aria-hidden="true">·</span>
-        <span className="tabular-nums" title={model.ram_basis ? `Gerechnet aus: ${model.ram_basis}.` : undefined}>
-          RAM {model.ram_estimate_bytes > 0 ? `ab ${model.ram_estimate_gib.toFixed(1).replace(".", ",")} GiB` : "unbekannt"} (Schätzung)
+        <span className="tabular-nums" title={model.ram_basis ? t("Gerechnet aus: {basis}.", { basis: model.ram_basis }) : undefined}>
+          {model.ram_estimate_bytes > 0
+            ? t("RAM ab {n} GiB (Schätzung)", { n: formatNumber(model.ram_estimate_gib, 1) })
+            : t("RAM unbekannt (Schätzung)")}
         </span>
         {model.status.verified ? (
           <>
             <span aria-hidden="true">·</span>
-            <span>Prüfsumme bestätigt</span>
+            <span>{t("Prüfsumme bestätigt")}</span>
           </>
         ) : null}
       </p>
 
-      <p className="mt-2 text-xs leading-5 text-muted-foreground">{model.description}</p>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">{translateServerText(model.description)}</p>
 
       {passt === false ? (
         <p className="mt-2 flex items-start gap-2 text-xs font-semibold">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          Der freie Speicher ist kleiner als dieses Modell. Der Download bricht vorher ab und lässt eine Reserve.
+          {t("Der freie Speicher ist kleiner als dieses Modell. Der Download bricht vorher ab und lässt eine Reserve.")}
         </p>
       ) : null}
 
@@ -156,19 +160,19 @@ function ModelRow({
         mehr sagt.
       */}
       <div className={cn(zeigeFortschritt && model.status.message && "mt-2")} role="status" aria-live="polite">
-        {zeigeFortschritt && model.status.message ? <p className="text-xs leading-5 text-muted-foreground">{model.status.message}</p> : null}
+        {zeigeFortschritt && model.status.message ? <p className="text-xs leading-5 text-muted-foreground">{translateServerText(model.status.message)}</p> : null}
       </div>
 
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-3">
         {!laueft ? (
           <Button type="button" size="sm" onClick={() => onStart(model)} disabled={!canStartModelDownload(model.status) || istAmLaufen}>
             {istAmLaufen ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
-            {model.status.status === "not_downloaded" ? "Herunterladen" : "Fortsetzen"}
+            {model.status.status === "not_downloaded" ? t("Herunterladen") : t("Fortsetzen")}
           </Button>
         ) : (
           <Button type="button" size="sm" variant="outline" onClick={() => onCancel(model)} disabled={!canCancelModelDownload(model.status)}>
             <X aria-hidden="true" />
-            Abbrechen
+            {t("Abbrechen")}
           </Button>
         )}
 
@@ -176,10 +180,10 @@ function ModelRow({
           <>
             <Button type="button" size="sm" variant="destructive" onClick={() => onDelete(model)} disabled={laueft}>
               <Trash2 aria-hidden="true" />
-              Wirklich entfernen
+              {t("Wirklich entfernen")}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setBestaetigen(false)} disabled={laueft}>
-              Abbrechen
+              {t("Abbrechen")}
             </Button>
           </>
         ) : (
@@ -192,7 +196,7 @@ function ModelRow({
             aria-expanded={bestaetigen}
           >
             <Trash2 aria-hidden="true" />
-            Entfernen
+            {t("Entfernen")}
           </Button>
         )}
       </div>
@@ -216,7 +220,7 @@ export function ModelCatalogCard() {
       }
       const geparst = parseModelCatalog(antwort);
       setKatalog(geparst);
-      setFehler(geparst ? null : "Die Antwort des Lernraums war nicht lesbar.");
+      setFehler(geparst ? null : t("Die Antwort des Lernraums war nicht lesbar."));
     } catch (ursache) {
       if (aktuelleAnfrage !== anfrageId.current) {
         return;
@@ -286,14 +290,14 @@ export function ModelCatalogCard() {
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
         <div className="min-w-0 space-y-1">
-          <CardTitle>Lokale Modelle</CardTitle>
+          <CardTitle>{t("Lokale Modelle")}</CardTitle>
           <CardDescription>
-            Direkt auf den Server laden. Der Download läuft im Hintergrund und setzt nach einem Abbruch beim Teilstand fort.
+            {t("Direkt auf den Server laden. Der Download läuft im Hintergrund und setzt nach einem Abbruch beim Teilstand fort.")}
           </CardDescription>
         </div>
         <Button type="button" size="sm" variant="outline" onClick={() => void laden()} disabled={laedt}>
           <RefreshCw className={cn(laedt && "animate-spin")} aria-hidden="true" />
-          Aktualisieren
+          {t("Aktualisieren")}
         </Button>
       </CardHeader>
 
@@ -319,7 +323,7 @@ export function ModelCatalogCard() {
         ) : null}
 
         {!laedt && modelle.length === 0 && !fehler ? (
-          <p className="text-sm text-muted-foreground">Der Katalog enthält zurzeit kein Modell.</p>
+          <p className="text-sm text-muted-foreground">{t("Der Katalog enthält zurzeit kein Modell.")}</p>
         ) : null}
 
         {/*

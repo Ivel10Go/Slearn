@@ -13,6 +13,7 @@ import {
   type LessonChoiceWindow,
 } from "@/lib/lesson-choices";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 const WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
@@ -22,7 +23,7 @@ interface LessonChoicesCardProps {
 }
 
 function fehlertext(error: unknown): string {
-  return error instanceof Error ? error.message : "Das hat nicht geklappt.";
+  return error instanceof Error ? error.message : t("Das hat nicht geklappt.");
 }
 
 function zeitfenster(fenster: LessonChoiceWindow): string {
@@ -68,7 +69,7 @@ export function LessonChoicesCard({ onSaved }: LessonChoicesCardProps) {
     try {
       const ergebnis = await saveLessonChoices(Object.fromEntries(eintrag.keys.map((key) => [key, [fachId]])));
       setBuendel(bundleLessonChoices(ergebnis.groups));
-      if (ergebnis.resynced) setHinweis("Gespeichert. Der Stundenplan wurde neu abgerufen.");
+      if (ergebnis.resynced) setHinweis(t("Gespeichert. Der Stundenplan wurde neu abgerufen."));
       onSaved();
     } catch (error) {
       setFehler(fehlertext(error));
@@ -81,29 +82,29 @@ export function LessonChoicesCard({ onSaved }: LessonChoicesCardProps) {
     <Card className="border-border/80 bg-card/90">
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
-          <CardTitle>Parallele Stunden</CardTitle>
+          <CardTitle>{t("Parallele Stunden")}</CardTitle>
           <CardDescription className="mt-1">
-            Diese Fächer liegen im Plan zur selben Zeit. Wähle einmal, was du besuchst – das gilt für alle diese Stunden.
+            {t("Diese Fächer liegen im Plan zur selben Zeit. Wähle einmal, was du besuchst – das gilt für alle diese Stunden.")}
           </CardDescription>
         </div>
-        {offen > 0 ? <Badge variant="secondary">{offen} offen</Badge> : null}
+        {offen > 0 ? <Badge variant="secondary">{offen} {t("offen")}</Badge> : null}
       </CardHeader>
       <CardContent className="space-y-3">
         <ul className="divide-y divide-border border-y border-border">
           {buendel.map((eintrag) => {
-            const titel = eintrag.options.map((option) => option.name).join(" oder ");
+            const titel = eintrag.options.map((option) => option.name).join(` ${t("oder")} `);
             return (
               <li key={eintrag.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <div className="min-w-0">
                   <p className="text-[13px] font-medium">
                     {titel}
-                    {eintrag.decided ? null : <span className="ml-2 text-xs font-normal text-muted-foreground">noch offen</span>}
+                    {eintrag.decided ? null : <span className="ml-2 text-xs font-normal text-muted-foreground">{t("noch offen")}</span>}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">{eintrag.windows.map(zeitfenster).join(" · ")}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {speichert === eintrag.id ? (
-                    <LoaderCircle className="size-4 animate-spin text-muted-foreground" aria-label="Wird gespeichert" />
+                    <LoaderCircle className="size-4 animate-spin text-muted-foreground" aria-label={t("Wird gespeichert")} />
                   ) : null}
                   <div role="group" aria-label={`Besuchtes Fach: ${titel}`} className="inline-flex rounded-md border border-border p-0.5">
                     {eintrag.options.map((option) => {

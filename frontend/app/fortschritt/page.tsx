@@ -5,6 +5,7 @@ import { GradesCard } from "@/components/dashboard/grades-card";
 import { ProgressCard } from "@/components/dashboard/progress-card";
 import { RewardsCard } from "@/components/dashboard/rewards-card";
 import { useSession } from "@/lib/use-session";
+import { t } from "@/lib/i18n";
 
 /**
  * Lernfortschritt, Noten und Belohnung auf einer eigenen Seite.
@@ -24,9 +25,9 @@ export default function FortschrittPage() {
     <AppShell user={user}>
       <div className="space-y-4">
         <header>
-          <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Fortschritt</h1>
+          <h1 className="text-[22px] font-semibold leading-8 tracking-tight">{t("Fortschritt")}</h1>
           <p className="mt-0.5 max-w-2xl text-[13px] leading-5 text-muted-foreground">
-            Lernzeit, Wiederholungen, Noten und Punkte - wie du stehst, nicht was heute ansteht.
+            {t("Lernzeit, Wiederholungen, Noten und Punkte - wie du stehst, nicht was heute ansteht.")}
           </p>
         </header>
 

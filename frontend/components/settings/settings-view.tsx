@@ -26,6 +26,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { LanguageSelect } from "@/components/language-select";
 import { BackupStatusCard } from "@/components/settings/backup-status-card";
 import { PrivacyCard } from "@/components/settings/privacy-card";
 import { DesktopCard } from "@/components/settings/desktop-card";
@@ -69,6 +70,7 @@ import type {
 import { cn } from "@/lib/utils";
 import type { IntegrationWrite } from "@/lib/api";
 import type { NotificationApi, NotificationState } from "@/lib/use-notifications";
+import { t, tn, translateServerText } from "@/lib/i18n";
 
 type BadgeVariant = "default" | "secondary" | "outline" | "success" | "warning" | "info" | "accent";
 
@@ -82,34 +84,35 @@ const KIND_ICONS: Record<string, typeof Plug> = {
 };
 
 const STATUS_META: Record<string, { label: string; variant: BadgeVariant }> = {
-  configured: { label: "Eingerichtet", variant: "success" },
-  pending: { label: "Wartet auf Einwilligung", variant: "info" },
-  error: { label: "Fehler", variant: "warning" },
-  disabled: { label: "Deaktiviert", variant: "outline" },
+  configured: { label: t("Eingerichtet"), variant: "success" },
+  pending: { label: t("Wartet auf Einwilligung"), variant: "info" },
+  error: { label: t("Fehler"), variant: "warning" },
+  disabled: { label: t("Deaktiviert"), variant: "outline" },
 };
 
 const THEME_OPTIONS = [
-  { value: "light", label: "Hell", icon: Sun },
-  { value: "dark", label: "Dunkel", icon: Moon },
-  { value: "system", label: "System", icon: Monitor },
+  { value: "light", label: t("Hell"), icon: Sun },
+  { value: "dark", label: t("Dunkel"), icon: Moon },
+  { value: "system", label: t("System"), icon: Monitor },
 ] as const;
 
 const FIELD_HINTS: Record<string, string> = {
   base_url: "Zum Beispiel https://schule.example.org",
-  school: "Kürzel oder Name deiner Schule",
-  username: "Deine Zugangsdaten aus dem Schulportal",
-  password: "Bei iCloud das app-spezifische Passwort, nicht dein Apple-ID-Passwort",
+  school: t("Kürzel oder Name deiner Schule"),
+  username: t("Deine Zugangsdaten aus dem Schulportal"),
+  password: t("Bei iCloud das app-spezifische Passwort, nicht dein Apple-ID-Passwort"),
   model: "Zum Beispiel llama3.2",
-  api_key: "Leer lassen, wenn der Dienst keinen Schlüssel braucht",
-  path: "Relativ zum konfigurierten Dokumentordner",
-  url: "Die abonnierte Adresse, zum Beispiel https://schule.example.org/kalender.ics",
-  client_id: "Aus der Google-Konsole unter „Zugangsdaten“",
-  client_secret: "Bleibt verschlüsselt und verlässt den Server nur bei Google",
-  calendar_id: "„primary“ oder die Id aus der Google-Konsole",
-  redirect_uri:
+  api_key: t("Leer lassen, wenn der Dienst keinen Schlüssel braucht"),
+  path: t("Relativ zum konfigurierten Dokumentordner"),
+  url: t("Die abonnierte Adresse, zum Beispiel https://schule.example.org/kalender.ics"),
+  client_id: t("Aus der Google-Konsole unter „Zugangsdaten“"),
+  client_secret: t("Bleibt verschlüsselt und verlässt den Server nur bei Google"),
+  calendar_id: t("„primary“ oder die Id aus der Google-Konsole"),
+  redirect_uri: t(
     "Bei Google hinterlegen und hier genau so eintragen, zum Beispiel https://lernraum.example.org/api/backend/v1/integrations/1/oauth/callback",
-  refresh_token: "Wird nach der Einwilligung automatisch gesetzt",
-  token_scope: "Wird nach der Einwilligung automatisch gesetzt",
+  ),
+  refresh_token: t("Wird nach der Einwilligung automatisch gesetzt"),
+  token_scope: t("Wird nach der Einwilligung automatisch gesetzt"),
 };
 
 function configEntries(integration: IntegrationRead) {
@@ -144,12 +147,12 @@ interface AccountCardProps {
 
 function AccountCard({ user, onLogout, isLoggingOut }: AccountCardProps) {
   const [abmeldeOffen, setAbmeldeOffen] = useState(false);
-  const displayName = user?.username ?? "Lernende:r";
+  const displayName = user?.username ?? t("Lernende:r");
   const details = [
-    { label: "E-Mail", value: user?.email || "Nicht hinterlegt" },
-    { label: "Dabei seit", value: formatDate(user?.created_at) },
-    { label: "Letzte Anmeldung", value: formatDateTime(user?.last_login_at) },
-    { label: "Zeitzone", value: user?.timezone || "Nicht gesetzt" },
+    { label: t("E-Mail"), value: user?.email || t("Nicht hinterlegt") },
+    { label: t("Dabei seit"), value: formatDate(user?.created_at) },
+    { label: t("Letzte Anmeldung"), value: formatDateTime(user?.last_login_at) },
+    { label: t("Zeitzone"), value: user?.timezone || t("Nicht gesetzt") },
   ];
 
   return (
@@ -161,8 +164,8 @@ function AccountCard({ user, onLogout, isLoggingOut }: AccountCardProps) {
         <div className="min-w-0 flex-1">
           <CardTitle className="truncate">{displayName}</CardTitle>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <Badge variant={user?.is_admin ? "accent" : "secondary"}>{user?.is_admin ? "Administration" : "Lernkonto"}</Badge>
-            {user?.is_active === false ? <Badge variant="warning">Deaktiviert</Badge> : null}
+            <Badge variant={user?.is_admin ? "accent" : "secondary"}>{user?.is_admin ? t("Administration") : t("Lernkonto")}</Badge>
+            {user?.is_active === false ? <Badge variant="warning">{t("Deaktiviert")}</Badge> : null}
           </div>
         </div>
       </CardHeader>
@@ -187,20 +190,36 @@ function AccountCard({ user, onLogout, isLoggingOut }: AccountCardProps) {
               <>
                 <Button type="button" size="sm" variant="destructive" onClick={onLogout} disabled={isLoggingOut}>
                   {isLoggingOut ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <LogOut aria-hidden="true" />}
-                  {isLoggingOut ? "Wird abgemeldet …" : "Jetzt abmelden"}
+                  {isLoggingOut ? t("Wird abgemeldet …") : t("Jetzt abmelden")}
                 </Button>
                 <Button type="button" size="sm" variant="ghost" onClick={() => setAbmeldeOffen(false)} disabled={isLoggingOut}>
-                  Abbrechen
+                  {t("Abbrechen")}
                 </Button>
               </>
             ) : (
               <Button type="button" size="sm" variant="outline" onClick={() => setAbmeldeOffen(true)} aria-expanded={abmeldeOffen}>
                 <LogOut aria-hidden="true" />
-                Abmelden
+                {t("Abmelden")}
               </Button>
             )}
           </div>
         ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function LanguageCard() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("Sprache")}</CardTitle>
+        <CardDescription>
+          {t("Sprache der Oberfläche, der Antworten des Assistenten und der Stimme. Ein Wechsel lädt die Seite neu.")}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <LanguageSelect id="einstellungen-sprache" />
       </CardContent>
     </Card>
   );
@@ -218,12 +237,12 @@ function ThemeCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Darstellung</CardTitle>
-        <CardDescription>Wähle, ob dein Lernraum hell, dunkel oder wie das System erscheint.</CardDescription>
+        <CardTitle>{t("Darstellung")}</CardTitle>
+        <CardDescription>{t("Wähle, ob dein Lernraum hell, dunkel oder wie das System erscheint.")}</CardDescription>
       </CardHeader>
       <CardContent>
         {mounted ? (
-          <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Farbschema">
+          <div className="grid grid-cols-3 gap-1.5" role="group" aria-label={t("Farbschema")}>
             {THEME_OPTIONS.map((option) => {
               const Icon = option.icon;
               const active = theme === option.value;
@@ -338,14 +357,14 @@ function IntegrationRow({
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
               <Badge variant="outline">{integration.kind}</Badge>
               <Badge variant={status.variant}>{status.label}</Badge>
-              {incomplete ? <Badge variant="warning">Unvollständig</Badge> : null}
+              {incomplete ? <Badge variant="warning">{t("Unvollständig")}</Badge> : null}
               {/*
                 Das Badge sagt, **wo** der Server laeuft. Bei einem Online-Dienst
                 ist das die entscheidende Information: dann verlaesst eine Frage
                 den Rechner.
               */}
-              {kiLokal ? <Badge variant="accent">Lokal</Badge> : null}
-              {kiAdresse && !kiLokal ? <Badge variant="outline">Online</Badge> : null}
+              {kiLokal ? <Badge variant="accent">{t("Lokal")}</Badge> : null}
+              {kiAdresse && !kiLokal ? <Badge variant="outline">{t("Online")}</Badge> : null}
             </div>
           </div>
         </div>
@@ -354,7 +373,7 @@ function IntegrationRow({
           type="button"
           role="switch"
           aria-checked={integration.enabled}
-          aria-label={`${integration.name} ${integration.enabled ? "deaktivieren" : "aktivieren"}`}
+          aria-label={integration.enabled ? t("{name} deaktivieren", { name: integration.name }) : t("{name} aktivieren", { name: integration.name })}
           disabled={isBusy}
           onClick={() => onToggle(!integration.enabled)}
           className={cn(
@@ -385,16 +404,16 @@ function IntegrationRow({
       <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
-          {integration.has_credentials ? `Zugangsdaten gespeichert (${integration.credential_keys.join(", ")})` : "Keine Zugangsdaten"}
+          {integration.has_credentials ? t("Zugangsdaten gespeichert ({liste})", { liste: integration.credential_keys.join(", ") }) : t("Keine Zugangsdaten")}
         </span>
-        <span>Zuletzt getestet: {formatDateTime(integration.last_tested_at)}</span>
-        {integration.last_sync_at ? <span>Zuletzt synchronisiert: {formatDateTime(integration.last_sync_at)}</span> : null}
+        <span>{t("Zuletzt getestet: {datum}", { datum: formatDateTime(integration.last_tested_at) })}</span>
+        {integration.last_sync_at ? <span>{t("Zuletzt synchronisiert: {datum}", { datum: formatDateTime(integration.last_sync_at) })}</span> : null}
       </div>
 
       {incomplete ? (
         <p className="mt-3 flex items-start gap-2 text-xs font-semibold text-amber-700 dark:text-amber-400">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          Es fehlen noch: {integration.missing_fields.map(fieldLabel).join(", ")}
+          {t("Es fehlen noch: {liste}", { liste: integration.missing_fields.map(fieldLabel).join(", ") })}
         </p>
       ) : null}
 
@@ -422,15 +441,18 @@ function IntegrationRow({
       {conflicts > 0 ? (
         <p className="mt-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-300">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          {conflicts === 1 ? "Ein Termin wurde" : `${conflicts} Termine wurden`} an beiden Seiten geändert und sind
-          offen geblieben. Deine Fassung steht hier; entscheide sie in deinem Kalender neu.
+          {tn(
+            conflicts,
+            "Ein Termin wurde an beiden Seiten geändert und ist offen geblieben. Deine Fassung steht hier; entscheide ihn in deinem Kalender neu.",
+            "{n} Termine wurden an beiden Seiten geändert und sind offen geblieben. Deine Fassung steht hier; entscheide sie in deinem Kalender neu.",
+          )}
         </p>
       ) : null}
 
       {writingBlocked && !awaitingConsent ? (
         <p className="mt-3 flex items-start gap-2 text-xs font-medium text-muted-foreground">
           <KeyRound className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          Gelesen wird ohne weiteres. Geschrieben wird erst mit der Zustimmung oben im Schalter.
+          {t("Gelesen wird ohne weiteres. Geschrieben wird erst mit der Zustimmung oben im Schalter.")}
         </p>
       ) : null}
 
@@ -466,34 +488,34 @@ function IntegrationRow({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" variant="outline" onClick={onTest} disabled={isBusy}>
           {isTesting ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
-          Verbindung testen
+          {t("Verbindung testen")}
         </Button>
         {awaitingConsent ? (
           <Button type="button" size="sm" onClick={onAuthorize} disabled={isBusy || incomplete}>
             {isAuthorizing ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Link2 aria-hidden="true" />}
-            {isAuthorizing ? "Weiterleitung läuft" : writingBlocked ? "Zustimmung zeigen, dann verbinden" : "Mit Google verbinden"}
+            {isAuthorizing ? t("Weiterleitung läuft") : writingBlocked ? t("Zustimmung zeigen, dann verbinden") : t("Mit Google verbinden")}
           </Button>
         ) : null}
         {isSyncableKind(integration.kind) ? (
           <Button type="button" size="sm" onClick={onSync} disabled={!canSync}>
             {isSyncing ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
-            {isSyncing ? "Läuft" : syncLabel}
+            {isSyncing ? t("Läuft") : syncLabel}
           </Button>
         ) : null}
         {confirming ? (
           <>
             <Button type="button" size="sm" variant="destructive" onClick={onDelete} disabled={isBusy}>
               {isDeleting ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
-              Wirklich entfernen
+              {t("Wirklich entfernen")}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={isBusy}>
-              Abbrechen
+              {t("Abbrechen")}
             </Button>
           </>
         ) : (
           <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(true)} disabled={isBusy}>
             <Trash2 aria-hidden="true" />
-            Entfernen
+            {t("Entfernen")}
           </Button>
         )}
       </div>
@@ -611,7 +633,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
         <div key={field} className="space-y-2">
           <label className="text-sm font-semibold" htmlFor={fieldId}>
             {fieldLabel(field)}
-            <span className="ml-1 text-xs font-semibold text-muted-foreground">(optional)</span>
+            <span className="ml-1 text-xs font-semibold text-muted-foreground">{t("(optional)")}</span>
           </label>
           <select
             id={fieldId}
@@ -629,7 +651,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
             ))}
           </select>
           <p id={`${fieldId}-hinweis`} className="text-xs leading-5 text-muted-foreground">
-            Leer lassen genügt: Dann erkennt der Lernraum die Art an der Adresse.
+            {t("Leer lassen genügt: Dann erkennt der Lernraum die Art an der Adresse.")}
           </p>
         </div>
       );
@@ -671,16 +693,16 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
     <form onSubmit={handleSubmit} noValidate className="space-y-4 rounded-md border border-border bg-muted/30 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold">Neue Verbindung</p>
-          <p className="mt-1 text-xs text-muted-foreground">Zugangsdaten werden verschlüsselt gespeichert und nie im Browser abgelegt.</p>
+          <p className="text-sm font-semibold">{t("Neue Verbindung")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("Zugangsdaten werden verschlüsselt gespeichert und nie im Browser abgelegt.")}</p>
         </div>
-        <Button type="button" size="icon" variant="ghost" onClick={onCancel} disabled={isSubmitting} aria-label="Abbrechen">
+        <Button type="button" size="icon" variant="ghost" onClick={onCancel} disabled={isSubmitting} aria-label={t("Abbrechen")}>
           <X aria-hidden="true" />
         </Button>
       </div>
 
       <div className="space-y-2">
-        <label className="text-sm font-semibold" htmlFor="integration-kind">Dienst</label>
+        <label className="text-sm font-semibold" htmlFor="integration-kind">{t("Dienst")}</label>
         <select
           id="integration-kind"
           name="kind"
@@ -695,7 +717,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
             </option>
           ))}
         </select>
-        <p className="text-xs leading-5 text-muted-foreground">{spec.description}</p>
+        <p className="text-xs leading-5 text-muted-foreground">{translateServerText(spec.description)}</p>
       </div>
 
       {/*
@@ -703,8 +725,8 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
         nicht sieht, tippt `localhost` und wartet auf einen roten Knopf.
       */}
       {istKiServer ? (
-        <section className="space-y-3 border border-border/70 bg-muted/40 p-3.5" aria-label="Lokale KI-Server">
-          <p className="text-xs font-medium text-muted-foreground">Läuft der Server auf deinem Rechner?</p>
+        <section className="space-y-3 border border-border/70 bg-muted/40 p-3.5" aria-label={t("Lokale KI-Server")}>
+          <p className="text-xs font-medium text-muted-foreground">{t("Läuft der Server auf deinem Rechner?")}</p>
           {kiVorschlaege.length > 0 ? (
             <>
               <ul className="space-y-2">
@@ -712,7 +734,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
                   <li key={preset.kind} className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold">{preset.label}</p>
-                      <p className="text-[11px] leading-4 text-muted-foreground">{preset.note}</p>
+                      <p className="text-[11px] leading-4 text-muted-foreground">{translateServerText(preset.note)}</p>
                     </div>
                     <div className="flex shrink-0 gap-1.5">
                       <Button
@@ -722,7 +744,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
                         onClick={() => uebernehmen(preset.kind, false)}
                         disabled={isSubmitting}
                       >
-                        Docker
+                        {t("Docker")}
                       </Button>
                       <Button
                         type="button"
@@ -731,20 +753,19 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
                         onClick={() => uebernehmen(preset.kind, true)}
                         disabled={isSubmitting}
                       >
-                        Ohne Docker
+                        {t("Ohne Docker")}
                       </Button>
                     </div>
                   </li>
                 ))}
               </ul>
               <p className="text-[11px] leading-4 text-muted-foreground">
-                „Docker“ trägt {runtime?.container_host ?? "host.docker.internal"} ein, „ohne Docker“ die lokale Adresse. Beides ist dieselbe
-                Verbindung, nur aus einer anderen Bauart heraus.
+                {t("„Docker“ trägt {host} ein, „ohne Docker“ die lokale Adresse. Beides ist dieselbe Verbindung, nur aus einer anderen Bauart heraus.", { host: runtime?.container_host ?? "host.docker.internal" })}
               </p>
             </>
           ) : (
             <p className="text-xs leading-5 text-muted-foreground">
-              Die Vorschläge konnten nicht geladen werden. Trage Adresse und Modell von Hand ein.
+              {t("Die Vorschläge konnten nicht geladen werden. Trage Adresse und Modell von Hand ein.")}
             </p>
           )}
           {runtime?.container_trap_hint ? (
@@ -757,7 +778,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
       ) : null}
 
       <div className="space-y-2">
-        <label className="text-sm font-semibold" htmlFor="integration-name">Name</label>
+        <label className="text-sm font-semibold" htmlFor="integration-name">{t("Name")}</label>
         <Input
           id="integration-name"
           name="name"
@@ -772,7 +793,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
       {configFields.map((field) => renderField(field, "config"))}
       {alternativeSets.map((gruppe) => (
         <div key={gruppe.join("|")} className="space-y-2 border-l-2 border-border pl-3">
-          <p className="text-xs font-semibold text-muted-foreground">Genau eine Angabe: {gruppe.map(fieldLabel).join(" oder ")}</p>
+          <p className="text-xs font-semibold text-muted-foreground">{t("Genau eine Angabe: {liste}", { liste: gruppe.map(fieldLabel).join(` ${t("oder")} `) })}</p>
           {gruppe.map((field) => renderField(field, "config"))}
         </div>
       ))}
@@ -799,7 +820,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
 
       <Button type="submit" disabled={isSubmitting}>
         {isSubmitting ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Plus aria-hidden="true" />}
-        {isSubmitting ? "Wird gespeichert …" : "Verbindung speichern"}
+        {isSubmitting ? t("Wird gespeichert …") : t("Verbindung speichern")}
       </Button>
     </form>
   );
@@ -830,10 +851,10 @@ interface IntegrationsCardProps {
 }
 
 export function IntegrationsCard({
-  title = "Integrationen",
-  description = "Verbinde dein Schulportal, einen Dokumentordner oder einen Kalender.",
-  emptyTitle = "Noch nichts verbunden",
-  emptyDescription = "Stundenplan, Aufgaben und Termine kannst du auch ohne Integration pflegen. Verbundene Dienste liefern sie automatisch.",
+  title = t("Integrationen"),
+  description = t("Verbinde dein Schulportal, einen Dokumentordner oder einen Kalender."),
+  emptyTitle = t("Noch nichts verbunden"),
+  emptyDescription = t("Stundenplan, Aufgaben und Termine kannst du auch ohne Integration pflegen. Verbundene Dienste liefern sie automatisch."),
   integrations,
   catalog,
   runtime,
@@ -863,11 +884,11 @@ export function IntegrationsCard({
         <div className="flex items-center gap-2">
           <Button type="button" size="sm" variant="outline" onClick={onRefresh} disabled={isRefreshing}>
             <RefreshCw className={cn(isRefreshing && "animate-spin")} aria-hidden="true" />
-            Aktualisieren
+            {t("Aktualisieren")}
           </Button>
           <Button type="button" size="sm" onClick={() => setFormOpen((open) => !open)} disabled={isSubmitting} aria-expanded={formOpen}>
             {formOpen ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
-            {formOpen ? "Schließen" : "Hinzufügen"}
+            {formOpen ? t("Schließen") : t("Hinzufügen")}
           </Button>
         </div>
       </CardHeader>
@@ -943,9 +964,9 @@ function CalendarWritingCard({
   return (
     <Card className="border-border/80 bg-card/90">
       <CardHeader>
-        <CardTitle>Termine in verbundene Kalender schreiben</CardTitle>
+        <CardTitle>{t("Termine in verbundene Kalender schreiben")}</CardTitle>
         <CardDescription className="mt-1">
-          Ohne diese Zustimmung werden Kalender nur gelesen. Ein Abgleich in beide Richtungen braucht sie.
+          {t("Ohne diese Zustimmung werden Kalender nur gelesen. Ein Abgleich in beide Richtungen braucht sie.")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -959,18 +980,17 @@ function CalendarWritingCard({
           />
           <span className="min-w-0">
             <span className="block text-sm font-semibold">
-              {enabled ? "Freigegeben" : "Nicht freigegeben"}
+              {enabled ? t("Freigegeben") : t("Nicht freigegeben")}
             </span>
             <span className="mt-1 block text-xs text-muted-foreground">
-              Gespeichert als <code className="font-mono">{writing?.preference_key ?? "share_calendar_for_writing"}</code>.
-              Ein fehlender oder kaputter Eintrag bedeutet immer „aus“.
+              {t("Gespeichert als")}{" "}<code className="font-mono">{writing?.preference_key ?? "share_calendar_for_writing"}</code>{t(". Ein fehlender oder kaputter Eintrag bedeutet immer „aus“.")}
             </span>
           </span>
         </label>
 
         {writing && writing.uses.length > 0 ? (
           <div className="space-y-1.5 border-t border-border/70 pt-4">
-            <p className="text-[11px] font-medium text-muted-foreground">Damit wird</p>
+            <p className="text-[11px] font-medium text-muted-foreground">{t("Damit wird")}</p>
             <ul className="space-y-1">
               {writing.uses.map((use) => (
                 <li key={use} className="text-xs text-muted-foreground">
@@ -1028,7 +1048,7 @@ function CalendarFeedCard({
     return (
       <Card className="border-border/80 bg-card/90">
         <CardHeader>
-          <CardTitle>Kalender abonnieren</CardTitle>
+          <CardTitle>{t("Kalender abonnieren")}</CardTitle>
         </CardHeader>
         <CardContent>
           <Skeleton className="h-16 w-full" />
@@ -1040,9 +1060,9 @@ function CalendarFeedCard({
   return (
     <Card className="border-border/80 bg-card/90">
       <CardHeader>
-        <CardTitle>Kalender abonnieren</CardTitle>
+        <CardTitle>{t("Kalender abonnieren")}</CardTitle>
         <CardDescription className="mt-1">
-          Trage diese Adresse in Google Kalender, Apple Kalender oder Outlook ein, damit deine Termine dort erscheinen.
+          {t("Trage diese Adresse in Google Kalender, Apple Kalender oder Outlook ein, damit deine Termine dort erscheinen.")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -1050,22 +1070,22 @@ function CalendarFeedCard({
           <>
             <p className="break-all border border-border bg-muted/40 px-3 py-2 font-mono text-xs">{adresse()}</p>
             <p className="text-xs text-muted-foreground">
-              {feed.message} Ein neuer Schlüssel macht diese Adresse sofort ungültig.
+              {feed.message} {t("Ein neuer Schlüssel macht diese Adresse sofort ungültig.")}
             </p>
           </>
         ) : (
-          <p className="text-xs text-muted-foreground">{feed?.message ?? "Es ist noch keine Adresse eingerichtet."}</p>
+          <p className="text-xs text-muted-foreground">{feed?.message ?? t("Es ist noch keine Adresse eingerichtet.")}</p>
         )}
 
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" size="sm" onClick={onCreate} disabled={isRotating}>
             {isRotating ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Plus aria-hidden="true" />}
-            {feed?.active ? "Neuen Schlüssel erzeugen" : "Adresse einrichten"}
+            {feed?.active ? t("Neuen Schlüssel erzeugen") : t("Adresse einrichten")}
           </Button>
           {feed?.active ? (
             <Button type="button" size="sm" variant="outline" onClick={kopieren}>
               {kopiert ? <CheckCircle2 aria-hidden="true" /> : <Copy aria-hidden="true" />}
-              {kopiert ? "Kopiert" : "Adresse kopieren"}
+              {kopiert ? t("Kopiert") : t("Adresse kopieren")}
             </Button>
           ) : null}
         </div>
@@ -1080,11 +1100,11 @@ function isAiKind(kind: string) {
 }
 
 const SETTINGS_TABS = [
-  { id: "verbindungen", label: "Verbindungen" },
-  { id: "kalender", label: "Kalender" },
-  { id: "benachrichtigungen", label: "Benachrichtigungen" },
-  { id: "allgemein", label: "Konto & Darstellung" },
-  { id: "sicherung", label: "Sicherung" },
+  { id: "verbindungen", label: t("Verbindungen") },
+  { id: "kalender", label: t("Kalender") },
+  { id: "benachrichtigungen", label: t("Benachrichtigungen") },
+  { id: "allgemein", label: t("Konto & Darstellung") },
+  { id: "sicherung", label: t("Sicherung") },
 ] as const;
 
 type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
@@ -1134,7 +1154,7 @@ function SettingsTabs({ active, onChange }: { active: SettingsTab; onChange: (ta
     // `-mb-px` der Reiter ueber die Linie liesse die scrollbare Leiste auch
     // senkrecht ueberlaufen, und daneben stuende ein Mini-Scrollbalken.
     <div className="-mx-4 border-b border-border px-4 sm:mx-0 sm:px-0">
-      <div role="tablist" aria-label="Bereiche der Einstellungen" className="flex gap-1 overflow-x-auto">
+      <div role="tablist" aria-label={t("Bereiche der Einstellungen")} className="flex gap-1 overflow-x-auto">
         {SETTINGS_TABS.map((tab) => {
           const selected = tab.id === active;
           return (
@@ -1235,11 +1255,11 @@ writing,
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Einstellungen</h1>
+        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">{t("Einstellungen")}</h1>
         <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
-          Konto, Verbindungen, Kalender, Benachrichtigungen und Sicherung. KI-Dienst, Modelle und Stimmen findest du unter{" "}
+          {t("Konto, Verbindungen, Kalender, Benachrichtigungen und Sicherung. KI-Dienst, Modelle und Stimmen findest du unter")}{" "}
           <Link href="/ki" className="underline underline-offset-2 hover:text-foreground">
-            KI &amp; Modelle
+            {t("KI & Modelle")}
           </Link>
           .
         </p>
@@ -1250,7 +1270,7 @@ writing,
           <span>{error}</span>
           <Button type="button" size="sm" variant="outline" onClick={onRetry}>
             <RefreshCw aria-hidden="true" />
-            Erneut versuchen
+            {t("Erneut versuchen")}
           </Button>
         </div>
       ) : null}
@@ -1272,6 +1292,7 @@ writing,
             </div>
             <div className="space-y-4">
               <ThemeCard />
+              <LanguageCard />
               <DesktopCard />
             </div>
           </div>

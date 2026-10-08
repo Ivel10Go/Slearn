@@ -3,6 +3,7 @@
 import { useEffect, useRef, type RefObject } from "react";
 import type { FaultierZustand } from "@/lib/faultier";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 /*
  * Das Faultier ist das Gesicht des Assistenten.
@@ -104,10 +105,10 @@ export function Faultier({ zustand = "ruhe", groesse = 32, koerper = false, folg
             {zustand === "schlaeft" ? (
               <g className="f-zzz">
                 <text className="f-deko" x="92" y="38" fontSize="9" fontWeight="600">
-                  z
+                  {t("z")}
                 </text>
                 <text className="f-deko" x="100" y="29" fontSize="11" fontWeight="600">
-                  z
+                  {t("z")}
                 </text>
               </g>
             ) : null}

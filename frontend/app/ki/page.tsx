@@ -12,15 +12,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { describeStages } from "@/lib/ai-runtime";
 import { useIntegrations } from "@/lib/use-integrations";
 import { useSession } from "@/lib/use-session";
+import { t } from "@/lib/i18n";
 
 /** Die Art einer KI-Verbindung im Integrationskatalog. */
 const AI_KIND = "ai_provider";
 
 const ABSCHNITTE = [
-  { id: "ki-dienst", label: "KI-Dienst" },
-  { id: "ki-modelle", label: "Lokale Modelle" },
-  { id: "ki-stimmen", label: "Stimmen" },
-  { id: "ki-training", label: "Training" },
+  { id: "ki-dienst", label: t("KI-Dienst") },
+  { id: "ki-modelle", label: t("Lokale Modelle") },
+  { id: "ki-stimmen", label: t("Stimmen") },
+  { id: "ki-training", label: t("Training") },
 ] as const;
 
 /**
@@ -58,12 +59,12 @@ function KiBereich() {
     <div className="space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-[22px] font-semibold leading-8 tracking-tight">KI &amp; Modelle</h1>
+          <h1 className="text-[22px] font-semibold leading-8 tracking-tight">{t("KI & Modelle")}</h1>
           <p className="mt-0.5 max-w-2xl text-[13px] leading-5 text-muted-foreground">
-            Woher Antworten, Tagessatz und Vorschläge kommen: ein KI-Server, Modelle auf diesem Rechner und Stimmen zum Vorlesen.
+            {t("Woher Antworten, Tagessatz und Vorschläge kommen: ein KI-Server, Modelle auf diesem Rechner und Stimmen zum Vorlesen.")}
           </p>
         </div>
-        <nav aria-label="Abschnitte" className="flex flex-wrap gap-1">
+        <nav aria-label={t("Abschnitte")} className="flex flex-wrap gap-1">
           {ABSCHNITTE.map((abschnitt) => (
             <Button key={abschnitt.id} type="button" size="sm" variant="ghost" onClick={() => springen(abschnitt.id)}>
               {abschnitt.label}
@@ -77,7 +78,7 @@ function KiBereich() {
           <span>{ki.error}</span>
           <Button type="button" size="sm" variant="outline" onClick={ki.retry}>
             <RefreshCw aria-hidden="true" />
-            Erneut versuchen
+            {t("Erneut versuchen")}
           </Button>
         </div>
       ) : null}
@@ -93,10 +94,10 @@ function KiBereich() {
           <Skeleton className="h-48 w-full rounded-md" />
         ) : (
           <IntegrationsCard
-            title="KI-Dienst"
-            description="Ein Server wie Ollama oder LM Studio auf deinem Rechner, oder ein Online-Dienst mit OpenAI-kompatibler Schnittstelle."
-            emptyTitle="Kein KI-Dienst verbunden"
-            emptyDescription="Ohne Dienst antwortet der Lernraum aus deinen Daten und Dokumenten. Unter „Hinzufügen“ stehen Vorschläge für bekannte lokale Server."
+            title={t("KI-Dienst")}
+            description={t("Ein Server wie Ollama oder LM Studio auf deinem Rechner, oder ein Online-Dienst mit OpenAI-kompatibler Schnittstelle.")}
+            emptyTitle={t("Kein KI-Dienst verbunden")}
+            emptyDescription={t("Ohne Dienst antwortet der Lernraum aus deinen Daten und Dokumenten. Unter „Hinzufügen“ stehen Vorschläge für bekannte lokale Server.")}
             integrations={verbindungen}
             catalog={katalog}
             runtime={ki.runtime}
@@ -123,8 +124,8 @@ function KiBereich() {
         */}
         <Card>
           <CardHeader className="space-y-1">
-            <CardTitle>So entsteht eine Antwort</CardTitle>
-            <CardDescription>Der erste Weg, der antwortet, gewinnt. Jede Antwort zeigt an, woher sie kommt.</CardDescription>
+            <CardTitle>{t("So entsteht eine Antwort")}</CardTitle>
+            <CardDescription>{t("Der erste Weg, der antwortet, gewinnt. Jede Antwort zeigt an, woher sie kommt.")}</CardDescription>
           </CardHeader>
           <CardContent>
             {ki.runtime ? (
@@ -137,7 +138,7 @@ function KiBereich() {
               <Skeleton className="h-16 w-full" />
             ) : (
               <p className="text-xs leading-5 text-muted-foreground">
-                Lokaler Server, dann Online-Dienst, sonst eine Antwort aus deinen Daten. Die genaue Reihenfolge konnte nicht geladen werden.
+                {t("Lokaler Server, dann Online-Dienst, sonst eine Antwort aus deinen Daten. Die genaue Reihenfolge konnte nicht geladen werden.")}
               </p>
             )}
           </CardContent>

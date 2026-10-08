@@ -45,6 +45,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import Settings
+from app.core.language import DEFAULT_LANGUAGE, Language, reply_instruction
 from app.core.time import as_utc, day_window, resolve_timezone_name, utc_now, zone_or_utc
 from app.db.assistant import MEMORY_MAX_CHARS, MEMORY_SOURCE_ASSISTANT, AssistantMemory
 from app.db.entities import (
@@ -964,7 +965,15 @@ def _clean_history(messages: Sequence[ChatTurn]) -> list[ChatTurn]:
     return cleaned[-MAX_HISTORY_TURNS:]
 
 
-def _fallback_reply(hits: Sequence[DocumentSource], context: Sequence[str]) -> str:
+def _fallback_reply(hits: Sequence[DocumentSource], context: Sequence[str], language: Language = DEFAULT_LANGUAGE) -> str:
+    if language == "en":
+        # Die Kontextzeilen sind deutsche Prompt-Bausteine; auf Englisch bleibt
+        # es bei den Dokumenten, statt deutsche Zeilen in einen englischen Satz zu mischen.
+        english = ["No AI model is answering right now, so here is only what is in your data."]
+        if hits:
+            english.append("Matching passages are in: " + ", ".join(sorted({hit.filename for hit in hits})) + ".")
+        english.append("You can set up a model under “AI & models”.")
+        return " ".join(english)
     teile = ["Gerade antwortet kein KI-Modell, deshalb nur, was in deinen Daten steht."]
     if hits:
         teile.append("Passende Stellen findest du in: " + ", ".join(sorted({hit.filename for hit in hits})) + ".")
@@ -988,6 +997,7 @@ def chat(
     voice: bool = False,
     record_training: bool = False,
     now: datetime | None = None,
+    language: Language = DEFAULT_LANGUAGE,
 ) -> AssistantReply:
     """Eine Antwort des Assistenten auf den bisherigen Verlauf.
 
@@ -1029,7 +1039,12 @@ def chat(
         )
     grade_context = list(grade_context) if grades_allowed else []
     entry_wanted = wants_entry(question)
-    system_prompt = SYSTEM_PROMPT + (ACTION_PROMPT if entry_wanted else "") + (VOICE_PROMPT if voice else "")
+    system_prompt = (
+        SYSTEM_PROMPT
+        + (ACTION_PROMPT if entry_wanted else "")
+        + (VOICE_PROMPT if voice else "")
+        + reply_instruction(language)
+    )
     labels = {document.id: material_label(document) for document in documents}
     profile = learner.profile_lines(db, user.id, zone, moment)
     user_prompt = build_user_prompt(history, context, memories, hits, grade_context, labels, profile)
@@ -1048,7 +1063,7 @@ def chat(
     )
     if outcome is None:
         return AssistantReply(
-            reply=_fallback_reply(hits, context),
+            reply=_fallback_reply(hits, context, language),
             source=ai_routing.SOURCE_FALLBACK,
             sources=hits,
             grades_shared=bool(grade_context),

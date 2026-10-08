@@ -230,6 +230,8 @@ class GreetingCache(Base):
     sentence: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="ai", server_default="ai")
     model: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    #: ``de`` oder ``en`` - passt sie nicht zur Anfrage, wird der Satz neu geschrieben.
+    language: Mapped[str] = mapped_column(String(8), nullable=False, default="de", server_default="de")
     generated_on: Mapped[date] = mapped_column(Date, nullable=False)
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now, server_default=text("CURRENT_TIMESTAMP")

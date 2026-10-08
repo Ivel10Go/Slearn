@@ -20,6 +20,7 @@
 const path = require("node:path");
 const { app, dialog } = require("electron");
 const runtime = require("./runtime.js");
+const { text } = require("./texts.js");
 
 const FIRST_CHECK_MS = 30_000;
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -44,22 +45,22 @@ function status() {
 /** @param {string} message */
 function friendly(message) {
   if (/code signature|not signed|signature/i.test(message)) {
-    return "Updates lassen sich nur in einer signierten App installieren. Lade die neue Version von der Downloadseite.";
+    return text("updatesUnsigned");
   }
   if (/net::|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|getaddrinfo/i.test(message)) {
-    return "Keine Verbindung zum Update-Server.";
+    return text("updatesOffline");
   }
-  return "Die Suche nach Updates ist fehlgeschlagen.";
+  return text("updatesFailed");
 }
 
 async function askToRestart() {
   const window = windowRef();
   const options = {
     type: /** @type {const} */ ("info"),
-    title: "Update bereit",
-    message: `Lernraum ${current.version ?? ""} ist bereit.`.replace("  ", " "),
-    detail: "Deine Daten bleiben erhalten. Jetzt neu starten oder das Update beim nächsten Beenden installieren?",
-    buttons: ["Jetzt neu starten", "Später"],
+    title: text("updateReadyTitle"),
+    message: text("updateReady", { version: current.version ?? "" }).replace("  ", " "),
+    detail: text("updateReadyDetail"),
+    buttons: [text("restartNow"), text("later")],
     defaultId: 0,
     cancelId: 1,
   };
@@ -87,8 +88,8 @@ async function check({ manual = false } = {}) {
     if (manual) {
       await dialog.showMessageBox({
         type: "info",
-        title: "Updates",
-        message: "Updates gibt es nur in der installierten App.",
+        title: text("updatesTitle"),
+        message: text("updatesInstalledOnly"),
       });
     }
     return status();
@@ -104,8 +105,8 @@ async function check({ manual = false } = {}) {
     if (manual && current.state === "current") {
       await dialog.showMessageBox({
         type: "info",
-        title: "Updates",
-        message: `Lernraum ${app.getVersion()} ist aktuell.`,
+        title: text("updatesTitle"),
+        message: text("upToDateVersion", { version: app.getVersion() }),
       });
     }
     if (result === null && manual) {
@@ -115,7 +116,7 @@ async function check({ manual = false } = {}) {
     const message = error instanceof Error ? error.message : String(error);
     current = { state: "error", message: friendly(message) };
     if (manual) {
-      await dialog.showMessageBox({ type: "warning", title: "Updates", message: current.message ?? "" });
+      await dialog.showMessageBox({ type: "warning", title: text("updatesTitle"), message: current.message ?? "" });
     }
   }
   return status();

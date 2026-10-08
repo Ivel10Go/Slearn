@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "./api";
+import { t } from "./i18n";
 
 type CollectionStatus = "loading" | "ready" | "error";
 
@@ -40,12 +41,12 @@ export interface CollectionApi<T, TWrite, TChanges> extends Collection<T> {
   mutate: (key: string, action: () => Promise<T>) => Promise<T | null>;
 }
 
-export function errorMessage(error: unknown, fallback = "Die Aktion ist fehlgeschlagen. Bitte versuche es erneut.") {
+export function errorMessage(error: unknown, fallback = t("Die Aktion ist fehlgeschlagen. Bitte versuche es erneut.")) {
   if (error instanceof ApiError) {
     // 401 bedeutet in diesem Stack fast immer: die Session ist weg. Die
     // konkrete Backend-Meldung ("Not authenticated") hilft der Lernenden dann
     // weniger als der Hinweis, sich neu anzumelden.
-    return error.status === 401 ? "Die Anmeldung ist abgelaufen. Bitte melde dich erneut an." : error.message;
+    return error.status === 401 ? t("Die Anmeldung ist abgelaufen. Bitte melde dich erneut an.") : error.message;
   }
   if (error instanceof Error && error.message) {
     return error.message;
@@ -146,7 +147,7 @@ export function useCollection<T extends { id: number }, TWrite, TChanges>(
       }
       setState((current) => ({
         ...current,
-        error: errorMessage(loadError, "Die Liste konnte nicht geladen werden."),
+        error: errorMessage(loadError, t("Die Liste konnte nicht geladen werden.")),
         status: "error",
       }));
     }
@@ -199,7 +200,7 @@ export function useCollection<T extends { id: number }, TWrite, TChanges>(
     async (input: TWrite) => {
       const aktionen = actionsRef.current;
       if (!aktionen) {
-        setState((current) => ({ ...current, actionError: errorMessage(null, "Dieser Bereich lässt sich hier nicht anlegen.") }));
+        setState((current) => ({ ...current, actionError: errorMessage(null, t("Dieser Bereich lässt sich hier nicht anlegen.")) }));
         return null;
       }
       return run(
@@ -220,7 +221,7 @@ export function useCollection<T extends { id: number }, TWrite, TChanges>(
     async (id: number, changes: TChanges) => {
       const aktionen = actionsRef.current;
       if (!aktionen) {
-        setState((current) => ({ ...current, actionError: errorMessage(null, "Dieser Bereich lässt sich hier nicht ändern.") }));
+        setState((current) => ({ ...current, actionError: errorMessage(null, t("Dieser Bereich lässt sich hier nicht ändern.")) }));
         return null;
       }
       return run(`update:${id}`, () => aktionen.update(id, changes), (updated) => {
@@ -234,7 +235,7 @@ export function useCollection<T extends { id: number }, TWrite, TChanges>(
     async (id: number) => {
       const aktionen = actionsRef.current;
       if (!aktionen) {
-        setState((current) => ({ ...current, actionError: errorMessage(null, "Dieser Bereich lässt sich hier nicht löschen.") }));
+        setState((current) => ({ ...current, actionError: errorMessage(null, t("Dieser Bereich lässt sich hier nicht löschen.")) }));
         return false;
       }
       const result = await run(
@@ -307,7 +308,7 @@ export function useList<T>(list: () => Promise<T[]>, options: { refreshKey?: num
       if (currentRequest !== requestId.current) {
         return;
       }
-      setState({ items: [], status: "error", error: errorMessage(loadError, "Die Liste konnte nicht geladen werden.") });
+      setState({ items: [], status: "error", error: errorMessage(loadError, t("Die Liste konnte nicht geladen werden.")) });
     }
   }, []);
 

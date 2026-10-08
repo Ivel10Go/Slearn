@@ -6,6 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings, require_secret
+from app.core.language import Language, parse_accept_language
 from app.core.security import decode_session_token
 from app.db.entities import User
 from app.db.session import get_db
@@ -63,6 +64,14 @@ def get_current_user(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 DatabaseSession = Annotated[Session, Depends(get_db)]
 AppSettings = Annotated[Settings, Depends(get_app_settings)]
+
+
+def get_request_language(request: Request) -> Language:
+    """Die Sprache der Oberflaeche, aus ``Accept-Language`` (siehe ``app.core.language``)."""
+    return parse_accept_language(request.headers.get("accept-language"))
+
+
+RequestLanguage = Annotated[Language, Depends(get_request_language)]
 
 
 def get_model_downloads(request: Request) -> ModelDownloadManager:

@@ -26,6 +26,7 @@ import { useCollection } from "@/lib/use-collection";
 import { useSubjectOptions } from "@/lib/use-subject-options";
 import { cn } from "@/lib/utils";
 import type { Homework } from "@/lib/types";
+import { t } from "@/lib/i18n";
 
 /** Wie `lib/dashboard-view` den Sprungmarken-Freiraum haelt. */
 const anchorClass = "scroll-mt-24";
@@ -113,17 +114,17 @@ export function HomeworkSection({ reference }: { reference: Date }) {
   async function absenden(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!formular.titel.trim()) {
-      setFormularFehler("Gib der Aufgabe einen Titel.");
+      setFormularFehler(t("Gib der Aufgabe einen Titel."));
       return;
     }
     if (!formular.faellig) {
-      setFormularFehler("Wann ist die Aufgabe fällig?");
+      setFormularFehler(t("Wann ist die Aufgabe fällig?"));
       return;
     }
     if (!toUtcIso(formular.faellig)) {
       // Erreicht, wenn der Browser den Wert nicht lesen kann. Ohne diese
       // Pruefung ginge ein unbrauchbares Datum als Text an das Backend.
-      setFormularFehler("Dieses Datum lässt sich nicht lesen. Bitte erneut wählen.");
+      setFormularFehler(t("Dieses Datum lässt sich nicht lesen. Bitte erneut wählen."));
       return;
     }
 
@@ -153,13 +154,13 @@ export function HomeworkSection({ reference }: { reference: Date }) {
   return (
     <Card id="homework" className={cn(anchorClass, "@container")}>
       <SectionHeader
-        title="Hausaufgaben"
-        count={`${uebersicht.offen.length} offen`}
+        title={t("Hausaufgaben")}
+        count={t("{n} offen", { n: uebersicht.offen.length })}
         loading={sammlung.status === "loading"}
         onReload={() => void sammlung.reload()}
         formOpen={formularOffen && bearbeitet === null}
         onToggleForm={() => (formularOffen && bearbeitet === null ? schliessen() : oeffnen())}
-        newLabel="Neue Hausaufgabe"
+        newLabel={t("Neue Hausaufgabe")}
       />
 
       <CardContent className="space-y-3 pb-0">
@@ -168,26 +169,26 @@ export function HomeworkSection({ reference }: { reference: Date }) {
         {formularOffen ? (
           <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-border bg-muted/40 p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-semibold">{bearbeitet === null ? "Neue Hausaufgabe" : "Hausaufgabe bearbeiten"}</p>
-              <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
+              <p className="text-sm font-semibold">{bearbeitet === null ? t("Neue Hausaufgabe") : t("Hausaufgabe bearbeiten")}</p>
+              <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label={t("Formular schließen")}>
                 <X aria-hidden="true" />
               </Button>
             </div>
 
-            <Field id="hausaufgabe-titel" label="Titel" required>
+            <Field id="hausaufgabe-titel" label={t("Titel")} required>
               {(props) => (
                 <Input
                   {...props}
                   value={formular.titel}
                   onChange={(event) => setFormular((current) => ({ ...current, titel: event.target.value }))}
                   disabled={istSpeichern}
-                  placeholder="Zum Beispiel: Textanalyse lesen"
+                  placeholder={t("Zum Beispiel: Textanalyse lesen")}
                 />
               )}
             </Field>
 
             <div className="grid gap-4 @md:grid-cols-2">
-              <Field id="hausaufgabe-faellig" label="Fällig am" required>
+              <Field id="hausaufgabe-faellig" label={t("Fällig am")} required>
                 {(props) => (
                   <Input
                     {...props}
@@ -199,7 +200,7 @@ export function HomeworkSection({ reference }: { reference: Date }) {
                 )}
               </Field>
 
-              <Field id="hausaufgabe-fach" label="Fach" hint={fach.status === "loading" ? "Fächer werden geladen …" : undefined}>
+              <Field id="hausaufgabe-fach" label={t("Fach")} hint={fach.status === "loading" ? t("Fächer werden geladen …") : undefined}>
                 {(props) => (
                   <Select
                     {...props}
@@ -207,7 +208,7 @@ export function HomeworkSection({ reference }: { reference: Date }) {
                     onChange={(event) => setFormular((current) => ({ ...current, fach: event.target.value }))}
                     disabled={istSpeichern}
                   >
-                    <option value="">Ohne Fach</option>
+                    <option value="">{t("Ohne Fach")}</option>
                     {fach.options.map((option) => (
                       <option key={option.id} value={option.id}>
                         {option.name}
@@ -218,14 +219,14 @@ export function HomeworkSection({ reference }: { reference: Date }) {
               </Field>
             </div>
 
-            <Field id="hausaufgabe-beschreibung" label="Notiz" hint="Was genau ist zu tun?">
+            <Field id="hausaufgabe-beschreibung" label={t("Notiz")} hint={t("Was genau ist zu tun?")}>
               {(props) => (
                 <Textarea
                   {...props}
                   value={formular.beschreibung}
                   onChange={(event) => setFormular((current) => ({ ...current, beschreibung: event.target.value }))}
                   disabled={istSpeichern}
-                  placeholder="Kapitel 3, Fragen 1 bis 4 beantworten"
+                  placeholder={t("Kapitel 3, Fragen 1 bis 4 beantworten")}
                 />
               )}
             </Field>
@@ -235,23 +236,23 @@ export function HomeworkSection({ reference }: { reference: Date }) {
             <div className="flex flex-wrap items-center gap-2">
               <Button type="submit" disabled={istSpeichern}>
                 {istSpeichern ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
-                {istSpeichern ? "Wird gespeichert …" : bearbeitet === null ? "Hausaufgabe anlegen" : "Änderungen speichern"}
+                {istSpeichern ? t("Wird gespeichert …") : bearbeitet === null ? t("Hausaufgabe anlegen") : t("Änderungen speichern")}
               </Button>
               <Button type="button" variant="ghost" onClick={schliessen} disabled={istSpeichern}>
-                Abbrechen
+                {t("Abbrechen")}
               </Button>
             </div>
           </form>
         ) : null}
 
         {sammlung.status === "loading" && sammlung.items.length === 0 ? (
-          <div className="space-y-2 pb-4" aria-busy="true" aria-label="Hausaufgaben werden geladen">
+          <div className="space-y-2 pb-4" aria-busy="true" aria-label={t("Hausaufgaben werden geladen")}>
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
           </div>
         ) : uebersicht.offen.length === 0 && uebersicht.erledigt.length === 0 ? (
           <div className="pb-4">
-            <EmptyState icon={CheckCircle2} title="Noch keine Hausaufgaben" description="Neue Aufgaben landen direkt in dieser Liste." />
+            <EmptyState icon={CheckCircle2} title={t("Noch keine Hausaufgaben")} description={t("Neue Aufgaben landen direkt in dieser Liste.")} />
           </div>
         ) : (
           <div className="-mx-4 border-t border-border">
@@ -275,7 +276,7 @@ export function HomeworkSection({ reference }: { reference: Date }) {
             {uebersicht.erledigt.length > 0 ? (
               <details className="group border-t border-border first:border-t-0">
                 <summary className="cursor-pointer list-none px-4 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground">
-                  {uebersicht.erledigt.length} erledigt
+                  {uebersicht.erledigt.length} {t("erledigt")}
                 </summary>
                 <ul className="divide-y divide-border border-t border-border">
                   {uebersicht.erledigt.map((aufgabe) => (
@@ -321,15 +322,16 @@ function AufgabenZeile({
   // `formatDueDate` sagt "Heute fällig", "Morgen fällig", "Überfällig" -
   // oder liefert nur das Datum. Das Datum bekommt das Wort davor, damit die
   // Zeile nicht zweimal dasselbe Datum zeigt (relativ und absolut).
-  const faelligText = /fällig/i.test(faellig) ? faellig : `Fällig ${faellig}`;
-  const ueberfaellig = faellig === "Überfällig" && !aufgabe.completed;
+  const relativ = [t("Überfällig"), t("Heute fällig"), t("Morgen fällig")].includes(faellig);
+  const faelligText = relativ ? faellig : t("Fällig {datum}", { datum: faellig });
+  const ueberfaellig = faellig === t("Überfällig") && !aufgabe.completed;
   return (
     <li className="flex items-start gap-3 px-4 py-2.5">
       <button
         type="button"
         role="checkbox"
         aria-checked={aufgabe.completed}
-        aria-label={`${aufgabe.title} als ${aufgabe.completed ? "offen" : "erledigt"} markieren`}
+        aria-label={aufgabe.completed ? t("{titel} als offen markieren", { titel: aufgabe.title }) : t("{titel} als erledigt markieren", { titel: aufgabe.title })}
         onClick={onToggle}
         disabled={busy}
         className={cn(
@@ -356,7 +358,7 @@ function AufgabenZeile({
           {aufgabe.source !== "manual" ? (
             <>
               <span aria-hidden="true">·</span>
-              <span>Schulportal</span>
+              <span>{t("Schulportal")}</span>
             </>
           ) : null}
         </p>

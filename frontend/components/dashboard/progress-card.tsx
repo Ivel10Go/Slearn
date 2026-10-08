@@ -25,6 +25,7 @@ import {
 import { useProgress } from "@/lib/use-progress";
 import type { ConfidenceStep, TopicProgress } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { intlLocale, t, tn, translateServerText } from "@/lib/i18n";
 
 /**
  * Die Fortschrittskarte des Dashboards.
@@ -76,7 +77,7 @@ function WochenzielFormular({ ziel, laeuft, onSpeichern }: { ziel: number; laeuf
     // Doppelung: ohne die Meldung vor dem Absenden faellt der Unterschied
     // zwischen "leer" und "unmoeglich" beim Nutzer weg.
     if (!Number.isInteger(minuten) || minuten < 15 || minuten > 20160) {
-      setFehler("Das Wochenziel muss zwischen 15 und 20160 Minuten liegen.");
+      setFehler(t("Das Wochenziel muss zwischen 15 und 20160 Minuten liegen."));
       return;
     }
     setFehler(null);
@@ -89,7 +90,7 @@ function WochenzielFormular({ ziel, laeuft, onSpeichern }: { ziel: number; laeuf
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" variant="ghost" onClick={() => setOffen(true)}>
           <Target className="h-4 w-4" aria-hidden="true" />
-          Wochenziel anpassen
+          {t("Wochenziel anpassen")}
         </Button>
       </div>
     );
@@ -98,7 +99,7 @@ function WochenzielFormular({ ziel, laeuft, onSpeichern }: { ziel: number; laeuf
   return (
     <form onSubmit={absenden} noValidate className="space-y-2 border border-border p-3">
       <label htmlFor="fortschritt-wochenziel" className="block text-xs font-semibold">
-        Wochenziel in Minuten
+        {t("Wochenziel in Minuten")}
       </label>
       <div className="flex flex-wrap items-end gap-2">
         <Input
@@ -113,14 +114,14 @@ function WochenzielFormular({ ziel, laeuft, onSpeichern }: { ziel: number; laeuf
           className="w-40"
         />
         <Button type="submit" size="sm" disabled={laeuft}>
-          Speichern
+          {t("Speichern")}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={() => setOffen(false)} disabled={laeuft}>
-          Abbrechen
+          {t("Abbrechen")}
         </Button>
       </div>
       <p className="text-xs leading-5 text-muted-foreground">
-        Gilt von Montag bis Sonntag für die ganze Woche, nicht anteilig für die Tage, die schon vorbei sind.
+        {t("Gilt von Montag bis Sonntag für die ganze Woche, nicht anteilig für die Tage, die schon vorbei sind.")}
       </p>
       <FormError message={fehler} />
     </form>
@@ -147,11 +148,11 @@ function ThemenZeile({
         </p>
       </div>
       {thema.studied_minutes > 0 ? (
-        <span className="shrink-0 text-xs font-semibold text-muted-foreground">{lernzeit(thema.studied_minutes)} gelernt</span>
+        <span className="shrink-0 text-xs font-semibold text-muted-foreground">{lernzeit(thema.studied_minutes)} {t("gelernt")}</span>
       ) : null}
-      <Badge variant={thema.is_due ? "default" : "outline"}>{thema.is_due ? "Fällig" : thema.confidence_label}</Badge>
+      <Badge variant={thema.is_due ? "default" : "outline"}>{thema.is_due ? t("Fällig") : translateServerText(thema.confidence_label)}</Badge>
       <label className="sr-only" htmlFor={`fortschritt-thema-${thema.topic_id}`}>
-        Wie sicher fühlst du dich bei {thema.name}?
+        {t("Wie sicher fühlst du dich bei")}{" "}{thema.name}?
       </label>
       <Select
         id={`fortschritt-thema-${thema.topic_id}`}
@@ -165,7 +166,7 @@ function ThemenZeile({
       >
         {stufen.map((stufe) => (
           <option key={stufe.value} value={stufe.value}>
-            {stufe.label} · {stufe.interval_days} {stufe.interval_days === 1 ? "Tag" : "Tage"}
+            {translateServerText(stufe.label)} · {tn(stufe.interval_days, "{n} Tag", "{n} Tage")}
           </option>
         ))}
       </Select>
@@ -182,9 +183,9 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
     return (
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle>Lernfortschritt</CardTitle>
+          <CardTitle>{t("Lernfortschritt")}</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3" aria-busy="true" aria-label="Lernfortschritt wird geladen">
+        <CardContent className="space-y-3" aria-busy="true" aria-label={t("Lernfortschritt wird geladen")}>
           <Skeleton className="h-20 w-full" />
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-32 w-full" />
@@ -197,12 +198,12 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
     return (
       <Card role="alert">
         <CardHeader className="pb-4">
-          <CardTitle>Lernfortschritt</CardTitle>
+          <CardTitle>{t("Lernfortschritt")}</CardTitle>
         </CardHeader>
         <CardContent>
           <Button type="button" size="sm" variant="outline" onClick={() => void reload()}>
             <RefreshCw aria-hidden="true" />
-            Erneut versuchen
+            {t("Erneut versuchen")}
           </Button>
         </CardContent>
       </Card>
@@ -216,14 +217,14 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
     <Card>
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
-          <CardTitle>Lernfortschritt</CardTitle>
+          <CardTitle>{t("Lernfortschritt")}</CardTitle>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={insights.streak.current_days > 0 ? "default" : "secondary"}>
             {insights.streak.current_days > 0 ? <Flame className="h-3.5 w-3.5" aria-hidden="true" /> : null}
             {streakLabel(insights.streak)}
           </Badge>
-          <Button type="button" size="icon" variant="ghost" onClick={() => void reload()} aria-label="Lernfortschritt neu laden" disabled={status === "loading"}>
+          <Button type="button" size="icon" variant="ghost" onClick={() => void reload()} aria-label={t("Lernfortschritt neu laden")} disabled={status === "loading"}>
             <RefreshCw className={cn(status === "loading" && "animate-spin")} aria-hidden="true" />
           </Button>
         </div>
@@ -239,20 +240,20 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
 
         <div className="grid gap-4 sm:grid-cols-3">
           <Kennzahl
-            titel="Heute"
+            titel={t("Heute")}
             wert={lernzeit(insights.today.minutes)}
-            zusatz={insights.today.sessions === 1 ? "1 Lernsession" : `${insights.today.sessions} Lernsessions`}
+            zusatz={tn(insights.today.sessions, "{n} Lernsession", "{n} Lernsessions")}
           />
           <Kennzahl
-            titel="Diese Woche"
+            titel={t("Diese Woche")}
             wert={wochenzielLabel(woche)}
-            zusatz={woche.goal_reached ? "Ziel erreicht" : `noch ${woche.days_remaining} ${woche.days_remaining === 1 ? "Tag" : "Tage"}`}
+            zusatz={woche.goal_reached ? t("Ziel erreicht") : tn(woche.days_remaining, "noch {n} Tag", "noch {n} Tage")}
             balken={woche.percent}
           />
           <Kennzahl
-            titel="Serie"
-            wert={`${insights.streak.current_days} ${insights.streak.current_days === 1 ? "Tag" : "Tage"}`}
-            zusatz={insights.streak.current_days > 0 ? `längste ${insights.streak.longest_days} Tage` : streakLabel(insights.streak)}
+            titel={t("Serie")}
+            wert={tn(insights.streak.current_days, "{n} Tag", "{n} Tage")}
+            zusatz={insights.streak.current_days > 0 ? t("längste {n} Tage", { n: insights.streak.longest_days }) : streakLabel(insights.streak)}
           />
         </div>
 
@@ -271,8 +272,8 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
         */}
         <div>
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-            <h3 className="text-xs font-medium text-muted-foreground">Lernzeit nach Wochentag</h3>
-            <p className="text-xs text-muted-foreground">Letzte {insights.weekday_window_days} Tage</p>
+            <h3 className="text-xs font-medium text-muted-foreground">{t("Lernzeit nach Wochentag")}</h3>
+            <p className="text-xs text-muted-foreground">{t("Letzte {n} Tage", { n: insights.weekday_window_days })}</p>
           </div>
           <div className="flex items-end gap-2">
             {weekdayBalken(insights.by_weekday).map((tag) => (
@@ -289,7 +290,7 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
                 <div
                   className="flex h-20 w-full items-end border border-border bg-muted/40"
                   role="progressbar"
-                  aria-label={`${tag.label}: ${lernzeit(tag.minutes)}`}
+                  aria-label={`${translateServerText(tag.label)}: ${lernzeit(tag.minutes)}`}
                   aria-valuemin={0}
                   aria-valuemax={Math.max(1, tag.maximum)}
                   aria-valuenow={tag.minutes}
@@ -297,7 +298,7 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
                   {/* Ein Tag mit Lernzeit behaelt eine sichtbare Mindesthoehe, sonst waere er leer. */}
                   <div className="w-full bg-primary" style={{ height: `${Math.max(tag.anteil, tag.minutes > 0 ? 6 : 0)}%` }} />
                 </div>
-                <span className="text-[11px] font-medium text-muted-foreground">{weekdayKurz(tag.label)}</span>
+                <span className="text-[11px] font-medium text-muted-foreground">{weekdayKurz(translateServerText(tag.label))}</span>
               </div>
             ))}
           </div>
@@ -311,9 +312,9 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
               nicht. Beides aneinander zu schreiben wuerde beides falsch.
             */}
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="text-xs font-medium text-muted-foreground">Lernzeit je Fach</h3>
+              <h3 className="text-xs font-medium text-muted-foreground">{t("Lernzeit je Fach")}</h3>
               <p className="text-xs text-muted-foreground">
-                {lernzeit(insights.total_minutes)} aus {insights.total_sessions} Lernsessions gesamt
+                {t("{zeit} aus {n} Lernsessions gesamt", { zeit: lernzeit(insights.total_minutes), n: insights.total_sessions })}
               </p>
             </div>
             <ul className="space-y-2.5">
@@ -322,7 +323,7 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
                   <div className="flex items-baseline justify-between gap-3">
                     <p className="truncate text-sm font-semibold">{fach.subject_name}</p>
                     <p className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">
-                      {lernzeit(fach.minutes)} · {fach.share_percent.toLocaleString("de-DE", { maximumFractionDigits: 1 })} %
+                      {lernzeit(fach.minutes)} · {fach.share_percent.toLocaleString(intlLocale(), { maximumFractionDigits: 1 })} %
                     </p>
                   </div>
                   <Balken anteil={fach.share_percent} label={`${fach.subject_name}: ${lernzeit(fach.minutes)}`} className="mt-1" />
@@ -334,18 +335,18 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
 
         <div>
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-            <h3 className="text-xs font-medium text-muted-foreground">Nächste Wiederholungen</h3>
+            <h3 className="text-xs font-medium text-muted-foreground">{t("Nächste Wiederholungen")}</h3>
             <p className="text-xs text-muted-foreground">
-              {faellig.length > 0 ? `${faellig.length} fällig` : "Nichts fällig"}
-              {unbewertet > 0 ? ` · ${unbewertet} noch nicht eingeschätzt` : ""}
+              {faellig.length > 0 ? t("{n} fällig", { n: faellig.length }) : t("Nichts fällig")}
+              {unbewertet > 0 ? ` · ${t("{n} noch nicht eingeschätzt", { n: unbewertet })}` : ""}
             </p>
           </div>
 
           {topics.length === 0 ? (
             <EmptyState
               icon={Target}
-              title="Noch keine Themen"
-              description="Sobald ein Fach Themen hat, steht hier, was als Nächstes wiederholt wird. Das Datum ergibt sich aus deiner Einschätzung."
+              title={t("Noch keine Themen")}
+              description={t("Sobald ein Fach Themen hat, steht hier, was als Nächstes wiederholt wird. Das Datum ergibt sich aus deiner Einschätzung.")}
             />
           ) : (
             <ul className="max-h-96 space-y-2 overflow-y-auto pr-1">
@@ -368,7 +369,7 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
             derselben Tabelle, nach der das Backend rechnet.
           */}
           <p className="mt-3 text-xs leading-5 text-muted-foreground">
-            {intervallRegel(insights.confidence_steps)} Die Einschätzung zählt zugleich als Wiederholung — deshalb steht das Datum auf heute.
+            {intervallRegel(insights.confidence_steps)} {t("Die Einschätzung zählt zugleich als Wiederholung — deshalb steht das Datum auf heute.")}
           </p>
         </div>
 

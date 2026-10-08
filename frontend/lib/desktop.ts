@@ -1,3 +1,4 @@
+import { t, type Locale } from "./i18n";
 /**
  * Die Bruecke zur Desktop-App (Electron).
  *
@@ -12,6 +13,8 @@ export interface DesktopBridge {
   version: string;
   /** Faerbt Fensterrahmen und Titelleiste passend zum gewaehlten Design. */
   setTheme: (theme: DesktopTheme) => void;
+  /** Ab Version 1.2: Menue und Infobereich folgen der Sprache der Oberflaeche. */
+  setLanguage?: (language: Locale) => void;
   /** Oeffnet den Ordner mit Datenbank, Dokumenten und Modellen im Dateimanager. */
   openDataFolder: () => Promise<void>;
   /** Pfad des Datenordners, nur zur Anzeige. */
@@ -48,17 +51,17 @@ export function describeUpdateStatus(status: DesktopUpdateStatus | null): string
   }
   switch (status.state) {
     case "checking":
-      return "Suche nach Updates …";
+      return t("Suche nach Updates …");
     case "available":
-      return `Version ${status.version ?? ""} wird geladen …`.replace("  ", " ");
+      return t("Version {n} wird geladen …", { n: status.version ?? "" }).replace("  ", " ");
     case "downloaded":
-      return `Version ${status.version ?? ""} ist bereit und wird beim nächsten Neustart installiert.`.replace("  ", " ");
+      return t("Version {n} ist bereit und wird beim nächsten Neustart installiert.", { n: status.version ?? "" }).replace("  ", " ");
     case "current":
-      return "Lernraum ist aktuell.";
+      return t("Lernraum ist aktuell.");
     case "error":
-      return status.message ?? "Die Suche nach Updates ist fehlgeschlagen.";
+      return status.message ?? t("Die Suche nach Updates ist fehlgeschlagen.");
     default:
-      return "Updates werden automatisch gesucht.";
+      return t("Updates werden automatisch gesucht.");
   }
 }
 

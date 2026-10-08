@@ -33,6 +33,7 @@ import type {
   VapidKey,
 } from "./types";
 import { errorMessage } from "./use-collection";
+import { t } from "./i18n";
 
 type Status = "loading" | "ready" | "error";
 
@@ -132,7 +133,7 @@ export function useNotifications(): NotificationApi & NotificationState {
       }
       setState((current) => ({
         ...current,
-        error: errorMessage(loadError, "Die Benachrichtigungseinstellungen konnten nicht geladen werden."),
+        error: errorMessage(loadError, t("Die Benachrichtigungseinstellungen konnten nicht geladen werden.")),
         status: "error",
       }));
     }
@@ -273,7 +274,7 @@ export function useNotifications(): NotificationApi & NotificationState {
     } catch (actionError) {
       setState((current) => ({
         ...current,
-        actionError: errorMessage(actionError, "Die Einstellungen konnten nicht gespeichert werden."),
+        actionError: errorMessage(actionError, t("Die Einstellungen konnten nicht gespeichert werden.")),
       }));
       return false;
     } finally {
@@ -298,13 +299,13 @@ export function useNotifications(): NotificationApi & NotificationState {
     setState((current) => ({ ...current, pending: "push", actionError: null }));
     try {
       if (!("serviceWorker" in navigator) || typeof window.PushManager !== "function") {
-        throw new Error("Dieser Browser kann keine Push-Abos anlegen.");
+        throw new Error(t("Dieser Browser kann keine Push-Abos anlegen."));
       }
       const vapid = await getVapidKey();
       if (!vapid.configured || !vapid.public_key) {
         // Kein Schluesselpaar auf dem Server: das ist kein Fehler, sondern die
         // Konfiguration, in der der lokale Weg arbeitet.
-        throw new Error("Auf diesem Server ist Web-Push nicht eingerichtet.");
+        throw new Error(t("Auf diesem Server ist Web-Push nicht eingerichtet."));
       }
       const registration = await navigator.serviceWorker.ready;
       registration.active?.postMessage({ type: NACHRICHT_PUSH_KEY, publicKey: vapid.public_key });
@@ -317,7 +318,7 @@ export function useNotifications(): NotificationApi & NotificationState {
         }));
       const json = erstellt.toJSON();
       if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) {
-        throw new Error("Der Browser hat kein vollständiges Abonnement geliefert.");
+        throw new Error(t("Der Browser hat kein vollständiges Abonnement geliefert."));
       }
       const gespeichert = await createPushSubscription({
         endpoint: json.endpoint,
@@ -329,7 +330,7 @@ export function useNotifications(): NotificationApi & NotificationState {
     } catch (actionError) {
       setState((current) => ({
         ...current,
-        actionError: errorMessage(actionError, "Das Endgerät konnte nicht angemeldet werden."),
+        actionError: errorMessage(actionError, t("Das Endgerät konnte nicht angemeldet werden.")),
       }));
       return false;
     } finally {
@@ -357,7 +358,7 @@ export function useNotifications(): NotificationApi & NotificationState {
     } catch (actionError) {
       setState((current) => ({
         ...current,
-        actionError: errorMessage(actionError, "Das Endgerät konnte nicht abgemeldet werden."),
+        actionError: errorMessage(actionError, t("Das Endgerät konnte nicht abgemeldet werden.")),
       }));
       return false;
     } finally {
@@ -378,7 +379,7 @@ export function useNotifications(): NotificationApi & NotificationState {
     } catch (actionError) {
       setState((current) => ({
         ...current,
-        actionError: errorMessage(actionError, "Die Erinnerungen konnten nicht geprüft werden."),
+        actionError: errorMessage(actionError, t("Die Erinnerungen konnten nicht geprüft werden.")),
       }));
       return null;
     } finally {

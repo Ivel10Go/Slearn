@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { normalizeSource, type AnswerSource } from "./ai-runtime";
 import { apiRequest } from "./api";
+import { intlLocale, t } from "./i18n";
 
 /*
  * Der Lern-Assistent (`/assistent`): Chat, Vorschlaege und Gedaechtnis.
@@ -138,23 +139,23 @@ export async function deleteAssistantMemory(id: number): Promise<void> {
 }
 
 export const ACTION_LABELS: Record<ActionKind, string> = {
-  exam: "Prüfung",
-  homework: "Hausaufgabe",
-  event: "Termin",
+  exam: t("Prüfung"),
+  homework: t("Hausaufgabe"),
+  event: t("Termin"),
 };
 
 /** Wann der Vorschlag liegt, in deutscher Ortszeit - so, wie er eingetragen wird. */
 export function describeProposalTime(proposal: Pick<AssistantProposal, "kind" | "starts_at" | "ends_at" | "all_day">, timeZone?: string): string {
   const start = new Date(proposal.starts_at);
   if (Number.isNaN(start.getTime())) {
-    return "Datum unklar";
+    return t("Datum unklar");
   }
-  const tag = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", timeZone }).format(start);
+  const tag = new Intl.DateTimeFormat(intlLocale(), { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", timeZone }).format(start);
   if (proposal.all_day) {
-    return `${tag}, ganztägig`;
+    return t("{tag}, ganztägig", { tag });
   }
-  const uhr = (value: Date) => new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", timeZone }).format(value);
-  const prefix = proposal.kind === "homework" ? "fällig " : "";
+  const uhr = (value: Date) => new Intl.DateTimeFormat(intlLocale(), { hour: "2-digit", minute: "2-digit", timeZone }).format(value);
+  const prefix = proposal.kind === "homework" ? `${t("fällig")} ` : "";
   if (proposal.kind === "event" && proposal.ends_at) {
     const ende = new Date(proposal.ends_at);
     if (!Number.isNaN(ende.getTime())) {
@@ -175,10 +176,12 @@ export function bestaetigung(text: string): "ja" | "nein" | null {
   if (!satz || satz.split(" ").length > 6) {
     return null;
   }
-  if (/^(nein|nee|ne|nö|lieber nicht|doch nicht|nicht eintragen|abbrechen|verwerfen|stopp)\b/.test(satz)) {
+  // Deutsch und Englisch zugleich: die Antwort kommt in der Sprache, in der man spricht,
+  // nicht unbedingt in der der Oberflaeche.
+  if (/^(nein|nee|ne|nö|lieber nicht|doch nicht|nicht eintragen|abbrechen|verwerfen|stopp|no|nope|don't|do not|never mind|cancel|discard|stop)\b/.test(satz)) {
     return "nein";
   }
-  if (/^(ja|jo|jap|jawohl|ok|okay|passt|genau|gerne|gern|klar|richtig|stimmt|mach das|mach|bitte|trag (es|sie|das|ihn|alles) ein|eintragen|ja bitte)\b/.test(satz)) {
+  if (/^(ja|jo|jap|jawohl|ok|okay|passt|genau|gerne|gern|klar|richtig|stimmt|mach das|mach|bitte|trag (es|sie|das|ihn|alles) ein|eintragen|ja bitte|yes|yeah|yep|sure|go ahead|do it|add it|please do|sounds good)\b/.test(satz)) {
     return "ja";
   }
   return null;
@@ -272,9 +275,9 @@ export type TrainingLabel = z.infer<typeof trainingLabelSchema>;
 export type TrainingFeedbackEvent = "rejected" | "good" | "bad" | "cleared";
 
 export const TRAINING_LABELS: Record<TrainingLabel, string> = {
-  good: "Gut",
-  bad: "Daneben",
-  corrected: "Korrigiert",
+  good: t("Gut"),
+  bad: t("Daneben"),
+  corrected: t("Korrigiert"),
 };
 
 export async function getTrainingStatus(): Promise<TrainingStatus> {
@@ -362,14 +365,14 @@ export type TrainingRun = z.infer<typeof trainingRunSchema>;
 export type TrainingAdapters = z.infer<typeof adaptersSchema>;
 
 export const TRAINING_RUN_STATUS: Record<TrainingRun["status"], string> = {
-  pending: "Wartet auf den Start",
-  loading: "Lädt das Modell",
-  generating: "Übt mit deinem Material",
-  running: "Trainiert",
-  paused: "Pausiert",
-  converting: "Prüft und speichert",
-  done: "Fertig",
-  failed: "Abgebrochen",
+  pending: t("Wartet auf den Start"),
+  loading: t("Lädt das Modell"),
+  generating: t("Übt mit deinem Material"),
+  running: t("Trainiert"),
+  paused: t("Pausiert"),
+  converting: t("Prüft und speichert"),
+  done: t("Fertig"),
+  failed: t("Abgebrochen"),
 };
 
 export async function getTrainingRun(): Promise<TrainingRun | null> {
@@ -438,7 +441,7 @@ export function trainerBereit(setup: TrainerSetup | null): boolean {
 
 /** Gigabyte mit einer Nachkommastelle, deutsch. */
 export function gigabyte(bytes: number): string {
-  return `${(bytes / 1024 ** 3).toLocaleString("de-DE", { maximumFractionDigits: 1 })} GB`;
+  return `${(bytes / 1024 ** 3).toLocaleString(intlLocale(), { maximumFractionDigits: 1 })} GB`;
 }
 
 /** Anteil als ganze Prozent, `null` als Gedankenstrich. */

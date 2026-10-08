@@ -37,6 +37,7 @@ import { useGreeting } from "@/lib/use-greeting";
 import { isDemoTaskId, type DashboardData, type DashboardLesson, type DashboardStudyTask, type LessonState, type StudyActionResult, type StudyTaskStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ScheduleCard } from "./schedule-view";
+import { intlLocale, t } from "@/lib/i18n";
 
 interface DashboardViewProps {
   data: DashboardData | null;
@@ -47,15 +48,15 @@ interface DashboardViewProps {
 }
 
 const lessonStateLabels: Record<LessonState, string> = {
-  completed: "Erledigt",
-  current: "Läuft gerade",
-  upcoming: "Als Nächstes",
+  completed: t("Erledigt"),
+  current: t("Läuft gerade"),
+  upcoming: t("Als Nächstes"),
 };
 
 const taskStatusLabels: Record<StudyTaskStatus, string> = {
-  todo: "Offen",
-  in_progress: "In Arbeit",
-  completed: "Erledigt",
+  todo: t("Offen"),
+  in_progress: t("In Arbeit"),
+  completed: t("Erledigt"),
 };
 
 /**
@@ -66,7 +67,7 @@ const taskStatusLabels: Record<StudyTaskStatus, string> = {
  */
 const anchorClass = "scroll-mt-20";
 
-const weekdayFormatter = new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "numeric", month: "long" });
+const weekdayFormatter = new Intl.DateTimeFormat(intlLocale(), { weekday: "long", day: "numeric", month: "long" });
 
 function ProgressBar({ value, className, indicatorClassName, label }: { value: number; className?: string; indicatorClassName?: string; label?: string }) {
   const percentage = Math.min(100, Math.max(0, value));
@@ -86,7 +87,7 @@ function ProgressBar({ value, className, indicatorClassName, label }: { value: n
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-4" aria-busy="true" aria-label="Dashboard wird geladen">
+    <div className="space-y-4" aria-busy="true" aria-label={t("Dashboard wird geladen")}>
       <div className="space-y-2.5">
         <Skeleton className="h-3.5 w-36" />
         <Skeleton className="h-7 w-[28rem] max-w-full" />
@@ -111,11 +112,11 @@ function DashboardSkeleton() {
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="mx-auto flex max-w-md flex-col items-center py-20 text-center" role="alert">
-      <h2 className="text-base font-semibold">Der Lernraum ist gerade nicht erreichbar</h2>
+      <h2 className="text-base font-semibold">{t("Der Lernraum ist gerade nicht erreichbar")}</h2>
       <p className="mt-1.5 text-[13px] leading-5 text-muted-foreground">{message}</p>
       <Button type="button" variant="outline" className="mt-5" onClick={onRetry}>
         <RefreshCw aria-hidden="true" />
-        Erneut versuchen
+        {t("Erneut versuchen")}
       </Button>
     </div>
   );
@@ -146,7 +147,7 @@ function GreetingHeader({ username, reference }: { username?: string | null; ref
         ) : status === "error" || !greeting || !herkunft ? (
           <>
             <h1 className="mt-1 text-[22px] font-semibold leading-8 tracking-tight">
-              Willkommen{username ? `, ${username}` : ""}.
+              {username ? t("Willkommen, {name}.", { name: username }) : t("Willkommen.")}
             </h1>
             {error ? <p className="mt-1 text-[13px] text-muted-foreground">{error}</p> : null}
           </>
@@ -165,8 +166,8 @@ function GreetingHeader({ username, reference }: { username?: string | null; ref
         className="mt-5 shrink-0"
         onClick={() => void refresh()}
         disabled={refreshing || status === "loading"}
-        aria-label="Tagessatz neu formulieren"
-        title="Neu formulieren"
+        aria-label={t("Tagessatz neu formulieren")}
+        title={t("Neu formulieren")}
       >
         <RefreshCw className={cn(refreshing && "animate-spin")} aria-hidden="true" />
       </Button>
@@ -194,19 +195,19 @@ function statCellClass(index: number) {
 function TodayStrip({ data, dayProgress, lesson, reference }: { data: DashboardData; dayProgress: number; lesson: DashboardLesson | undefined; reference: Date }) {
   const state = lesson ? getLessonState(lesson, reference) : "upcoming";
   const stats = [
-    { label: "Stunden", value: `${data.summary.lessonsCompleted}/${data.summary.lessonsTotal}` },
-    { label: "Lernblöcke", value: `${data.summary.tasksCompleted}/${data.summary.tasksTotal}` },
-    { label: "Hausaufgaben offen", value: String(data.summary.homeworkPending) },
+    { label: t("Stunden"), value: `${data.summary.lessonsCompleted}/${data.summary.lessonsTotal}` },
+    { label: t("Lernblöcke"), value: `${data.summary.tasksCompleted}/${data.summary.tasksTotal}` },
+    { label: t("Hausaufgaben offen"), value: String(data.summary.homeworkPending) },
   ];
   return (
-    <section aria-label="Tagesstand" className="grid overflow-hidden rounded-lg border border-border md:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))]">
+    <section aria-label={t("Tagesstand")} className="grid overflow-hidden rounded-lg border border-border md:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))]">
       <Link
         id="focus"
         href="#schedule"
         className={cn(anchorClass, "group flex min-w-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50 max-md:border-b max-md:border-border")}
       >
         <div className="min-w-0 flex-1">
-          <p className="text-xs text-muted-foreground">{lesson ? lessonStateLabels[state] : "Unterricht"}</p>
+          <p className="text-xs text-muted-foreground">{lesson ? lessonStateLabels[state] : t("Unterricht")}</p>
           {lesson ? (
             <>
               <p className="truncate text-[15px] font-semibold tracking-tight">{lesson.subject}</p>
@@ -230,7 +231,7 @@ function TodayStrip({ data, dayProgress, lesson, reference }: { data: DashboardD
               </p>
             </>
           ) : (
-            <p className="text-[15px] font-semibold tracking-tight">Heute kein Unterricht mehr</p>
+            <p className="text-[15px] font-semibold tracking-tight">{t("Heute kein Unterricht mehr")}</p>
           )}
         </div>
         <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
@@ -243,10 +244,10 @@ function TodayStrip({ data, dayProgress, lesson, reference }: { data: DashboardD
           </div>
         ))}
         <div className={statCellClass(stats.length)}>
-          <p className="text-xs text-muted-foreground">Tag geschafft</p>
+          <p className="text-xs text-muted-foreground">{t("Tag geschafft")}</p>
           <div className="mt-0.5 flex items-center gap-3">
             <p className="text-lg font-semibold tabular-nums tracking-tight">{Math.round(dayProgress)}%</p>
-            <ProgressBar value={dayProgress} label="Tagesfortschritt" className="flex-1" />
+            <ProgressBar value={dayProgress} label={t("Tagesfortschritt")} className="flex-1" />
           </div>
         </div>
       </div>
@@ -294,7 +295,7 @@ function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
       const result = action === "start" ? await startStudyTask(task.id) : action === "stop" ? await stopStudyTask(task.id) : await completeStudyTask(task.id);
       setTaskOverrides((current) => ({ ...current, [task.id]: mergeStudyAction(task, result, action) }));
     } catch (error) {
-      setActionError(error instanceof ApiError ? error.message : "Die Lernaktion konnte nicht ausgeführt werden.");
+      setActionError(error instanceof ApiError ? error.message : t("Die Lernaktion konnte nicht ausgeführt werden."));
     } finally {
       setBusyTaskId(null);
     }
@@ -303,11 +304,11 @@ function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
   return (
     <Card id="study-tasks" className={anchorClass}>
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
-        <CardTitle>Heute lernen</CardTitle>
+        <CardTitle>{t("Heute lernen")}</CardTitle>
         <div className="flex items-center gap-3">
-          <span className="text-xs tabular-nums text-muted-foreground">{openCount} offen</span>
+          <span className="text-xs tabular-nums text-muted-foreground">{openCount} {t("offen")}</span>
           <Link href="/lernen" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-            Lernplan
+            {t("Lernplan")}
             <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
           </Link>
         </div>
@@ -316,7 +317,7 @@ function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
         {actionError ? <p className="mx-4 mb-3 rounded-md border border-foreground/30 bg-muted px-3 py-2 text-[13px]" role="alert">{actionError}</p> : null}
         {taskList.length === 0 ? (
           <div className="px-4 pb-3">
-            <EmptyState icon={Timer} title="Keine Lernaufgaben" description="Geplante Lernschritte erscheinen hier." />
+            <EmptyState icon={Timer} title={t("Keine Lernaufgaben")} description={t("Geplante Lernschritte erscheinen hier.")} />
           </div>
         ) : (
           <ul className="divide-y divide-border border-t border-border">
@@ -332,7 +333,7 @@ function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
                     type="button"
                     onClick={() => void handleAction(task, "complete")}
                     disabled={completed || busy || demo}
-                    aria-label={completed ? `${task.title} erledigt` : `${task.title} abschließen`}
+                    aria-label={completed ? t("{titel} erledigt", { titel: task.title }) : t("{titel} abschließen", { titel: task.title })}
                     className={cn(
                       "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border transition-colors",
                       completed ? "border-foreground bg-foreground text-background" : "border-input hover:border-foreground",
@@ -359,16 +360,16 @@ function StudyTasksCard({ tasks }: { tasks: DashboardStudyTask[] }) {
                     <ProgressBar value={task.progress} label={`Fortschritt ${task.title}`} />
                   </div>
                   {completed ? (
-                    <span className="w-[72px] text-right text-xs text-muted-foreground">Erledigt</span>
+                    <span className="w-[72px] text-right text-xs text-muted-foreground">{t("Erledigt")}</span>
                   ) : active ? (
-                    <Button type="button" size="sm" variant="outline" className="w-[72px]" onClick={() => void handleAction(task, "stop")} disabled={busy || demo} aria-label={`${task.title} stoppen`}>
+                    <Button type="button" size="sm" variant="outline" className="w-[72px]" onClick={() => void handleAction(task, "stop")} disabled={busy || demo} aria-label={t("{titel} stoppen", { titel: task.title })}>
                       <Square className="!size-3 fill-current" aria-hidden="true" />
-                      Stopp
+                      {t("Stopp")}
                     </Button>
                   ) : (
-                    <Button type="button" size="sm" variant="outline" className="w-[72px]" onClick={() => void handleAction(task, "start")} disabled={busy || demo} aria-label={`${task.title} starten`}>
+                    <Button type="button" size="sm" variant="outline" className="w-[72px]" onClick={() => void handleAction(task, "start")} disabled={busy || demo} aria-label={t("{titel} starten", { titel: task.title })}>
                       <Play className="!size-3 fill-current" aria-hidden="true" />
-                      {demo ? "Demo" : "Start"}
+                      {demo ? t("Demo") : t("Start")}
                     </Button>
                   )}
                 </li>
@@ -402,30 +403,30 @@ function AssistantCard() {
         <div className="min-w-0 space-y-0.5">
           <CardTitle>
             <Link href="/assistent" className="hover:underline hover:underline-offset-2">
-              Assistent
+              {t("Assistent")}
             </Link>
           </CardTitle>
-          <CardDescription className="text-xs">Unterlagen, Planung, Einträge – auch per Sprache.</CardDescription>
+          <CardDescription className="text-xs">{t("Unterlagen, Planung, Einträge – auch per Sprache.")}</CardDescription>
         </div>
-        <Link href="/assistent" aria-label="Zum Assistenten" className="-my-2 shrink-0">
+        <Link href="/assistent" aria-label={t("Zum Assistenten")} className="-my-2 shrink-0">
           <Faultier groesse={44} koerper />
         </Link>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleAsk} className="relative">
-          <label htmlFor="assistant-question" className="sr-only">Frage an den Assistenten</label>
+          <label htmlFor="assistant-question" className="sr-only">{t("Frage an den Assistenten")}</label>
           <Input
             id="assistant-question"
             type="text"
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
-            placeholder="Was steht diese Woche an?"
+            placeholder={t("Was steht diese Woche an?")}
             className="pr-10"
           />
           <button
             type="submit"
             className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            aria-label="Fragen"
+            aria-label={t("Fragen")}
           >
             <CornerDownLeft className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -450,7 +451,7 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
   }
 
   if (!data) {
-    return <ErrorState message={error ?? "Die Daten konnten nicht geladen werden."} onRetry={onRetry} />;
+    return <ErrorState message={error ?? t("Die Daten konnten nicht geladen werden.")} onRetry={onRetry} />;
   }
 
   const dayProgress = data.summary.dayProgress > 0 ? data.summary.dayProgress : getDayProgress(data.lessons, reference);
@@ -464,7 +465,7 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
           <span>{error}</span>
           <Button type="button" size="sm" variant="outline" onClick={onRetry}>
             <RefreshCw aria-hidden="true" />
-            Erneut laden
+            {t("Erneut laden")}
           </Button>
         </div>
       ) : null}

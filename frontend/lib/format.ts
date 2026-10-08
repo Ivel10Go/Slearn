@@ -1,3 +1,4 @@
+import { intlLocale, t, tn } from "./i18n";
 import type { DashboardLesson, LessonState } from "./types";
 
 export function toDate(value: string | Date | null | undefined) {
@@ -17,7 +18,7 @@ export function formatDate(
   options: Intl.DateTimeFormatOptions = { weekday: "long", day: "2-digit", month: "long", year: "numeric" },
 ) {
   const date = toDate(value);
-  return date ? new Intl.DateTimeFormat("de-DE", options).format(date) : "—";
+  return date ? new Intl.DateTimeFormat(intlLocale(), options).format(date) : "—";
 }
 
 export function formatTime(value: string | Date | null | undefined, includeSeconds = false) {
@@ -25,7 +26,7 @@ export function formatTime(value: string | Date | null | undefined, includeSecon
   if (!date) {
     return "—";
   }
-  return new Intl.DateTimeFormat("de-DE", {
+  return new Intl.DateTimeFormat(intlLocale(), {
     hour: "2-digit",
     minute: "2-digit",
     ...(includeSeconds ? { second: "2-digit" } : {}),
@@ -40,22 +41,29 @@ export function formatDateTime(value: string | Date | null | undefined) {
   return `${formatDate(value, { weekday: "short", day: "2-digit", month: "short" })}, ${formatTime(date)}`;
 }
 
+/** Eine Zahl mit fester Nachkommastelle im Format der Oberflaechensprache (1,5 / 1.5). */
+export function formatNumber(value: number, digits = 0) {
+  return new Intl.NumberFormat(intlLocale(), { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
+}
+
 export function formatDuration(minutes: number) {
   if (minutes <= 0) {
-    return "Ohne Dauer";
+    return t("Ohne Dauer");
   }
   if (minutes < 60) {
-    return `${minutes} Min.`;
+    return t("{n} Min.", { n: minutes });
   }
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
-  return remainingMinutes ? `${hours} Std. ${remainingMinutes} Min.` : `${hours} Std.`;
+  return remainingMinutes
+    ? t("{h} Std. {m} Min.", { h: hours, m: remainingMinutes })
+    : t("{h} Std.", { h: hours });
 }
 
 export function getCountdown(target: string | Date, now = new Date()) {
   const targetDate = toDate(target);
   if (!targetDate) {
-    return { days: 0, hours: 0, minutes: 0, totalMs: 0, isOverdue: false, label: "Kein Termin" };
+    return { days: 0, hours: 0, minutes: 0, totalMs: 0, isOverdue: false, label: t("Kein Termin") };
   }
   const totalMs = targetDate.getTime() - now.getTime();
   const absoluteMs = Math.abs(totalMs);
@@ -63,16 +71,15 @@ export function getCountdown(target: string | Date, now = new Date()) {
   const hours = Math.floor((absoluteMs % 86_400_000) / 3_600_000);
   const minutes = Math.floor((absoluteMs % 3_600_000) / 60_000);
   const isOverdue = totalMs < 0;
-  const dayLabel = days === 1 ? "Tag" : "Tagen";
   const label = isOverdue
     ? days > 0
-      ? `Vor ${days} ${dayLabel}`
-      : "Termin vorbei"
+      ? tn(days, "Vor {n} Tag", "Vor {n} Tagen")
+      : t("Termin vorbei")
     : days > 0
-      ? `in ${days} ${dayLabel}`
+      ? tn(days, "in {n} Tag", "in {n} Tagen")
       : hours > 0
-        ? `in ${hours} ${hours === 1 ? "Stunde" : "Stunden"}`
-        : `in ${Math.max(1, minutes)} Min.`;
+        ? tn(hours, "in {n} Stunde", "in {n} Stunden")
+        : t("in {n} Min.", { n: Math.max(1, minutes) });
   return { days, hours, minutes, totalMs, isOverdue, label };
 }
 
@@ -107,7 +114,7 @@ export function getDayProgress(lessons: Array<Pick<DashboardLesson, "startTime" 
 export function formatDueDate(value: string | Date, now = new Date()) {
   const date = toDate(value);
   if (!date) {
-    return "Kein Datum";
+    return t("Kein Datum");
   }
   const startOfToday = new Date(now);
   startOfToday.setHours(0, 0, 0, 0);
@@ -115,13 +122,13 @@ export function formatDueDate(value: string | Date, now = new Date()) {
   startOfDate.setHours(0, 0, 0, 0);
   const days = Math.round((startOfDate.getTime() - startOfToday.getTime()) / 86_400_000);
   if (days < 0) {
-    return "Überfällig";
+    return t("Überfällig");
   }
   if (days === 0) {
-    return "Heute fällig";
+    return t("Heute fällig");
   }
   if (days === 1) {
-    return "Morgen fällig";
+    return t("Morgen fällig");
   }
   return formatDate(date, { weekday: "short", day: "2-digit", month: "short" });
 }
@@ -207,7 +214,7 @@ export function formatWeekNumber(value: string | Date) {
   const thursday = addDays(date, 3 - ((date.getDay() + 6) % 7));
   const january4 = new Date(thursday.getFullYear(), 0, 4);
   const firstThursday = addDays(january4, 3 - ((january4.getDay() + 6) % 7));
-  return `KW ${Math.round((thursday.getTime() - firstThursday.getTime()) / 604_800_000) + 1}`;
+  return t("KW {n}", { n: Math.round((thursday.getTime() - firstThursday.getTime()) / 604_800_000) + 1 });
 }
 
 /** Überschrift über einem Zeitraum, etwa "15. – 21. September". */
@@ -271,7 +278,7 @@ export function groupLessonSlots<T extends { startTime: string; endTime: string;
       key,
       lessons: gruppe
         .slice()
-        .sort((a, b) => (a.subjectShort ?? "").localeCompare(b.subjectShort ?? "", "de")),
+        .sort((a, b) => (a.subjectShort ?? "").localeCompare(b.subjectShort ?? "", intlLocale())),
     }));
 }
 

@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ApiError, getSubjects } from "@/lib/api";
 import { answerQuiz, getLearnerProfile, startQuiz, type QuizQuestion, type QuizResult } from "@/lib/assistant";
 import type { Subject } from "@/lib/types";
+import { t, translateServerText } from "@/lib/i18n";
 
 /*
  * Abfrage aus dem eigenen Material und das Lernprofil - beides in der
@@ -19,9 +20,9 @@ import type { Subject } from "@/lib/types";
  */
 
 const URTEIL: Record<QuizResult["verdict"], string> = {
-  richtig: "Richtig",
-  teilweise: "Teilweise",
-  falsch: "Noch nicht",
+  richtig: t("Richtig"),
+  teilweise: t("Teilweise"),
+  falsch: t("Noch nicht"),
 };
 
 function fehlertext(ursache: unknown, ersatz: string) {
@@ -59,7 +60,7 @@ export function AbfrageCard({ onErgebnis }: { onErgebnis?: () => void }) {
       setAntwort("");
       setErgebnis(null);
     } catch (ursache) {
-      setFehler(fehlertext(ursache, "Es ließ sich keine Frage stellen."));
+      setFehler(fehlertext(ursache, t("Es ließ sich keine Frage stellen.")));
     } finally {
       setBeschaeftigt(false);
     }
@@ -76,7 +77,7 @@ export function AbfrageCard({ onErgebnis }: { onErgebnis?: () => void }) {
       setErgebnis(await answerQuiz(frage.question_id, antwort.trim()));
       onErgebnis?.();
     } catch (ursache) {
-      setFehler(fehlertext(ursache, "Die Antwort ließ sich nicht prüfen."));
+      setFehler(fehlertext(ursache, t("Die Antwort ließ sich nicht prüfen.")));
     } finally {
       setBeschaeftigt(false);
     }
@@ -85,18 +86,18 @@ export function AbfrageCard({ onErgebnis }: { onErgebnis?: () => void }) {
   return (
     <Card className="self-start">
       <CardHeader className="pb-3">
-        <CardTitle>Abfragen</CardTitle>
-        <CardDescription>Fragen aus deinen Aufschrieben und Arbeitsblättern. Das Ergebnis zählt für deinen Lernstand.</CardDescription>
+        <CardTitle>{t("Abfragen")}</CardTitle>
+        <CardDescription>{t("Fragen aus deinen Aufschrieben und Arbeitsblättern. Das Ergebnis zählt für deinen Lernstand.")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-[13px]">
         <div className="flex gap-2">
           <select
-            aria-label="Fach für die Abfrage"
+            aria-label={t("Fach für die Abfrage")}
             value={fach}
             onChange={(event) => setFach(event.target.value)}
             className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-[13px]"
           >
-            <option value="">Alle Fächer</option>
+            <option value="">{t("Alle Fächer")}</option>
             {faecher.map((eintrag) => (
               <option key={eintrag.id} value={eintrag.id}>
                 {eintrag.name}
@@ -105,7 +106,7 @@ export function AbfrageCard({ onErgebnis }: { onErgebnis?: () => void }) {
           </select>
           <Button type="button" size="sm" onClick={() => void naechste()} disabled={beschaeftigt}>
             {beschaeftigt && !frage ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : null}
-            {frage ? "Nächste Frage" : "Frag mich ab"}
+            {frage ? t("Nächste Frage") : t("Frag mich ab")}
           </Button>
         </div>
 
@@ -118,9 +119,9 @@ export function AbfrageCard({ onErgebnis }: { onErgebnis?: () => void }) {
         {frage ? (
           <form onSubmit={(event) => void pruefen(event)} className="space-y-2 border-t border-border pt-3">
             <p className="font-medium">{frage.question}</p>
-            <p className="text-xs text-muted-foreground">aus {frage.filename}</p>
+            <p className="text-xs text-muted-foreground">{t("aus {datei}", { datei: frage.filename })}</p>
             <textarea
-              aria-label="Deine Antwort"
+              aria-label={t("Deine Antwort")}
               value={antwort}
               onChange={(event) => setAntwort(event.target.value)}
               rows={3}
@@ -130,7 +131,7 @@ export function AbfrageCard({ onErgebnis }: { onErgebnis?: () => void }) {
             {ergebnis === null ? (
               <Button type="submit" size="sm" variant="outline" disabled={beschaeftigt || !antwort.trim()}>
                 {beschaeftigt ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : null}
-                Prüfen
+                {t("Prüfen")}
               </Button>
             ) : null}
           </form>
@@ -142,15 +143,15 @@ export function AbfrageCard({ onErgebnis }: { onErgebnis?: () => void }) {
               <Badge variant={ergebnis.verdict === "richtig" ? "default" : "outline"}>{URTEIL[ergebnis.verdict]}</Badge>
               {ergebnis.topic && ergebnis.confidence_label ? (
                 <span className="text-xs text-muted-foreground">
-                  {ergebnis.topic}: jetzt „{ergebnis.confidence_label}“
+                  {t("{thema}: jetzt „{stufe}“", { thema: ergebnis.topic, stufe: translateServerText(ergebnis.confidence_label) })}
                 </span>
               ) : null}
             </div>
             <p>{ergebnis.explanation}</p>
-            {ergebnis.verdict !== "richtig" ? <p className="text-xs">Musterlösung: {ergebnis.reference}</p> : null}
+            {ergebnis.verdict !== "richtig" ? <p className="text-xs">{t("Musterlösung:")}{" "}{ergebnis.reference}</p> : null}
             {ergebnis.excerpt ? (
               <details className="text-xs text-muted-foreground">
-                <summary className="cursor-pointer">Stelle in {ergebnis.filename}</summary>
+                <summary className="cursor-pointer">{t("Stelle in {datei}", { datei: ergebnis.filename })}</summary>
                 <p className="mt-1 whitespace-pre-line">{ergebnis.excerpt}</p>
               </details>
             ) : null}
@@ -181,12 +182,12 @@ export function LernprofilCard({ refreshKey }: { refreshKey: number }) {
   return (
     <Card className="self-start">
       <CardHeader className="pb-3">
-        <CardTitle>Wie du lernst</CardTitle>
-        <CardDescription>Steht bei jeder Frage im Kontext. Es kommt aus deinem Lernstand, deinen Lernzeiten und Abfragen.</CardDescription>
+        <CardTitle>{t("Wie du lernst")}</CardTitle>
+        <CardDescription>{t("Steht bei jeder Frage im Kontext. Es kommt aus deinem Lernstand, deinen Lernzeiten und Abfragen.")}</CardDescription>
       </CardHeader>
       <CardContent className="text-[13px]">
         {zeilen === null ? null : zeilen.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Noch nichts – das füllt sich, wenn du lernst, Themen einschätzt oder dich abfragen lässt.</p>
+          <p className="text-xs text-muted-foreground">{t("Noch nichts – das füllt sich, wenn du lernst, Themen einschätzt oder dich abfragen lässt.")}</p>
         ) : (
           <ul className="space-y-1.5">
             {zeilen.map((zeile) => (

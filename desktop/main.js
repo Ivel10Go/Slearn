@@ -36,6 +36,8 @@ const {
 } = require("electron");
 const runtime = require("./lib/runtime.js");
 const updates = require("./lib/updates.js");
+const texts = require("./lib/texts.js");
+const { text } = texts;
 
 const BACKGROUND = { light: "#ffffff", dark: "#0a0a0a" };
 const isMac = process.platform === "darwin";
@@ -120,7 +122,7 @@ async function startBackend(port) {
     log.write(`--- Ende (Code ${code}) ---\n`);
     backendProcess = null;
     if (!quitting) {
-      void fatal("Der Lernraum-Dienst wurde unerwartet beendet.");
+      void fatal(text("serviceStopped"));
     }
   });
   backendProcess = child;
@@ -174,7 +176,7 @@ async function startFrontend(port, backendPort) {
     log.write(`--- Ende (Code ${code}) ---\n`);
     frontendProcess = null;
     if (!quitting) {
-      void fatal("Die Oberfläche wurde unerwartet beendet.");
+      void fatal(text("frontendStopped"));
     }
   });
   frontendProcess = child;
@@ -274,8 +276,8 @@ async function fatal(message) {
     type: "error",
     title: "Lernraum",
     message,
-    detail: `Deine Daten sind nicht betroffen. Details stehen in den Protokollen:\n${logDir}`,
-    buttons: ["Beenden", "Protokolle öffnen"],
+    detail: `${text("dataSafe")}\n${logDir}`,
+    buttons: [text("quit"), text("openLogs")],
     defaultId: 0,
   });
   if (result.response === 1) {
@@ -299,7 +301,7 @@ function createSplash() {
     webPreferences: { sandbox: true, contextIsolation: true },
   });
   void splashWindow.loadFile(path.join(__dirname, "splash.html"), {
-    query: { theme: nativeTheme.shouldUseDarkColors ? "dark" : "light" },
+    query: { theme: nativeTheme.shouldUseDarkColors ? "dark" : "light", lang: texts.getLanguage() },
   });
   splashWindow.once("ready-to-show", () => splashWindow?.show());
 }
@@ -376,8 +378,8 @@ function createMainWindow() {
       desktopSettings = runtime.saveDesktopSettings(settingsFile, { trayHintShown: true });
       if (Notification.isSupported()) {
         new Notification({
-          title: "Lernraum läuft weiter",
-          body: "Erinnerungen kommen weiterhin. Beenden kannst du Lernraum über das Symbol im Infobereich.",
+          title: text("stillRunningTitle"),
+          body: text("stillRunningBody"),
         }).show();
       }
     }
@@ -411,54 +413,54 @@ function buildMenu() {
           {
             label: "Lernraum",
             submenu: [
-              { role: /** @type {const} */ ("about"), label: "Über Lernraum" },
+              { role: /** @type {const} */ ("about"), label: text("about") },
               { type: /** @type {const} */ ("separator") },
-              { role: /** @type {const} */ ("hide"), label: "Lernraum ausblenden" },
-              { role: /** @type {const} */ ("hideOthers"), label: "Andere ausblenden" },
-              { role: /** @type {const} */ ("unhide"), label: "Alle einblenden" },
+              { role: /** @type {const} */ ("hide"), label: text("hide") },
+              { role: /** @type {const} */ ("hideOthers"), label: text("hideOthers") },
+              { role: /** @type {const} */ ("unhide"), label: text("unhide") },
               { type: /** @type {const} */ ("separator") },
-              { role: /** @type {const} */ ("quit"), label: "Lernraum beenden" },
+              { role: /** @type {const} */ ("quit"), label: text("quitApp") },
             ],
           },
         ]
       : []),
     {
-      label: "Bearbeiten",
+      label: text("edit"),
       submenu: [
-        { role: "undo", label: "Widerrufen" },
-        { role: "redo", label: "Wiederholen" },
+        { role: "undo", label: text("undo") },
+        { role: "redo", label: text("redo") },
         { type: "separator" },
-        { role: "cut", label: "Ausschneiden" },
-        { role: "copy", label: "Kopieren" },
-        { role: "paste", label: "Einfügen" },
-        { role: "selectAll", label: "Alles auswählen" },
+        { role: "cut", label: text("cut") },
+        { role: "copy", label: text("copy") },
+        { role: "paste", label: text("paste") },
+        { role: "selectAll", label: text("selectAll") },
       ],
     },
     {
-      label: "Ansicht",
+      label: text("view"),
       submenu: [
-        { role: "reload", label: "Neu laden" },
+        { role: "reload", label: text("reload") },
         { type: "separator" },
-        { role: "resetZoom", label: "Originalgröße" },
-        { role: "zoomIn", label: "Vergrößern" },
-        { role: "zoomOut", label: "Verkleinern" },
+        { role: "resetZoom", label: text("resetZoom") },
+        { role: "zoomIn", label: text("zoomIn") },
+        { role: "zoomOut", label: text("zoomOut") },
         { type: "separator" },
-        { role: "togglefullscreen", label: "Vollbild" },
-        ...(app.isPackaged ? [] : [{ role: /** @type {const} */ ("toggleDevTools"), label: "Entwicklerwerkzeuge" }]),
+        { role: "togglefullscreen", label: text("fullscreen") },
+        ...(app.isPackaged ? [] : [{ role: /** @type {const} */ ("toggleDevTools"), label: text("devTools") }]),
       ],
     },
     {
-      label: "Fenster",
+      label: text("window"),
       submenu: [
-        { role: "minimize", label: "Minimieren" },
-        ...(isMac ? [{ role: /** @type {const} */ ("zoom"), label: "Zoomen" }] : [{ role: /** @type {const} */ ("close"), label: "Schließen" }]),
+        { role: "minimize", label: text("minimize") },
+        ...(isMac ? [{ role: /** @type {const} */ ("zoom"), label: text("zoom") }] : [{ role: /** @type {const} */ ("close"), label: text("close") }]),
       ],
     },
     {
-      label: "Hilfe",
+      label: text("help"),
       submenu: [
-        { label: "Datenordner öffnen", click: () => void shell.openPath(dataDir) },
-        { label: "Protokolle öffnen", click: () => void shell.openPath(logDir) },
+        { label: text("openDataFolder"), click: () => void shell.openPath(dataDir) },
+        { label: text("openLogs"), click: () => void shell.openPath(logDir) },
       ],
     },
   ];
@@ -499,17 +501,17 @@ function refreshTrayMenu() {
   }
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: "Lernraum öffnen", click: showMainWindow },
+      { label: text("openApp"), click: showMainWindow },
       { type: "separator" },
       {
-        label: "Beim Anmelden starten",
+        label: text("openAtLogin"),
         type: "checkbox",
         checked: desktopSettings.openAtLogin,
         click: (item) => void setOpenAtLogin(item.checked),
       },
-      ...(updates.supported() ? [{ label: "Nach Updates suchen", click: () => void updates.check({ manual: true }) }] : []),
+      ...(updates.supported() ? [{ label: text("checkUpdates"), click: () => void updates.check({ manual: true }) }] : []),
       { type: "separator" },
-      { label: "Lernraum beenden", click: () => app.quit() },
+      { label: text("quitApp"), click: () => app.quit() },
     ]),
   );
 }
@@ -530,6 +532,13 @@ function createTray() {
 }
 
 function registerIpc() {
+  // Die Seite meldet ihre Sprache bei jedem Laden; Menue und Infobereich ziehen nach.
+  ipcMain.on("lernraum:set-language", (_event, language) => {
+    if (texts.isLanguage(language) && texts.setLanguage(language)) {
+      buildMenu();
+      refreshTrayMenu();
+    }
+  });
   ipcMain.on("lernraum:set-theme", (_event, theme) => {
     if (theme === "light" || theme === "dark" || theme === "system") {
       nativeTheme.themeSource = theme;
@@ -563,6 +572,8 @@ function registerIpc() {
 /* ------------------------------------------------------------------- Start */
 
 async function start() {
+  // Bis die Seite ihre Sprache meldet, gilt die des Systems - auch fuer den Startbildschirm.
+  texts.setLanguage(texts.fromSystemLocale(app.getLocale()));
   if (!startHidden) {
     createSplash();
   }
@@ -575,7 +586,7 @@ async function start() {
     appOrigin = await startFrontend(frontendPort, backendPort);
     watchTrainingConditions(backendPort);
   } catch (error) {
-    await fatal(error instanceof Error ? error.message : "Der Lernraum konnte nicht gestartet werden.");
+    await fatal(error instanceof Error ? error.message : text("startFailed"));
     return;
   }
   configurePermissions();

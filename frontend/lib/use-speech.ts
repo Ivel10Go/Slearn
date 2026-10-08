@@ -15,6 +15,7 @@ import {
   type SpeechCapabilitiesPayload,
   type SprachZustand,
 } from "./speech";
+import { t } from "./i18n";
 
 /**
  * Mikrofon, Aufnahme, Transkript und Wiedergabe - der ganze Browser-Teil.
@@ -194,10 +195,10 @@ export function useSpeech(): SprechApi & SprechState {
         if (!ergebnis.text.trim()) {
           // Kein Satz ist kein Fehler, aber es ist auch kein Erfolg. Der Satz
           // sagt beides und ist deshalb in der Sprachkarte sichtbar.
-          setFehler("Aus der Aufnahme wurde kein Text. Leiser sprechen oder das Mikrofon naeher an den Mund halten.");
+          setFehler(t("Aus der Aufnahme wurde kein Text. Leiser sprechen oder das Mikrofon naeher an den Mund halten."));
         }
       } catch (ursache) {
-        setFehler(fehlermeldung(ursache, "Die Aufnahme liess sich nicht auswerten."));
+        setFehler(fehlermeldung(ursache, t("Die Aufnahme liess sich nicht auswerten.")));
       } finally {
         setLaedt(false);
         setZustand("bereit");
@@ -389,7 +390,7 @@ export function useSpeech(): SprechApi & SprechState {
       try {
         blob = await fetchSpeechAudio(vorlesetext);
       } catch (ursache) {
-        setFehler(fehlermeldung(ursache, "Der Text liess sich nicht vorlesen."));
+        setFehler(fehlermeldung(ursache, t("Der Text liess sich nicht vorlesen.")));
         return;
       }
       if (blob.size === 0) {
@@ -413,7 +414,7 @@ export function useSpeech(): SprechApi & SprechState {
         // Browser nachtraeglich eine Regel durchsetzt. Der Knopf bleibt da und
         // ein zweiter Klick funktioniert.
         schweigen();
-        setFehler("Der Browser hat die Wiedergabe nicht zugelassen. Einmal antippen und noch einmal vorlesen.");
+        setFehler(t("Der Browser hat die Wiedergabe nicht zugelassen. Einmal antippen und noch einmal vorlesen."));
       }
     },
     [schweigen],

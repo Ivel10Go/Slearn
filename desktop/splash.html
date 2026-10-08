@@ -90,7 +90,13 @@
     <div class="bar" role="progressbar" aria-label="Wird gestartet"></div>
     <div class="status">Wird gestartet …</div>
     <script>
-      document.documentElement.dataset.theme = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
+      const params = new URLSearchParams(location.search);
+      document.documentElement.dataset.theme = params.get("theme") === "dark" ? "dark" : "light";
+      if (params.get("lang") === "en") {
+        document.documentElement.lang = "en";
+        document.querySelector(".bar").setAttribute("aria-label", "Starting");
+        document.querySelector(".status").textContent = "Starting …";
+      }
     </script>
   </body>
 </html>

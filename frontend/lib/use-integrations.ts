@@ -30,6 +30,7 @@ import type {
   IntegrationTestResult,
   UserResponse,
 } from "./types";
+import { t } from "./i18n";
 
 type SettingsStatus = "loading" | "ready" | "error";
 
@@ -72,7 +73,7 @@ function errorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;
   }
-  return "Die Aktion ist fehlgeschlagen. Bitte versuche es erneut.";
+  return t("Die Aktion ist fehlgeschlagen. Bitte versuche es erneut.");
 }
 
 function sortIntegrations(integrations: IntegrationRead[]) {
@@ -97,7 +98,7 @@ export function useIntegrations() {
         return;
       }
       if (!user) {
-        setState((current) => ({ ...current, status: "error", error: "Es ist kein Benutzerkonto vorhanden." }));
+        setState((current) => ({ ...current, status: "error", error: t("Es ist kein Benutzerkonto vorhanden.") }));
         return;
       }
 
@@ -126,7 +127,7 @@ export function useIntegrations() {
         return;
       }
       if (error instanceof ApiError && error.status === 401) {
-        setState((current) => ({ ...current, status: "error", error: "Die Anmeldung ist deaktiviert, aber der Server verlangt sie." }));
+        setState((current) => ({ ...current, status: "error", error: t("Die Anmeldung ist deaktiviert, aber der Server verlangt sie.") }));
         return;
       }
       setState((current) => ({ ...current, error: errorMessage(error), status: "error" }));
@@ -164,7 +165,7 @@ export function useIntegrations() {
         return true;
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
-          setActionError("Die Anmeldung ist deaktiviert, aber der Server verlangt sie.");
+          setActionError(t("Die Anmeldung ist deaktiviert, aber der Server verlangt sie."));
         } else {
           setActionError(errorMessage(error));
         }

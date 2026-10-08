@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getSubjectOptions } from "./api";
 import { errorMessage } from "./use-collection";
 import type { SubjectOption } from "./types";
+import { t } from "./i18n";
 
 /**
  * Die Fachaushwaehler fuer Hausaufgaben, Pruefungen und Lernaufgaben.
@@ -25,7 +26,7 @@ export function useSubjectOptions() {
     try {
       setState({ options: await getSubjectOptions(), status: "ready", error: null });
     } catch (loadError) {
-      setState({ options: [], status: "error", error: errorMessage(loadError, "Die Fächer konnten nicht geladen werden.") });
+      setState({ options: [], status: "error", error: errorMessage(loadError, t("Die Fächer konnten nicht geladen werden.")) });
     }
   }, []);
 

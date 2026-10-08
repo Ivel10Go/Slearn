@@ -51,6 +51,7 @@ from typing import Final, Protocol
 
 import httpx
 
+from app.core.language import DEFAULT_LANGUAGE, Language, voice_matches
 from app.services.local_runtimes import RUNTIME_PIPER, RUNTIME_WHISPER, LocalRuntimeError, LocalRuntimeManager
 from app.services.model_catalog import ModelSpec, catalog_models
 from app.services.model_downloads import ModelDownloadManager
@@ -393,6 +394,20 @@ def prepare_wav(
     return umgewandelt
 
 
+def _wrong_voice_reason(stimme: PiperVoice, language: Language) -> str:
+    """Warum eine geladene Stimme in dieser Oberflaechensprache nicht spricht."""
+    if language == "en":
+        return (
+            f"Only a voice in {stimme.language_label} ({stimme.speaker_label}) is downloaded. "
+            "An English interface does not speak another language - download an English voice and it will be used."
+        )
+    return (
+        f"Geladen ist nur eine Stimme in {stimme.language_label} ({stimme.speaker_label}). "
+        "Fuer eine deutsche Oberflaeche wird keine andere Sprache ausgegeben - "
+        "lade eine deutsche Stimme nach, dann wird sie benutzt."
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class TranscriptionResult:
     """Ein Transkript samt dem Weg, auf dem es entstanden ist."""
@@ -459,7 +474,7 @@ class WhisperTranscriber:
             return False, f"Der Spracherkennungsdienst antwortet nicht ({type(error).__name__})."
         return True, "Der Spracherkennungsdienst antwortet."
 
-    def transcribe(self, wav: bytes, *, model_id: str, transcoded: bool) -> TranscriptionResult:
+    def transcribe(self, wav: bytes, *, model_id: str, transcoded: bool, language: str | None = None) -> TranscriptionResult:
         """Schickt die WAV-Datei an den Dienst und liest den Text.
 
         Fehler werden **nicht** verschluckt: ein leeres Transkript ist kein
@@ -472,8 +487,10 @@ class WhisperTranscriber:
         # `data` zu geben waere der klassische Fehler: dann kaeme die Datei als
         # Feld und nicht als Upload, und der Dienst wuerde sie nicht finden.
         felder: dict[str, str] = {"response_format": "json", "temperature": "0"}
-        if self._language:
-            felder["language"] = self._language
+        # Die Sprache der Anfrage schlaegt die beim Start: whisper.cpp liest sie je Aufruf.
+        sprache = language or self._language
+        if sprache:
+            felder["language"] = sprache
         try:
             with self._client_factory() as client:
                 antwort = client.post(
@@ -492,7 +509,7 @@ class WhisperTranscriber:
             )
         return TranscriptionResult(
             text=_extract_transcript(antwort),
-            language=self._language,
+            language=sprache,
             duration_seconds=_wav_duration_seconds(wav),
             model_id=model_id,
             transcoded=transcoded,
@@ -744,14 +761,14 @@ class SpeechService:
     def _builtin_tts(self) -> bool:
         return self._synthesizer is None and self._runtimes is not None and self._runtimes.supports(RUNTIME_PIPER)
 
-    def _builtin_transcriber(self, spec: object) -> WhisperTranscriber:
+    def _builtin_transcriber(self, spec: object, language: Language = DEFAULT_LANGUAGE) -> WhisperTranscriber:
         """Startet whisper-server fuer das gewaehlte Modell (oder nutzt den laufenden)."""
         if self._runtimes is None or not isinstance(spec, ModelSpec) or not spec.files:
             raise SpeechUnavailableError("Fuer dieses Spracherkennungsmodell gibt es keine eingebaute Laufzeit.")
         model_path = self._downloads.model_directory(spec) / spec.files[0].name
         # Deutsch fest statt Spracherkennung: bei kurzen Saetzen ("Was steht
         # morgen an?") raet Whisper sonst gern Englisch und uebersetzt dann.
-        sprache = self._language or BUILTIN_LANGUAGE
+        sprache = self._language or language or BUILTIN_LANGUAGE
         try:
             base_url = self._runtimes.ensure_whisper_server(spec.id, model_path, sprache)
         except LocalRuntimeError as error:
@@ -810,8 +827,8 @@ class SpeechService:
     def installed_voices(self) -> tuple[PiperVoice, ...]:
         return installed_voice_specs(self._downloads)
 
-    def usable_voice(self) -> PiperVoice | None:
-        """Die Stimme, die gesprochen wuerde - **deutsch bevorzugt**.
+    def usable_voice(self, language: Language = DEFAULT_LANGUAGE) -> PiperVoice | None:
+        """Die Stimme, die gesprochen wuerde - **in der Sprache der Oberflaeche bevorzugt**.
 
         Die Voreinstellung ist eine deutsche, wenn eine da ist. Ist nur eine
         englische geladen, wird **nicht** stillschweigend englisch gesprochen:
@@ -825,19 +842,21 @@ class SpeechService:
         gewaehlt = self._voice_id
         if gewaehlt:
             for stimme in geladen:
-                if stimme.id == gewaehlt:
+                # Die eingetragene Stimme gilt fuer ihre Sprache; eine englische
+                # Oberflaeche bekommt deshalb nicht die eingetragene deutsche.
+                if stimme.id == gewaehlt and voice_matches(stimme.language, language):
                     return stimme
         for stimme in sorted_voices():
-            if stimme in geladen and stimme.language == "de_DE":
+            if stimme in geladen and voice_matches(stimme.language, language):
                 return stimme
         return sorted(geladen, key=lambda stimme: stimme.size_bytes)[0]
 
-    def capabilities(self) -> SpeechCapabilities:
+    def capabilities(self, language: Language = DEFAULT_LANGUAGE) -> SpeechCapabilities:
         """Was gerade geht. Endet nie in einer Ausnahme."""
         stt = self._speech_to_text_task()
-        tts = self._text_to_speech_task()
+        tts = self._text_to_speech_task(language)
         laufzeit = self._runtime_info()
-        stimme = self.usable_voice()
+        stimme = self.usable_voice(language)
         return SpeechCapabilities(
             text_mode_available=True,
             text_mode_note=(
@@ -921,7 +940,7 @@ class SpeechService:
             label=getattr(gewaehlt, "label", ""),
         )
 
-    def _text_to_speech_task(self) -> SpeechTask:
+    def _text_to_speech_task(self, language: Language = DEFAULT_LANGUAGE) -> SpeechTask:
         if not self._enabled:
             return SpeechTask(
                 available=False,
@@ -948,20 +967,16 @@ class SpeechService:
                     "Eine deutsche Stimme reicht; die kleinste ist rund 60 MiB."
                 ),
             )
-        stimme = self.usable_voice()
+        stimme = self.usable_voice(language)
         if stimme is None:
             return SpeechTask(
                 available=False,
                 reason="Es ist eine Stimme geladen, aber keine davon passt zum Katalog. Bitte neu laden.",
             )
-        if stimme.language != "de_DE":
+        if not voice_matches(stimme.language, language):
             return SpeechTask(
                 available=False,
-                reason=(
-                    f"Geladen ist nur eine Stimme in {stimme.language_label} ({stimme.speaker_label}). "
-                    "Fuer eine deutsche Oberflaeche wird keine andere Sprache ausgegeben - "
-                    "lade eine deutsche Stimme nach, dann wird sie benutzt."
-                ),
+                reason=_wrong_voice_reason(stimme, language),
                 model_id=stimme.id,
                 label=stimme.label,
                 language=stimme.language,
@@ -1040,6 +1055,7 @@ class SpeechService:
         *,
         content_type: str | None,
         runner: CommandRunner | None = None,
+        language: Language = DEFAULT_LANGUAGE,
     ) -> TranscriptionResult:
         """Von der rohen Aufnahme zum Text - mit allen Pruefungen dazwischen.
 
@@ -1085,14 +1101,18 @@ class SpeechService:
             runner=tool,
             max_seconds=self._max_seconds,
         )
-        transcriber = self._transcriber or self._builtin_transcriber(gewaehlt)
+        transcriber = self._transcriber or self._builtin_transcriber(gewaehlt, language)
         return transcriber.transcribe(
             wav,
             model_id=getattr(gewaehlt, "id", "unbekannt"),
             transcoded=war_umgewandelt,
+            # Eine fest eingetragene Sprache (``WHISPER_LANGUAGE``) gewinnt, sonst die der Oberflaeche.
+            language=self._language or language,
         )
 
-    def speak(self, text: str, voice_id: str | None = None) -> tuple[bytes, PiperVoice | None]:
+    def speak(
+        self, text: str, voice_id: str | None = None, language: Language = DEFAULT_LANGUAGE
+    ) -> tuple[bytes, PiperVoice | None]:
         """Aus einem Text eine WAV-Datei - und die Stimme, mit der sie entstand."""
         if not self._enabled:
             raise SpeechUnavailableError("Die Sprachfunktionen sind auf diesem Server abgeschaltet.")
@@ -1113,21 +1133,20 @@ class SpeechService:
         if voice_id:
             stimme = voice_by_id(voice_id)
         else:
-            stimme = self.usable_voice()
+            stimme = self.usable_voice(language)
         if stimme is None:
             raise SpeechUnavailableError(
                 "Es ist keine Stimme geladen. Lade unter Einstellungen eine deutsche Stimme nach."
+                if language == "de"
+                else "No voice is downloaded. Download an English voice under AI & models."
             )
         verzeichnis = self._voice_directory(stimme)
         if not self._downloads.is_installed(stimme.as_model_spec()):
             raise SpeechUnavailableError(
                 f"{stimme.label} ist nicht vollstaendig geladen. Lade die Stimme nach, bevor du sie benutzt."
             )
-        if stimme.language != "de_DE":
-            raise SpeechUnavailableError(
-                f"Geladen ist nur eine Stimme in {stimme.language_label}. Fuer eine deutsche "
-                "Oberflaeche wird keine andere Sprache ausgegeben; lade eine deutsche Stimme nach."
-            )
+        if not voice_matches(stimme.language, language):
+            raise SpeechUnavailableError(_wrong_voice_reason(stimme, language))
         # Dieselbe Gegenprobe wie in `_text_to_speech_task`: die mitgeladene
         # Konfiguration muss zur Katalogangabe passen. Sonst waere hier eine
         # Zusage moeglich, die die Faehigkeitsabgabe nicht macht - und die

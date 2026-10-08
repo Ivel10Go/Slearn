@@ -9,13 +9,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cancelVoiceDownload, deleteVoice, downloadVoice, getSpeechCapabilities, getSpeechVoices } from "@/lib/api";
 import { formatModelBytes } from "@/lib/models";
 import {
-  brauchtDeutscheStimme,
+  hatStimmeInSprache,
+  stimmeSpricht,
   beschreibeQualitaet,
   beschreibeStimmstatus,
   type VoiceListPayload,
   type VoicePayload,
 } from "@/lib/speech";
 import { cn } from "@/lib/utils";
+import { getLocale, intlLocale, LOCALE_NAMES, t, translateServerText } from "@/lib/i18n";
 
 /*
  * Die Piper-Stimmen unter Einstellungen.
@@ -49,11 +51,13 @@ const POLL_INTERVAL_MS = 2000;
 
 /** Wie viele Zeilen mit „Entfernen" bestaetigt werden. Eine, und genau diese. */
 function stimmenNachSprache(voices: VoicePayload[]) {
-  const deutsch = voices.filter((stimme) => stimme.language === "de_DE");
-  const andere = voices.filter((stimme) => stimme.language !== "de_DE");
+  // Die Sprache der Oberflaeche zuerst: nur eine Stimme darin wird ausgegeben.
+  const locale = getLocale();
+  const passend = voices.filter((stimme) => stimmeSpricht(stimme, locale));
+  const andere = voices.filter((stimme) => !stimmeSpricht(stimme, locale));
   return [
-    { sprache: "Deutsch", gruppe: deutsch },
-    { sprache: "Andere Sprachen", gruppe: andere },
+    { sprache: LOCALE_NAMES[locale], gruppe: passend },
+    { sprache: t("Andere Sprachen"), gruppe: andere },
   ].filter((abschnitt) => abschnitt.gruppe.length > 0);
 }
 
@@ -61,7 +65,7 @@ function Fehlermeldung(ursache: unknown) {
   if (ursache instanceof Error && ursache.message) {
     return ursache.message;
   }
-  return "Die Stimmen konnten nicht geladen werden.";
+  return t("Die Stimmen konnten nicht geladen werden.");
 }
 
 function VoiceRow({
@@ -87,7 +91,7 @@ function VoiceRow({
   return (
     <li className="flex flex-col rounded-md border border-border/70 p-3.5">
       <div className="flex items-start justify-between gap-3">
-        <p className="min-w-0 text-[13px] font-semibold leading-5">{stimme.label}</p>
+        <p className="min-w-0 text-[13px] font-semibold leading-5">{translateServerText(stimme.label)}</p>
         <Badge variant={geladen ? "success" : "secondary"} className="shrink-0">
           {beschreibeStimmstatus(stimme.status.status)}
         </Badge>
@@ -101,12 +105,12 @@ function VoiceRow({
         {vorschlag ? (
           <>
             <span aria-hidden="true">·</span>
-            <span className="font-medium text-foreground">Vorschlag des Lernraums</span>
+            <span className="font-medium text-foreground">{t("Vorschlag des Lernraums")}</span>
           </>
         ) : null}
       </p>
 
-      <p className="mt-2 text-xs leading-5 text-muted-foreground">{stimme.description}</p>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">{translateServerText(stimme.description)}</p>
 
       {/*
         Zwei Dateien, nicht eine: das ONNX-Modell und seine JSON-Konfiguration.
@@ -115,14 +119,14 @@ function VoiceRow({
         nicht der Grund, eine Stimme zu waehlen.
       */}
       <details className="mt-2 text-[11px] text-muted-foreground">
-        <summary className="cursor-pointer select-none hover:text-foreground">Technische Angaben</summary>
+        <summary className="cursor-pointer select-none hover:text-foreground">{t("Technische Angaben")}</summary>
         <dl className="mt-1.5 space-y-0.5">
           <div className="flex justify-between gap-3">
-            <dt>Abtastrate</dt>
-            <dd className="tabular-nums">{stimme.sample_rate.toLocaleString("de-DE")} Hz</dd>
+            <dt>{t("Abtastrate")}</dt>
+            <dd className="tabular-nums">{stimme.sample_rate.toLocaleString(intlLocale())} {t("Hz")}</dd>
           </div>
           <div className="flex justify-between gap-3">
-            <dt>Lizenz der Stimmdaten</dt>
+            <dt>{t("Lizenz der Stimmdaten")}</dt>
             <dd className="truncate">{stimme.license}</dd>
           </div>
         </dl>
@@ -131,7 +135,7 @@ function VoiceRow({
             <li key={datei.name} className="flex items-baseline justify-between gap-3">
               <span className="truncate font-mono">{datei.name}</span>
               <span className="shrink-0 tabular-nums">
-                {datei.is_model ? "Modell" : datei.is_config ? "Konfiguration" : "Datei"} · {formatModelBytes(datei.size_bytes)}
+                {datei.is_model ? t("Modell") : datei.is_config ? t("Konfiguration") : t("Datei")} · {formatModelBytes(datei.size_bytes)}
               </span>
             </li>
           ))}
@@ -146,8 +150,8 @@ function VoiceRow({
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={Math.round(anteil)}
-            aria-valuetext={`${anteil.toFixed(0)} Prozent geladen`}
-            aria-label={`Ladefortschritt von ${stimme.label}`}
+            aria-valuetext={t("{n} Prozent geladen", { n: anteil.toFixed(0) })}
+            aria-label={t("Ladefortschritt von {name}", { name: stimme.label })}
           >
             <div className={cn("h-full bg-foreground", laeuft ? "opacity-70" : "opacity-100")} style={{ width: `${anteil}%` }} />
           </div>
@@ -156,19 +160,19 @@ function VoiceRow({
 
       {/* Wie in der Modellkarte: der Container steht immer da, nur sein Inhalt wechselt. */}
       <div className={cn(stimme.status.message && "mt-2")} role="status" aria-live="polite">
-        {stimme.status.message ? <p className="text-xs leading-5 text-muted-foreground">{stimme.status.message}</p> : null}
+        {stimme.status.message ? <p className="text-xs leading-5 text-muted-foreground">{translateServerText(stimme.status.message)}</p> : null}
       </div>
 
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-3">
         {!laeuft ? (
           <Button type="button" size="sm" onClick={() => onStart(stimme)} disabled={wartet || geladen}>
             {wartet ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
-            {stimme.status.status === "not_downloaded" ? "Herunterladen" : "Fortsetzen"}
+            {stimme.status.status === "not_downloaded" ? t("Herunterladen") : t("Fortsetzen")}
           </Button>
         ) : (
           <Button type="button" size="sm" variant="outline" onClick={() => onCancel(stimme)}>
             <X aria-hidden="true" />
-            Abbrechen
+            {t("Abbrechen")}
           </Button>
         )}
 
@@ -176,10 +180,10 @@ function VoiceRow({
           <>
             <Button type="button" size="sm" variant="destructive" onClick={() => onDelete(stimme)} disabled={laeuft}>
               <Trash2 aria-hidden="true" />
-              Wirklich entfernen
+              {t("Wirklich entfernen")}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setBestaetigen(false)} disabled={laeuft}>
-              Abbrechen
+              {t("Abbrechen")}
             </Button>
           </>
         ) : (
@@ -192,7 +196,7 @@ function VoiceRow({
             aria-expanded={bestaetigen}
           >
             <Trash2 aria-hidden="true" />
-            Entfernen
+            {t("Entfernen")}
           </Button>
         )}
 
@@ -203,7 +207,7 @@ function VoiceRow({
           className="inline-flex h-9 items-center gap-2 border border-transparent px-3.5 text-xs font-semibold text-muted-foreground underline underline-offset-4 hover:bg-muted hover:text-foreground"
         >
           <Volume2 aria-hidden="true" />
-          Quelle
+          {t("Quelle")}
         </a>
       </div>
     </li>
@@ -308,21 +312,20 @@ export function VoiceCatalogCard() {
   );
 
   const stimmen = daten?.voices ?? [];
-  const hatDeutsche = brauchtDeutscheStimme(stimmen);
+  const hatPassende = hatStimmeInSprache(stimmen, getLocale());
 
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
         <div className="min-w-0 space-y-1">
-          <CardTitle>Stimmen für die Sprachausgabe</CardTitle>
+          <CardTitle>{t("Stimmen für die Sprachausgabe")}</CardTitle>
           <CardDescription>
-            Eine Stimme ist immer <strong>eine Stimme in einer Sprache</strong>. Für den Lernraum brauchst du eine deutsche -
-            jede Stimme ist eine andere Person. Ohne Stimme bleibt alles andere genau so, wie es ist.
+            {t("Eine Stimme ist immer")}{" "}<strong>{t("eine Stimme in einer Sprache")}</strong>{t(". Für den Lernraum brauchst du eine in der Sprache der Oberfläche - jede Stimme ist eine andere Person. Ohne Stimme bleibt alles andere genau so, wie es ist.")}
           </CardDescription>
         </div>
         <Button type="button" size="sm" variant="outline" onClick={() => void laden()} disabled={laedt}>
           <RefreshCw className={cn(laedt && "animate-spin")} aria-hidden="true" />
-          Aktualisieren
+          {t("Aktualisieren")}
         </Button>
       </CardHeader>
 
@@ -341,7 +344,7 @@ export function VoiceCatalogCard() {
         ) : null}
 
         {!laedt && stimmen.length === 0 && !fehler ? (
-          <p className="text-sm text-muted-foreground">Der Katalog enthält zurzeit keine Stimme.</p>
+          <p className="text-sm text-muted-foreground">{t("Der Katalog enthält zurzeit keine Stimme.")}</p>
         ) : null}
 
         {/*
@@ -349,11 +352,10 @@ export function VoiceCatalogCard() {
           aber keine deutsche. Das wird als Satz gesagt, nicht durch eine
           Vorauswahl einer anderen Sprache zugeteeckt.
         */}
-        {!laedt && stimmen.length > 0 && !hatDeutsche ? (
+        {!laedt && stimmen.length > 0 && !hatPassende ? (
           <p className="flex items-start gap-2 border border-foreground/25 bg-foreground/10 px-4 py-3 text-sm font-semibold">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            Es ist noch keine deutsche Stimme geladen. Eine Stimme in einer anderen Sprache wird in einer deutschen Oberfläche
-            nicht ausgegeben - lade unten eine deutsche nach.
+            {t("Es ist noch keine Stimme in der Sprache der Oberfläche geladen. Eine Stimme in einer anderen Sprache wird nicht ausgegeben - lade unten eine passende nach.")}
           </p>
         ) : null}
 
@@ -379,8 +381,7 @@ export function VoiceCatalogCard() {
           : null}
 
         <p className="text-[11px] leading-4 text-muted-foreground">
-          Piper läuft als eigenes Programm auf dem Server und lädt die Dateien zur Laufzeit. Fehlt es, bleibt die Spracheingabe
-          und der Textmodus unverändert - nur das Vorlesen fällt dann aus.
+          {t("Piper läuft als eigenes Programm auf dem Server und lädt die Dateien zur Laufzeit. Fehlt es, bleibt die Spracheingabe und der Textmodus unverändert - nur das Vorlesen fällt dann aus.")}
         </p>
       </CardContent>
     </Card>

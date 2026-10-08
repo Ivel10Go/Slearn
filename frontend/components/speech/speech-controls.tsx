@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { KUERZEL_BEZEICHNUNG, KUERZEL_BEZEICHNUNG_MAC, beschreibeAufnahme, istMac, sprachHinweis } from "@/lib/speech";
 import { useSpeech } from "@/lib/use-speech";
 import { cn } from "@/lib/utils";
+import { t, tSplit } from "@/lib/i18n";
 
 /*
  * Spracheingabe und Sprachausgabe an der Lernendenkarte - mit dem Textmodus als
@@ -81,7 +82,7 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
           {wartet ? <RefreshCw className="animate-spin" aria-hidden="true" /> : laeuft ? <Square aria-hidden="true" /> : <Mic aria-hidden="true" />}
           <span>{beschreibeAufnahme(sprache.aufnahmeZustand, sprache.sekunden)}</span>
         </p>
-        {laeuft ? <p className="text-xs leading-5 text-muted-foreground">Zum Beenden loslassen oder auf &bdquo;Aufnahme beenden&ldquo; tippen.</p> : null}
+        {laeuft ? <p className="text-xs leading-5 text-muted-foreground">{t("Zum Beenden loslassen oder auf „Aufnahme beenden“ tippen.")}</p> : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -115,19 +116,19 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
           aria-describedby="sprache-kuerzel-hinweis"
         >
           {laeuft ? <Square aria-hidden="true" /> : <Mic aria-hidden="true" />}
-          {laeuft ? "Aufnahme beenden" : "Aufnehmen"}
+          {laeuft ? t("Aufnahme beenden") : t("Aufnehmen")}
         </Button>
 
         {aufgenommen ? (
           <Button type="button" size="sm" onClick={uebernehmen}>
-            Text uebernehmen
+            {t("Text uebernehmen")}
           </Button>
         ) : null}
 
         {laeuft || wartet ? (
           <Button type="button" size="sm" variant="ghost" onClick={sprache.abbrechen}>
             <MicOff aria-hidden="true" />
-            Verwerfen
+            {t("Verwerfen")}
           </Button>
         ) : null}
 
@@ -135,7 +136,7 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
           sprache.spielt ? (
             <Button type="button" size="sm" variant="outline" onClick={sprache.schweigen}>
               <VolumeX aria-hidden="true" />
-              Vorlesen stoppen
+              {t("Vorlesen stoppen")}
             </Button>
           ) : (
             <Button
@@ -146,20 +147,20 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
               disabled={!sprache.kannAusgabe}
             >
               <Volume2 aria-hidden="true" />
-              Antwort vorlesen
+              {t("Antwort vorlesen")}
             </Button>
           )
         ) : null}
 
-        <Button type="button" size="sm" variant="ghost" onClick={sprache.neuLaden} aria-label="Sprachfunktionen neu pruefen">
+        <Button type="button" size="sm" variant="ghost" onClick={sprache.neuLaden} aria-label={t("Sprachfunktionen neu pruefen")}>
           <RefreshCw aria-hidden="true" />
-          Neu pruefen
+          {t("Neu pruefen")}
         </Button>
       </div>
 
       {aufgenommen ? (
         <div className="rounded-md border border-border px-3 py-2.5">
-          <p className="text-[11px] font-medium text-muted-foreground">Erkannter Text</p>
+          <p className="text-[11px] font-medium text-muted-foreground">{t("Erkannter Text")}</p>
           <p className="mt-1.5 text-sm leading-6">{sprache.transkript}</p>
         </div>
       ) : null}
@@ -182,7 +183,7 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
         `aria-describedby` darauf zeigt.
       */}
       <details className="group text-[11px] leading-4 text-muted-foreground">
-        <summary className="cursor-pointer select-none hover:text-foreground">Hinweise zur Sprache</summary>
+        <summary className="cursor-pointer select-none hover:text-foreground">{t("Hinweise zur Sprache")}</summary>
         <div className="mt-2 space-y-1.5">
           <p>{sprachHinweis(sprache.sprechZustand)}</p>
           {/*
@@ -194,7 +195,7 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
             einem Eingabefeld getippt wird, und laesst es dann in Ruhe.
           */}
           <p id="sprache-kuerzel-hinweis" className="text-[11px] leading-4 text-muted-foreground">
-            Zum Diktieren {tastenname} halten. Aufgezeichnet wird nur, wenn gerade kein Eingabefeld den Fokus hat.
+            {t("Zum Diktieren {taste} halten. Aufgezeichnet wird nur, wenn gerade kein Eingabefeld den Fokus hat.", { taste: tastenname })}
           </p>
 
           {/*
@@ -220,15 +221,15 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
             schon sagt - sonst waere es dieselbe Information zweimal.
           */}
           <div className="space-y-1">
-            {!sprache.kannEingabe && sprache.grundEingabe ? <p className="text-[11px] leading-4 text-muted-foreground">Eingabe: {sprache.grundEingabe}</p> : null}
-            {!sprache.kannAusgabe && sprache.grundAusgabe ? <p className="text-[11px] leading-4 text-muted-foreground">Ausgabe: {sprache.grundAusgabe}</p> : null}
+            {!sprache.kannEingabe && sprache.grundEingabe ? <p className="text-[11px] leading-4 text-muted-foreground">{t("Eingabe: {grund}", { grund: sprache.grundEingabe })}</p> : null}
+            {!sprache.kannAusgabe && sprache.grundAusgabe ? <p className="text-[11px] leading-4 text-muted-foreground">{t("Ausgabe: {grund}", { grund: sprache.grundAusgabe })}</p> : null}
           </div>
           <p>
-            Modelle und Stimmen richtest du unter{" "}
+            {tSplit("Modelle und Stimmen richtest du unter {link} ein.")[0]}
             <Link href="/ki" className="underline underline-offset-2 hover:text-foreground">
-              KI &amp; Modelle
-            </Link>{" "}
-            ein.
+              {t("KI & Modelle")}
+            </Link>
+            {tSplit("Modelle und Stimmen richtest du unter {link} ein.")[1]}
           </p>
         </div>
       </details>

@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld("lernraumDesktop", {
   dataFolder: argument("lernraum-data"),
   /** @param {"light" | "dark" | "system"} theme */
   setTheme: (theme) => ipcRenderer.send("lernraum:set-theme", theme),
+  /** @param {"de" | "en"} language */
+  setLanguage: (language) => ipcRenderer.send("lernraum:set-language", language),
   openDataFolder: () => ipcRenderer.invoke("lernraum:open-data-folder"),
   getSettings: () => ipcRenderer.invoke("lernraum:get-settings"),
   /** @param {boolean} enabled */

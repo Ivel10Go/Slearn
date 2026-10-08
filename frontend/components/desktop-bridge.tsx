@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useTheme } from "next-themes";
 import { getDesktopBridge, toDesktopTheme } from "@/lib/desktop";
+import { getLocale } from "@/lib/i18n";
 
 /**
  * Haelt das Desktop-Fenster mit der Seite im Gleichschritt.
@@ -25,6 +26,8 @@ export function DesktopBridge() {
     const root = document.documentElement;
     root.dataset.desktop = "";
     root.dataset.platform = bridge.platform;
+    // Die Sprache aendert sich nur mit einem Neuladen, deshalb genuegt es einmal.
+    bridge.setLanguage?.(getLocale());
   }, []);
 
   useEffect(() => {

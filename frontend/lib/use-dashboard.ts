@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, getDashboard, getSession } from "./api";
 import type { DashboardData, UserResponse } from "./types";
+import { t } from "./i18n";
 
 type DashboardStatus = "loading" | "ready" | "error";
 
@@ -20,7 +21,7 @@ function errorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;
   }
-  return "Die Daten konnten nicht geladen werden.";
+  return t("Die Daten konnten nicht geladen werden.");
 }
 
 export function useDashboard() {
@@ -42,7 +43,7 @@ export function useDashboard() {
         return;
       }
       if (!user) {
-        setState((current) => ({ ...current, status: "error", error: "Es ist kein Benutzerkonto vorhanden." }));
+        setState((current) => ({ ...current, status: "error", error: t("Es ist kein Benutzerkonto vorhanden.") }));
         return;
       }
 
@@ -56,7 +57,7 @@ export function useDashboard() {
         return;
       }
       if (error instanceof ApiError && error.status === 401) {
-        setState((current) => ({ ...current, status: "error", error: "Die Anmeldung ist deaktiviert, aber der Server verlangt sie." }));
+        setState((current) => ({ ...current, status: "error", error: t("Die Anmeldung ist deaktiviert, aber der Server verlangt sie.") }));
         return;
       }
       setState((current) => ({ ...current, error: errorMessage(error), status: "error" }));

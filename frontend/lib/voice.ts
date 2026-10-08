@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 /*
  * Bausteine fuer den Gespraechsmodus des Assistenten - ohne DOM, damit vitest
  * sie pruefen kann.
@@ -44,7 +45,7 @@ export function downsample(samples: Float32Array, inputRate: number, targetRate 
     return samples;
   }
   if (inputRate < targetRate) {
-    throw new Error("Die Abtastrate des Mikrofons ist kleiner als 16 kHz.");
+    throw new Error(t("Die Abtastrate des Mikrofons ist kleiner als 16 kHz."));
   }
   const ratio = inputRate / targetRate;
   const length = Math.floor(samples.length / ratio);

@@ -19,7 +19,7 @@
     "dist": "npm run prepare:resources && electron-builder --publish never",
     "dist:win": "npm run prepare:resources && electron-builder --win --publish never",
     "dist:mac": "npm run prepare:resources && electron-builder --mac --publish never",
-    "check": "node --check main.js && node --check preload.js && node --check lib/updates.js && node --test lib/runtime.test.js",
+    "check": "node --check main.js && node --check preload.js && node --check lib/updates.js && node --check lib/texts.js && node --test lib/runtime.test.js",
     "smoke:backend": "node scripts/smoke-backend.mjs"
   },
   "devDependencies": {

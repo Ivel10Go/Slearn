@@ -27,6 +27,7 @@ import {
   type PlannerResult,
 } from "@/lib/planner";
 import { cn } from "@/lib/utils";
+import { t, tn } from "@/lib/i18n";
 
 type Zahlenfeld = "max_minutes_per_day" | "break_minutes" | "after_school_minutes" | "homework_minutes" | "exam_topic_minutes" | "exam_lead_days";
 type Uhrzeitfeld = "earliest" | "weekend_earliest" | "latest";
@@ -78,7 +79,7 @@ export function WeekPlannerCard({ onApplied }: { onApplied?: () => void }) {
       saveOptions(optionen);
       setVorschlag(await previewWeekPlan(optionen));
     } catch (error) {
-      setFehler(error instanceof Error ? error.message : "Der Vorschlag konnte nicht berechnet werden.");
+      setFehler(error instanceof Error ? error.message : t("Der Vorschlag konnte nicht berechnet werden."));
     } finally {
       setLaeuft(null);
     }
@@ -92,13 +93,14 @@ export function WeekPlannerCard({ onApplied }: { onApplied?: () => void }) {
       setVorschlag(null);
       setMeldung(
         ergebnis.planned_count === 0
-          ? "Es gab nichts mehr einzutragen."
-          : `${ergebnis.planned_count} ${ergebnis.planned_count === 1 ? "Block" : "Blöcke"} eingetragen` +
-              (ergebnis.created_count > 0 ? `, davon ${ergebnis.created_count} als neue Aufgabe.` : "."),
+          ? t("Es gab nichts mehr einzutragen.")
+          : ergebnis.created_count > 0
+            ? tn(ergebnis.planned_count, "{n} Block eingetragen, davon {neu} als neue Aufgabe.", "{n} Blöcke eingetragen, davon {neu} als neue Aufgabe.", { neu: ergebnis.created_count })
+            : tn(ergebnis.planned_count, "{n} Block eingetragen.", "{n} Blöcke eingetragen."),
       );
       onApplied?.();
     } catch (error) {
-      setFehler(error instanceof Error ? error.message : "Der Plan konnte nicht übernommen werden.");
+      setFehler(error instanceof Error ? error.message : t("Der Plan konnte nicht übernommen werden."));
     } finally {
       setLaeuft(null);
     }
@@ -124,33 +126,32 @@ export function WeekPlannerCard({ onApplied }: { onApplied?: () => void }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Wochenplan</CardTitle>
+        <CardTitle>{t("Wochenplan")}</CardTitle>
         <CardDescription>
-          Verteilt offene Aufgaben, Hausaufgaben und Klausurthemen auf die freie Zeit neben Unterricht und Terminen. Erst kommt ein Vorschlag,
-          eingetragen wird beim Übernehmen.
+          {t("Verteilt offene Aufgaben, Hausaufgaben und Klausurthemen auf die freie Zeit neben Unterricht und Terminen. Erst kommt ein Vorschlag, eingetragen wird beim Übernehmen.")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <form onSubmit={(event) => void berechnen(event)} className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            <Field id="plan-zeitraum" label="Zeitraum">
+            <Field id="plan-zeitraum" label={t("Zeitraum")}>
               {(props) => (
                 <Select {...props} value={String(optionen.days)} onChange={(event) => setze("days", Number(event.target.value))} disabled={laeuft !== null}>
-                  <option value="7">7 Tage</option>
-                  <option value="14">14 Tage</option>
+                  <option value="7">{t("7 Tage")}</option>
+                  <option value="14">{t("14 Tage")}</option>
                 </Select>
               )}
             </Field>
-            <Field id="plan-ab" label="Lernen ab">
+            <Field id="plan-ab" label={t("Lernen ab")}>
               {(props) => <Input {...props} {...uhrzeit("earliest")} />}
             </Field>
-            <Field id="plan-wochenende-ab" label="Wochenende ab">
+            <Field id="plan-wochenende-ab" label={t("Wochenende ab")}>
               {(props) => <Input {...props} {...uhrzeit("weekend_earliest")} />}
             </Field>
-            <Field id="plan-bis" label="Spätestens bis">
+            <Field id="plan-bis" label={t("Spätestens bis")}>
               {(props) => <Input {...props} {...uhrzeit("latest")} />}
             </Field>
-            <Field id="plan-budget" label="Minuten pro Tag">
+            <Field id="plan-budget" label={t("Minuten pro Tag")}>
               {(props) => <Input {...props} min={15} max={600} {...zahl("max_minutes_per_day")} />}
             </Field>
           </div>
@@ -164,7 +165,7 @@ export function WeekPlannerCard({ onApplied }: { onApplied?: () => void }) {
                 disabled={laeuft !== null}
                 className="h-4 w-4 border-input bg-card accent-[var(--foreground)]"
               />
-              Auch am Wochenende
+              {t("Auch am Wochenende")}
             </label>
             <label className="flex items-center gap-2">
               <input
@@ -174,7 +175,7 @@ export function WeekPlannerCard({ onApplied }: { onApplied?: () => void }) {
                 disabled={laeuft !== null}
                 className="h-4 w-4 border-input bg-card accent-[var(--foreground)]"
               />
-              Schon geplante Aufgaben neu verteilen
+              {t("Schon geplante Aufgaben neu verteilen")}
             </label>
             <label className="flex items-center gap-2">
               <input
@@ -184,28 +185,28 @@ export function WeekPlannerCard({ onApplied }: { onApplied?: () => void }) {
                 disabled={laeuft !== null}
                 className="h-4 w-4 border-input bg-card accent-[var(--foreground)]"
               />
-              Fällige Wiederholungen einplanen
+              {t("Fällige Wiederholungen einplanen")}
             </label>
             <Button type="button" variant="link" size="sm" onClick={() => setMehr((offen) => !offen)} aria-expanded={mehr}>
-              {mehr ? "Weniger Einstellungen" : "Mehr Einstellungen"}
+              {mehr ? t("Weniger Einstellungen") : t("Mehr Einstellungen")}
             </Button>
           </div>
 
           {mehr ? (
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-              <Field id="plan-pause" label="Pause zwischen Blöcken" hint="Minuten">
+              <Field id="plan-pause" label={t("Pause zwischen Blöcken")} hint={t("Minuten")}>
                 {(props) => <Input {...props} min={0} max={60} {...zahl("break_minutes")} />}
               </Field>
-              <Field id="plan-schulschluss" label="Pause nach der Schule" hint="Minuten">
+              <Field id="plan-schulschluss" label={t("Pause nach der Schule")} hint={t("Minuten")}>
                 {(props) => <Input {...props} min={0} max={240} {...zahl("after_school_minutes")} />}
               </Field>
-              <Field id="plan-hausaufgabe" label="Je Hausaufgabe" hint="Minuten">
+              <Field id="plan-hausaufgabe" label={t("Je Hausaufgabe")} hint={t("Minuten")}>
                 {(props) => <Input {...props} min={5} max={240} {...zahl("homework_minutes")} />}
               </Field>
-              <Field id="plan-thema" label="Je Klausurthema" hint="Minuten">
+              <Field id="plan-thema" label={t("Je Klausurthema")} hint={t("Minuten")}>
                 {(props) => <Input {...props} min={5} max={240} {...zahl("exam_topic_minutes")} />}
               </Field>
-              <Field id="plan-vorlauf" label="Klausur-Vorlauf" hint="Tage vor der Klausur">
+              <Field id="plan-vorlauf" label={t("Klausur-Vorlauf")} hint={t("Tage vor der Klausur")}>
                 {(props) => <Input {...props} min={1} max={60} {...zahl("exam_lead_days")} />}
               </Field>
             </div>
@@ -214,17 +215,17 @@ export function WeekPlannerCard({ onApplied }: { onApplied?: () => void }) {
           <div className="flex flex-wrap items-center gap-2">
             <Button type="submit" variant={vorschlag ? "outline" : "default"} disabled={laeuft !== null}>
               {laeuft === "preview" ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : null}
-              {vorschlag ? "Neu berechnen" : "Vorschlag berechnen"}
+              {vorschlag ? t("Neu berechnen") : t("Vorschlag berechnen")}
             </Button>
             {zusammenfassung && zusammenfassung.blocks > 0 ? (
               <Button type="button" onClick={() => void uebernehmen()} disabled={laeuft !== null}>
                 {laeuft === "apply" ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : null}
-                Übernehmen
+                {t("Übernehmen")}
               </Button>
             ) : null}
             {vorschlag ? (
               <Button type="button" variant="ghost" onClick={() => setVorschlag(null)} disabled={laeuft !== null}>
-                Verwerfen
+                {t("Verwerfen")}
               </Button>
             ) : null}
           </div>
@@ -241,15 +242,15 @@ export function WeekPlannerCard({ onApplied }: { onApplied?: () => void }) {
             {zusammenfassung.blocks === 0 && zusammenfassung.unplaced === 0 ? (
               <EmptyState
                 icon={CalendarCheck}
-                title="Nichts zu planen"
-                description="Es gibt keine offenen Aufgaben, Hausaufgaben oder anstehenden Klausuren ohne Termin."
+                title={t("Nichts zu planen")}
+                description={t("Es gibt keine offenen Aufgaben, Hausaufgaben oder anstehenden Klausuren ohne Termin.")}
               />
             ) : (
               <p className="text-[13px] text-muted-foreground">
-                {zusammenfassung.blocks} {zusammenfassung.blocks === 1 ? "Block" : "Blöcke"}, zusammen {formatDuration(zusammenfassung.minutes)}
-                {zusammenfassung.newBlocks > 0 ? ` · ${zusammenfassung.newBlocks} neu` : ""}
-                {zusammenfassung.late > 0 ? ` · ${zusammenfassung.late} nach Frist` : ""}
-                {zusammenfassung.unplaced > 0 ? ` · ${zusammenfassung.unplaced} ohne Platz` : ""}
+                {tn(zusammenfassung.blocks, "{n} Block, zusammen {dauer}", "{n} Blöcke, zusammen {dauer}", { dauer: formatDuration(zusammenfassung.minutes) })}
+                {zusammenfassung.newBlocks > 0 ? ` · ${t("{n} neu", { n: zusammenfassung.newBlocks })}` : ""}
+                {zusammenfassung.late > 0 ? ` · ${t("{n} nach Frist", { n: zusammenfassung.late })}` : ""}
+                {zusammenfassung.unplaced > 0 ? ` · ${t("{n} ohne Platz", { n: zusammenfassung.unplaced })}` : ""}
               </p>
             )}
 
@@ -261,7 +262,7 @@ export function WeekPlannerCard({ onApplied }: { onApplied?: () => void }) {
 
             {vorschlag.unplaced.length > 0 ? (
               <div className="space-y-1.5">
-                <h3 className="text-[13px] font-medium">Ohne Platz</h3>
+                <h3 className="text-[13px] font-medium">{t("Ohne Platz")}</h3>
                 <ul className="space-y-1 text-[13px]">
                   {vorschlag.unplaced.map((eintrag, index) => (
                     <li key={`${eintrag.title}-${index}`} className="flex flex-wrap items-baseline gap-x-2">
@@ -272,7 +273,7 @@ export function WeekPlannerCard({ onApplied }: { onApplied?: () => void }) {
                     </li>
                   ))}
                 </ul>
-                <p className="text-[12px] text-muted-foreground">Mehr Minuten pro Tag, ein späteres Ende oder 14 Tage schaffen Platz.</p>
+                <p className="text-[12px] text-muted-foreground">{t("Mehr Minuten pro Tag, ein späteres Ende oder 14 Tage schaffen Platz.")}</p>
               </div>
             ) : null}
           </div>
@@ -298,7 +299,7 @@ function PlanTag({ tag }: { tag: PlannerDay }) {
       <div>
         <p className="text-[13px] font-medium">{formatDate(tag.date, { weekday: "short", day: "2-digit", month: "2-digit" })}</p>
         <p className="text-[12px] text-muted-foreground">
-          {tag.budget_minutes === 0 ? "Frei" : `${tag.planned_minutes} / ${tag.budget_minutes} Min.`}
+          {tag.budget_minutes === 0 ? t("Frei") : t("{geplant} / {budget} Min.", { geplant: tag.planned_minutes, budget: tag.budget_minutes })}
           {schulschluss ? ` · Schule bis ${formatTime(schulschluss)}` : ""}
         </p>
       </div>
@@ -311,7 +312,7 @@ function PlanTag({ tag }: { tag: PlannerDay }) {
               </span>
               <span className="truncate">
                 {zeile.eintrag.title}
-                {zeile.eintrag.kind === "task" ? " (schon geplant)" : ""}
+                {zeile.eintrag.kind === "task" ? t(" (schon geplant)") : ""}
               </span>
             </p>
           ) : (
@@ -322,12 +323,12 @@ function PlanTag({ tag }: { tag: PlannerDay }) {
               <span className={cn("min-w-0", zeile.block.late && "font-medium")}>{zeile.block.title}</span>
               {zeile.block.subject_name ? <span className="text-[12px] text-muted-foreground">{zeile.block.subject_name}</span> : null}
               {zeile.block.kind !== "task" ? <Badge variant="outline">{KIND_LABEL[zeile.block.kind]}</Badge> : null}
-              {isNewBlock(zeile.block) ? <Badge variant="secondary">Neu</Badge> : null}
-              {zeile.block.late ? <Badge variant="warning">Nach Frist</Badge> : null}
+              {isNewBlock(zeile.block) ? <Badge variant="secondary">{t("Neu")}</Badge> : null}
+              {zeile.block.late ? <Badge variant="warning">{t("Nach Frist")}</Badge> : null}
             </div>
           ),
         )}
-        {zeilen.length === 0 ? <p className="text-[12px] text-muted-foreground">Nichts geplant</p> : null}
+        {zeilen.length === 0 ? <p className="text-[12px] text-muted-foreground">{t("Nichts geplant")}</p> : null}
       </div>
     </li>
   );

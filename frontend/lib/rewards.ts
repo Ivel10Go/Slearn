@@ -19,6 +19,7 @@
 
 import { formatDate } from "./format";
 import type { RewardBadge, RewardEntry, RewardOverview, RewardRules, RewardStep, RewardSummary } from "./types";
+import { t, tn } from "./i18n";
 
 /** Wie viele Buchungen die Karte in der Liste zeigt.
  *
@@ -38,7 +39,7 @@ export const LISTEN_LIMIT = 8;
  * Obergrenze nach einem Fehler aus.
  */
 export function punkteLabel(summary: Pick<RewardSummary, "today_points" | "today_cap">): string {
-  return `${summary.today_points} von ${summary.today_cap} Punkten`;
+  return t("{n} von {max} Punkten", { n: summary.today_points, max: summary.today_cap });
 }
 
 /** Der Anteil eines Balkens in Prozent, begrenzt auf 0 bis 100. */
@@ -92,9 +93,9 @@ export function badgeBereichLabel(badge: Pick<RewardBadge, "scope_kind" | "scope
 export function badgeFortschrittLabel(badge: Pick<RewardBadge, "progress" | "target" | "unit" | "unit_plural" | "awarded">): string {
   const ziel = badge.target === 1 ? `1 ${badge.unit}` : `${badge.target} ${badge.unit_plural}`;
   if (badge.awarded) {
-    return `Erreicht · ${ziel}`;
+    return t("Erreicht · {ziel}", { ziel });
   }
-  return `${badge.progress} von ${ziel}`;
+  return t("{n} von {ziel}", { n: badge.progress, ziel });
 }
 
 /**
@@ -110,24 +111,27 @@ export function badgeFortschrittLabel(badge: Pick<RewardBadge, "progress" | "tar
  * Note, in keine Prioritaet und in keinen KI-Kontext ein.
  */
 export function regelSatz(regeln: RewardRules, stufen: RewardStep[]): string {
-  const treppe = stufen.map((stufe) => `${stufe.minutes} Min. ${stufe.points} P.`).join(", ");
-  return (
-    `Je erledigte Aufgabe mit Thema ${regeln.task_points} Punkte. Je Fachtag eine Treppe: ${treppe}, ` +
-    `höchstens ${regeln.subject_day_cap} Punkte pro Fach und Tag. Am Tag gibt es insgesamt höchstens ${regeln.day_cap} Punkte; ` +
-    `danach wird nichts mehr ausgezahlt. Unter ${regeln.min_subject_day_minutes} Minuten zählt ein Fachtag nicht, ` +
-    `und eine Aufgabe ohne Thema zahlt nie. Punkte sind eine Anerkennung: sie gehen nicht in Noten, ` +
-    `nicht in die Priorität einer Aufgabe und nicht an den KI-Dienst.`
+  const treppe = stufen.map((stufe) => t("{min} Min. {p} P.", { min: stufe.minutes, p: stufe.points })).join(", ");
+  return t(
+    "Je erledigte Aufgabe mit Thema {aufgabe} Punkte. Je Fachtag eine Treppe: {treppe}, höchstens {fach} Punkte pro Fach und Tag. Am Tag gibt es insgesamt höchstens {tag} Punkte; danach wird nichts mehr ausgezahlt. Unter {minuten} Minuten zählt ein Fachtag nicht, und eine Aufgabe ohne Thema zahlt nie. Punkte sind eine Anerkennung: sie gehen nicht in Noten, nicht in die Priorität einer Aufgabe und nicht an den KI-Dienst.",
+    {
+      aufgabe: regeln.task_points,
+      treppe,
+      fach: regeln.subject_day_cap,
+      tag: regeln.day_cap,
+      minuten: regeln.min_subject_day_minutes,
+    },
   );
 }
 
 /** Die Art einer Buchung in deutschen Worten. */
 export function entryArtLabel(entry: Pick<RewardEntry, "kind">): string {
-  return entry.kind === "task_completed" ? "Aufgabe" : "Fachtag";
+  return entry.kind === "task_completed" ? t("Aufgabe") : t("Fachtag");
 }
 
 /** Die Punkte einer Buchung als Text, mit korrekter Einzahl. */
 export function entryPunkteLabel(points: number): string {
-  return `${points} ${points === 1 ? "Punkt" : "Punkte"}`;
+  return tn(points, "{n} Punkt", "{n} Punkte");
 }
 
 /** Das Datum einer Buchung als deutscher Text, ohne den Uhrzeit-Anteil. */
@@ -143,7 +147,7 @@ export function entryDatumLabel(earnedOn: string): string {
  * und die Karte wuerde nach einem Fehler aussehen.
  */
 export function nullPunktHinweis(regeln: RewardRules): string {
-  return `0 Punkte heißt: an diesem Tag gelernt, aber das Tageskonto war bereits bei ${regeln.day_cap} Punkten.`;
+  return t("0 Punkte heißt: an diesem Tag gelernt, aber das Tageskonto war bereits bei {n} Punkten.", { n: regeln.day_cap });
 }
 
 /**
@@ -189,5 +193,5 @@ export function badgeBilanz(overview: Pick<RewardOverview, "catalog" | "badges">
 
 /** Die Punkte der Woche als Text, mit dem Tag, an dem die Woche endet. */
 export function wochenLabel(summary: Pick<RewardSummary, "week_points" | "week_ends_on">): string {
-  return `${summary.week_points} Punkte · Woche bis ${formatDate(new Date(`${summary.week_ends_on}T12:00:00`))}`;
+  return t("{n} Punkte · Woche bis {datum}", { n: summary.week_points, datum: formatDate(new Date(`${summary.week_ends_on}T12:00:00`)) });
 }

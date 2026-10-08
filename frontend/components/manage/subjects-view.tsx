@@ -19,6 +19,7 @@ import { randomSubjectColor, SUBJECT_COLORS } from "@/lib/subject-colors";
 import { useCollection } from "@/lib/use-collection";
 import { cn } from "@/lib/utils";
 import type { Subject } from "@/lib/types";
+import { t } from "@/lib/i18n";
 
 interface FachFormular {
   name: string;
@@ -82,11 +83,11 @@ export function SubjectsView() {
   async function absenden(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!formular.name.trim()) {
-      setFormularFehler("Gib dem Fach einen Namen.");
+      setFormularFehler(t("Gib dem Fach einen Namen."));
       return;
     }
     if (!FARBE_MUSTER.test(formular.farbe.trim())) {
-      setFormularFehler("Die Farbe muss als sechsstelliger Hex-Wert stehen, etwa #3B82F6.");
+      setFormularFehler(t("Die Farbe muss als sechsstelliger Hex-Wert stehen, etwa #3B82F6."));
       return;
     }
     setFormularFehler(null);
@@ -100,9 +101,9 @@ export function SubjectsView() {
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Fächer</h1>
+        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">{t("Fächer")}</h1>
         <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">
-          Jede Hausaufgabe, Prüfung und Lernaufgabe kann einem Fach zugeordnet werden.
+          {t("Jede Hausaufgabe, Prüfung und Lernaufgabe kann einem Fach zugeordnet werden.")}
         </p>
       </header>
 
@@ -122,17 +123,17 @@ export function SubjectsView() {
       <Card className="border-border/80 bg-card/90">
         <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
           <div>
-            <CardTitle>Meine Fächer</CardTitle>
-            <CardDescription className="mt-1">Von Hand angelegt oder aus dem Schulportal importiert.</CardDescription>
+            <CardTitle>{t("Meine Fächer")}</CardTitle>
+            <CardDescription className="mt-1">{t("Von Hand angelegt oder aus dem Schulportal importiert.")}</CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="secondary">{sammlung.items.length} Fächer</Badge>
-            <Button type="button" size="icon" variant="ghost" onClick={() => void sammlung.reload()} aria-label="Fächer neu laden" disabled={sammlung.status === "loading"}>
+            <Badge variant="secondary">{sammlung.items.length} {t("Fächer")}</Badge>
+            <Button type="button" size="icon" variant="ghost" onClick={() => void sammlung.reload()} aria-label={t("Fächer neu laden")} disabled={sammlung.status === "loading"}>
               <RefreshCw className={cn(sammlung.status === "loading" && "animate-spin")} aria-hidden="true" />
             </Button>
             <Button type="button" size="sm" onClick={() => (formularOffen && bearbeitet === null ? schliessen() : oeffnen())} aria-expanded={formularOffen && bearbeitet === null}>
               {formularOffen && bearbeitet === null ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
-              {formularOffen && bearbeitet === null ? "Schließen" : "Neu"}
+              {formularOffen && bearbeitet === null ? t("Schließen") : t("Neu")}
             </Button>
           </div>
         </CardHeader>
@@ -143,26 +144,26 @@ export function SubjectsView() {
           {formularOffen ? (
             <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
               <div className="flex items-start justify-between gap-3">
-                <p className="text-sm font-semibold">{bearbeitet === null ? "Neues Fach" : "Fach bearbeiten"}</p>
-                <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
+                <p className="text-sm font-semibold">{bearbeitet === null ? t("Neues Fach") : t("Fach bearbeiten")}</p>
+                <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label={t("Formular schließen")}>
                   <X aria-hidden="true" />
                 </Button>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_11rem]">
-                <Field id="fach-name" label="Name" required>
+                <Field id="fach-name" label={t("Name")} required>
                   {(props) => (
                     <Input
                       {...props}
                       value={formular.name}
                       onChange={(event) => setFormular((current) => ({ ...current, name: event.target.value }))}
                       disabled={istSpeichern}
-                      placeholder="Zum Beispiel: Astronomie"
+                      placeholder={t("Zum Beispiel: Astronomie")}
                     />
                   )}
                 </Field>
 
-                <Field id="fach-farbe" label="Farbe" required hint="Als Hex-Wert.">
+                <Field id="fach-farbe" label={t("Farbe")} required hint={t("Als Hex-Wert.")}>
                   {(props) => (
                     <div className="flex items-center gap-2">
                       <span
@@ -184,7 +185,7 @@ export function SubjectsView() {
                 </Field>
               </div>
 
-              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Farbe wählen">
+              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("Farbe wählen")}>
                 {SUBJECT_COLORS.map((farbe) => {
                   const aktiv = formular.farbe.trim().toUpperCase() === farbe;
                   return (
@@ -216,11 +217,11 @@ export function SubjectsView() {
                   }
                 >
                   <Shuffle aria-hidden="true" />
-                  Zufällig
+                  {t("Zufällig")}
                 </Button>
               </div>
 
-              <Field id="fach-beschreibung" label="Beschreibung" hint="Optional. Zum Beispiel die Lehrkraft oder der Raum.">
+              <Field id="fach-beschreibung" label={t("Beschreibung")} hint={t("Optional. Zum Beispiel die Lehrkraft oder der Raum.")}>
                 {(props) => (
                   <Textarea
                     {...props}
@@ -236,22 +237,22 @@ export function SubjectsView() {
               <div className="flex flex-wrap items-center gap-2">
                 <Button type="submit" disabled={istSpeichern}>
                   {istSpeichern ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
-                  {istSpeichern ? "Wird gespeichert …" : bearbeitet === null ? "Fach anlegen" : "Änderungen speichern"}
+                  {istSpeichern ? t("Wird gespeichert …") : bearbeitet === null ? t("Fach anlegen") : t("Änderungen speichern")}
                 </Button>
                 <Button type="button" variant="ghost" onClick={schliessen} disabled={istSpeichern}>
-                  Abbrechen
+                  {t("Abbrechen")}
                 </Button>
               </div>
             </form>
           ) : null}
 
           {sammlung.status === "loading" && sammlung.items.length === 0 ? (
-            <div className="space-y-3" aria-busy="true" aria-label="Fächer werden geladen">
+            <div className="space-y-3" aria-busy="true" aria-label={t("Fächer werden geladen")}>
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>
           ) : sammlung.items.length === 0 ? (
-            <EmptyState icon={BookOpen} title="Noch keine Fächer" description="Lege deine Fächer an, damit Aufgaben und Prüfungen sortiert werden." />
+            <EmptyState icon={BookOpen} title={t("Noch keine Fächer")} description={t("Lege deine Fächer an, damit Aufgaben und Prüfungen sortiert werden.")} />
           ) : (
             <ul className="space-y-2.5">
               {sammlung.items.map((fach) => (
@@ -271,13 +272,13 @@ export function SubjectsView() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate text-sm font-semibold">{fach.name}</p>
-                      {fach.source !== "manual" ? <Badge variant="outline">aus dem Portal</Badge> : null}
+                      {fach.source !== "manual" ? <Badge variant="outline">{t("aus dem Portal")}</Badge> : null}
                     </div>
                     {fach.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{fach.description}</p> : null}
                     <p className="mt-1.5 text-xs font-semibold text-muted-foreground">
                       <span className="font-mono">{fach.color}</span>
                       <span className="text-border"> · </span>
-                      angelegt {formatDate(fach.created_at, { day: "2-digit", month: "short", year: "numeric" })}
+                      {t("angelegt {datum}", { datum: formatDate(fach.created_at, { day: "2-digit", month: "short", year: "numeric" }) })}
                     </p>
                   </div>
                   <RowActions

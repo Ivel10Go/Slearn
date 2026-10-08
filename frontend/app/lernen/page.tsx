@@ -10,6 +10,7 @@ import { createStudyPlan, deleteStudyPlan, getStudyPlans, renameStudyPlan } from
 import { useCollection } from "@/lib/use-collection";
 import { useSession } from "@/lib/use-session";
 import type { StudyPlan } from "@/lib/types";
+import { t } from "@/lib/i18n";
 
 /**
  * Verwaltung von Lernplänen, Serien und Aufgaben.
@@ -44,10 +45,9 @@ function LernenBereich() {
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Lernen</h1>
+        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">{t("Lernen")}</h1>
         <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">
-          Der Wochenplan verteilt alles Offene auf deine freie Zeit. Lernpläne sammeln Aufgaben zu einem Thema, Serien erzeugen daraus
-          wiederkehrende Aufgaben, und eine Prüfung kann ihre Themen direkt in Aufgaben umsetzen.
+          {t("Der Wochenplan verteilt alles Offene auf deine freie Zeit. Lernpläne sammeln Aufgaben zu einem Thema, Serien erzeugen daraus wiederkehrende Aufgaben, und eine Prüfung kann ihre Themen direkt in Aufgaben umsetzen.")}
         </p>
       </header>
 

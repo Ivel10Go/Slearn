@@ -9,8 +9,11 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { deleteAccount, downloadAccountExport } from "@/lib/api";
 import { getDesktopBridge } from "@/lib/desktop";
+import { t } from "@/lib/i18n";
 
 const BESTAETIGUNG = "LÖSCHEN";
+/** Was man tippt, in der Sprache der Oberflaeche. Ans Backend geht immer `BESTAETIGUNG`. */
+const BESTAETIGUNG_ANZEIGE = t("LÖSCHEN");
 
 /**
  * Datenauskunft und Kontoloeschung (DSGVO Art. 15, 17, 20).
@@ -46,7 +49,7 @@ export function PrivacyCard() {
       window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
       setExportiert("fertig");
     } catch (error) {
-      setExportFehler(error instanceof Error ? error.message : "Der Export ist fehlgeschlagen.");
+      setExportFehler(error instanceof Error ? error.message : t("Der Export ist fehlgeschlagen."));
       setExportiert("bereit");
     }
   }
@@ -56,7 +59,7 @@ export function PrivacyCard() {
     setLoescht(true);
     setLoeschFehler(null);
     try {
-      await deleteAccount(wort.trim(), desktop ? undefined : passwort);
+      await deleteAccount(BESTAETIGUNG, desktop ? undefined : passwort);
       // Lokaler Verlauf des Assistenten und gemerkte Reiter gehoeren mit dazu.
       try {
         window.localStorage.clear();
@@ -68,21 +71,21 @@ export function PrivacyCard() {
       window.history.replaceState(null, "", "/");
       window.location.reload();
     } catch (error) {
-      setLoeschFehler(error instanceof Error ? error.message : "Das Konto konnte nicht gelöscht werden.");
+      setLoeschFehler(error instanceof Error ? error.message : t("Das Konto konnte nicht gelöscht werden."));
       setLoescht(false);
     }
   }
 
-  const bereit = wort.trim() === BESTAETIGUNG && (desktop || passwort.length > 0);
+  const bereit = wort.trim() === BESTAETIGUNG_ANZEIGE && (desktop || passwort.length > 0);
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Deine Daten</CardTitle>
+        <CardTitle>{t("Deine Daten")}</CardTitle>
         <CardDescription>
-          Alles, was du im Lernraum gespeichert hast, als Datei herunterladen oder endgültig löschen. Mehr dazu in der{" "}
+          {t("Alles, was du im Lernraum gespeichert hast, als Datei herunterladen oder endgültig löschen. Mehr dazu in der")}{" "}
           <Link href="/datenschutz" className="underline underline-offset-2 hover:text-foreground">
-            Datenschutzerklärung
+            {t("Datenschutzerklärung")}
           </Link>
           .
         </CardDescription>
@@ -90,15 +93,14 @@ export function PrivacyCard() {
       <CardContent className="space-y-5">
         <div className="space-y-2">
           <p className="text-[13px] leading-5 text-muted-foreground">
-            Eine ZIP-Datei mit allen Einträgen (Fächer, Noten, Aufgaben, Notizen des Assistenten …) und deinen hochgeladenen
-            Dokumenten. Zugangsdaten und Schlüssel sind nicht enthalten.
+            {t("Eine ZIP-Datei mit allen Einträgen (Fächer, Noten, Aufgaben, Notizen des Assistenten …) und deinen hochgeladenen Dokumenten. Zugangsdaten und Schlüssel sind nicht enthalten.")}
           </p>
           <div className="flex items-center gap-3">
             <Button type="button" variant="outline" size="sm" onClick={() => void exportieren()} disabled={exportiert === "laeuft"}>
               <Download aria-hidden="true" />
-              {exportiert === "laeuft" ? "Wird erstellt …" : "Daten herunterladen"}
+              {exportiert === "laeuft" ? t("Wird erstellt …") : t("Daten herunterladen")}
             </Button>
-            {exportiert === "fertig" ? <span className="text-xs text-muted-foreground">Heruntergeladen.</span> : null}
+            {exportiert === "fertig" ? <span className="text-xs text-muted-foreground">{t("Heruntergeladen.")}</span> : null}
           </div>
           {exportFehler ? (
             <p className="text-[13px] text-destructive" role="alert">
@@ -108,16 +110,15 @@ export function PrivacyCard() {
         </div>
 
         <form className="space-y-3 border-t border-border pt-4" onSubmit={(event) => void loeschen(event)}>
-          <p className="text-[13px] font-medium">Konto löschen</p>
+          <p className="text-[13px] font-medium">{t("Konto löschen")}</p>
           <p className="text-[13px] leading-5 text-muted-foreground">
-            Löscht dein Konto mit allen Einträgen, hochgeladenen Dokumenten, Trainingsdaten und persönlichen Adaptern. Das lässt
-            sich nicht rückgängig machen. Heruntergeladene Modelle und Dateien in verbundenen Ordnern bleiben erhalten.
+            {t("Löscht dein Konto mit allen Einträgen, hochgeladenen Dokumenten, Trainingsdaten und persönlichen Adaptern. Das lässt sich nicht rückgängig machen. Heruntergeladene Modelle und Dateien in verbundenen Ordnern bleiben erhalten.")}
           </p>
-          <Field id="konto-loeschen-wort" label={`Zur Bestätigung „${BESTAETIGUNG}“ eingeben`}>
+          <Field id="konto-loeschen-wort" label={t("Zur Bestätigung „{wort}“ eingeben", { wort: BESTAETIGUNG_ANZEIGE })}>
             {(props) => <Input {...props} value={wort} onChange={(event) => setWort(event.target.value)} autoComplete="off" />}
           </Field>
           {desktop ? null : (
-            <Field id="konto-loeschen-passwort" label="Passwort">
+            <Field id="konto-loeschen-passwort" label={t("Passwort")}>
               {(props) => (
                 <Input
                   {...props}
@@ -136,7 +137,7 @@ export function PrivacyCard() {
           ) : null}
           <Button type="submit" variant="destructive" size="sm" disabled={!bereit || loescht}>
             <Trash2 aria-hidden="true" />
-            {loescht ? "Wird gelöscht …" : "Konto endgültig löschen"}
+            {loescht ? t("Wird gelöscht …") : t("Konto endgültig löschen")}
           </Button>
         </form>
       </CardContent>

@@ -18,6 +18,7 @@ import { errorMessage, useCollection, useList } from "@/lib/use-collection";
 import { useSubjectOptions } from "@/lib/use-subject-options";
 import { cn } from "@/lib/utils";
 import type { Exam, ExamTaskPlanResult, StudyPlan } from "@/lib/types";
+import { t, tn } from "@/lib/i18n";
 
 const anchorClass = "scroll-mt-24";
 
@@ -103,12 +104,12 @@ export function ExamsSection({ reference }: { reference: Date }) {
     }
     const planId = Number(zielPlan);
     if (!Number.isInteger(planId) || planId <= 0) {
-      setPlanFehler("Wähle den Lernplan aus, in den die Aufgaben gehören.");
+      setPlanFehler(t("Wähle den Lernplan aus, in den die Aufgaben gehören."));
       return;
     }
     const tage = Number(vorlauf);
     if (!Number.isInteger(tage) || tage < 1 || tage > 180) {
-      setPlanFehler("Der Vorlauf muss zwischen 1 und 180 Tagen liegen.");
+      setPlanFehler(t("Der Vorlauf muss zwischen 1 und 180 Tagen liegen."));
       return;
     }
 
@@ -120,7 +121,7 @@ export function ExamsSection({ reference }: { reference: Date }) {
       setPlanErgebnis(ergebnis);
       setZielPruefung(null);
     } catch (fehler) {
-      setPlanFehler(errorMessage(fehler, "Die Aufgaben konnten nicht erzeugt werden."));
+      setPlanFehler(errorMessage(fehler, t("Die Aufgaben konnten nicht erzeugt werden.")));
     } finally {
       setLaeuftAuf(null);
     }
@@ -143,11 +144,11 @@ export function ExamsSection({ reference }: { reference: Date }) {
   async function absenden(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!formular.titel.trim()) {
-      setFormularFehler("Gib der Prüfung einen Titel.");
+      setFormularFehler(t("Gib der Prüfung einen Titel."));
       return;
     }
     if (!toUtcIso(formular.datum)) {
-      setFormularFehler("Wann findet die Prüfung statt? Ein Datum wird benötigt.");
+      setFormularFehler(t("Wann findet die Prüfung statt? Ein Datum wird benötigt."));
       return;
     }
     setFormularFehler(null);
@@ -170,10 +171,10 @@ export function ExamsSection({ reference }: { reference: Date }) {
    */
   function generatorGrund(pruefung: Exam) {
     if (pruefung.subject_id === null) {
-      return "Diese Prüfung hat kein Fach – ohne Themen gibt es nichts zu erzeugen. Trag über den Stift ein Fach ein.";
+      return t("Diese Prüfung hat kein Fach – ohne Themen gibt es nichts zu erzeugen. Trag über den Stift ein Fach ein.");
     }
     if (plaene.items.length === 0) {
-      return "Für den Generator braucht es einen Lernplan. Leg ihn unter „Lernplan“ an.";
+      return t("Für den Generator braucht es einen Lernplan. Leg ihn unter „Lernplan“ an.");
     }
     return null;
   }
@@ -212,13 +213,13 @@ export function ExamsSection({ reference }: { reference: Date }) {
   return (
     <Card id="exams" className={cn(anchorClass, "@container")}>
       <SectionHeader
-        title="Prüfungen"
-        count={`${kommend.length} anstehend`}
+        title={t("Prüfungen")}
+        count={t("{n} anstehend", { n: kommend.length })}
         loading={sammlung.status === "loading"}
         onReload={() => void sammlung.reload()}
         formOpen={formularOffen && bearbeitet === null}
         onToggleForm={() => (formularOffen && bearbeitet === null ? schliessen() : oeffnen())}
-        newLabel="Neue Prüfung"
+        newLabel={t("Neue Prüfung")}
       />
 
       <CardContent className="space-y-3 pb-0">
@@ -230,22 +231,22 @@ export function ExamsSection({ reference }: { reference: Date }) {
         */}
         {planErgebnis ? (
           <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-[13px]" role="status">
-            {planErgebnis.created_count} Aufgaben angelegt
-            {planErgebnis.skipped_count > 0 ? `, ${planErgebnis.skipped_count} Thema übersprungen` : ""}
-            {planErgebnis.last_due_on ? ` · bis ${formatDate(planErgebnis.last_due_on)}` : ""}. Sie stehen unter{" "}
-            <span className="font-medium">Heute lernen</span>.
+            {t("{n} Aufgaben angelegt", { n: planErgebnis.created_count })}
+            {planErgebnis.skipped_count > 0 ? `, ${tn(planErgebnis.skipped_count, "{n} Thema übersprungen", "{n} Themen übersprungen")}` : ""}
+            {planErgebnis.last_due_on ? ` · ${t("bis {datum}", { datum: formatDate(planErgebnis.last_due_on) })}` : ""}{t(". Sie stehen unter")}{" "}
+            <span className="font-medium">{t("Heute lernen")}</span>.
           </p>
         ) : null}
         <FormError message={planFehler} />
 
         {zielPruefung !== null ? (
           <div className="space-y-4 rounded-md border border-border bg-muted/40 p-4">
-            <p className="text-sm font-semibold">Lernplan aus den Themen erzeugen</p>
+            <p className="text-sm font-semibold">{t("Lernplan aus den Themen erzeugen")}</p>
             <div className="grid gap-4 @md:grid-cols-2">
-              <Field id="generator-plan" label="Lernplan" required>
+              <Field id="generator-plan" label={t("Lernplan")} required>
                 {(props) => (
                   <Select {...props} value={zielPlan} onChange={(event) => setZielPlan(event.target.value)} disabled={laueftAuf !== null}>
-                    <option value="">Lernplan wählen …</option>
+                    <option value="">{t("Lernplan wählen …")}</option>
                     {plaene.items.map((plan) => (
                       <option key={plan.id} value={plan.id}>
                         {plan.title}
@@ -254,7 +255,7 @@ export function ExamsSection({ reference }: { reference: Date }) {
                   </Select>
                 )}
               </Field>
-              <Field id="generator-vorlauf" label="Vorlauf in Tagen" hint="Wie weit der Plan vor der Klausur zurückreicht.">
+              <Field id="generator-vorlauf" label={t("Vorlauf in Tagen")} hint={t("Wie weit der Plan vor der Klausur zurückreicht.")}>
                 {(props) => (
                   <Input
                     {...props}
@@ -269,17 +270,15 @@ export function ExamsSection({ reference }: { reference: Date }) {
               </Field>
             </div>
             <p className="text-xs leading-5 text-muted-foreground">
-              Eine Aufgabe je Thema, verteilt über die Tage vor der Klausur – das schwächste Thema zuerst, weil es am
-              meisten Vorlauf braucht. Die Aufgaben werden in dieser Reihenfolge verkettet, damit der Plan eine Reihenfolge
-              hat. Ein zweiter Klick legt nichts doppelt an.
+              {t("Eine Aufgabe je Thema, verteilt über die Tage vor der Klausur – das schwächste Thema zuerst, weil es am meisten Vorlauf braucht. Die Aufgaben werden in dieser Reihenfolge verkettet, damit der Plan eine Reihenfolge hat. Ein zweiter Klick legt nichts doppelt an.")}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" onClick={() => void aufgabenErzeugen()} disabled={laueftAuf !== null || !zielPlan}>
                 {laueftAuf !== null ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <ListPlus aria-hidden="true" />}
-                {laueftAuf !== null ? "Wird erzeugt …" : "Aufgaben erzeugen"}
+                {laueftAuf !== null ? t("Wird erzeugt …") : t("Aufgaben erzeugen")}
               </Button>
               <Button type="button" variant="ghost" onClick={() => setZielPruefung(null)} disabled={laueftAuf !== null}>
-                Abbrechen
+                {t("Abbrechen")}
               </Button>
             </div>
           </div>
@@ -288,26 +287,26 @@ export function ExamsSection({ reference }: { reference: Date }) {
         {formularOffen ? (
           <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-border bg-muted/40 p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-semibold">{bearbeitet === null ? "Neue Prüfung" : "Prüfung bearbeiten"}</p>
-              <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
+              <p className="text-sm font-semibold">{bearbeitet === null ? t("Neue Prüfung") : t("Prüfung bearbeiten")}</p>
+              <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label={t("Formular schließen")}>
                 <X aria-hidden="true" />
               </Button>
             </div>
 
-            <Field id="pruefung-titel" label="Titel" required>
+            <Field id="pruefung-titel" label={t("Titel")} required>
               {(props) => (
                 <Input
                   {...props}
                   value={formular.titel}
                   onChange={(event) => setFormular((current) => ({ ...current, titel: event.target.value }))}
                   disabled={istSpeichern}
-                  placeholder="Zum Beispiel: Klassenarbeit Analysis"
+                  placeholder={t("Zum Beispiel: Klassenarbeit Analysis")}
                 />
               )}
             </Field>
 
             <div className="grid gap-4 @md:grid-cols-2">
-              <Field id="pruefung-datum" label="Datum und Uhrzeit" required>
+              <Field id="pruefung-datum" label={t("Datum und Uhrzeit")} required>
                 {(props) => (
                   <Input
                     {...props}
@@ -319,7 +318,7 @@ export function ExamsSection({ reference }: { reference: Date }) {
                 )}
               </Field>
 
-              <Field id="pruefung-fach" label="Fach" hint={fach.status === "loading" ? "Fächer werden geladen …" : undefined}>
+              <Field id="pruefung-fach" label={t("Fach")} hint={fach.status === "loading" ? t("Fächer werden geladen …") : undefined}>
                 {(props) => (
                   <Select
                     {...props}
@@ -327,7 +326,7 @@ export function ExamsSection({ reference }: { reference: Date }) {
                     onChange={(event) => setFormular((current) => ({ ...current, fach: event.target.value }))}
                     disabled={istSpeichern}
                   >
-                    <option value="">Ohne Fach</option>
+                    <option value="">{t("Ohne Fach")}</option>
                     {fach.options.map((option) => (
                       <option key={option.id} value={option.id}>
                         {option.name}
@@ -338,14 +337,14 @@ export function ExamsSection({ reference }: { reference: Date }) {
               </Field>
             </div>
 
-            <Field id="pruefung-beschreibung" label="Hinweise" hint="Themen, Stoff, Ort – alles, was du wissen musst.">
+            <Field id="pruefung-beschreibung" label={t("Hinweise")} hint={t("Themen, Stoff, Ort – alles, was du wissen musst.")}>
               {(props) => (
                 <Textarea
                   {...props}
                   value={formular.beschreibung}
                   onChange={(event) => setFormular((current) => ({ ...current, beschreibung: event.target.value }))}
                   disabled={istSpeichern}
-                  placeholder="Kapitel 1 bis 3, Ableitungen und Integrale"
+                  placeholder={t("Kapitel 1 bis 3, Ableitungen und Integrale")}
                 />
               )}
             </Field>
@@ -355,23 +354,23 @@ export function ExamsSection({ reference }: { reference: Date }) {
             <div className="flex flex-wrap items-center gap-2">
               <Button type="submit" disabled={istSpeichern}>
                 {istSpeichern ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
-                {istSpeichern ? "Wird gespeichert …" : bearbeitet === null ? "Prüfung anlegen" : "Änderungen speichern"}
+                {istSpeichern ? t("Wird gespeichert …") : bearbeitet === null ? t("Prüfung anlegen") : t("Änderungen speichern")}
               </Button>
               <Button type="button" variant="ghost" onClick={schliessen} disabled={istSpeichern}>
-                Abbrechen
+                {t("Abbrechen")}
               </Button>
             </div>
           </form>
         ) : null}
 
         {sammlung.status === "loading" && sammlung.items.length === 0 ? (
-          <div className="space-y-2 pb-4" aria-busy="true" aria-label="Prüfungen werden geladen">
+          <div className="space-y-2 pb-4" aria-busy="true" aria-label={t("Prüfungen werden geladen")}>
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
           </div>
         ) : sammlung.items.length === 0 ? (
           <div className="pb-4">
-            <EmptyState icon={CheckCircle2} title="Keine Prüfungstermine" description="Trag einen Termin ein, damit du ihn nicht verpasst." />
+            <EmptyState icon={CheckCircle2} title={t("Keine Prüfungstermine")} description={t("Trag einen Termin ein, damit du ihn nicht verpasst.")} />
           </div>
         ) : (
           <div className="-mx-4 border-t border-border">
@@ -384,7 +383,7 @@ export function ExamsSection({ reference }: { reference: Date }) {
                 className="border-t border-border first:border-t-0"
               >
                 <summary className="cursor-pointer list-none px-4 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground">
-                  {vergangen.length} vorbei
+                  {vergangen.length} {t("vorbei")}
                 </summary>
                 <ul className="divide-y divide-border border-t border-border">{vergangen.map(zeile)}</ul>
               </details>
@@ -446,11 +445,11 @@ function PruefungsZeile({
             </>
           ) : null}
           <span className="sr-only">{formatDate(pruefung.date, { weekday: "long", day: "2-digit", month: "long" })},</span>
-          <span className={cn(bald && "font-medium text-foreground")}>{countdown.isOverdue ? "Vorbei" : countdown.label}</span>
+          <span className={cn(bald && "font-medium text-foreground")}>{countdown.isOverdue ? t("Vorbei") : countdown.label}</span>
           {pruefung.source !== "manual" ? (
             <>
               <span aria-hidden="true">·</span>
-              <span>Schulportal</span>
+              <span>{t("Schulportal")}</span>
             </>
           ) : null}
         </p>
@@ -470,8 +469,8 @@ function PruefungsZeile({
           onClick={onGenerator}
           disabled={busy || laueft}
           aria-expanded={generatorOffen}
-          aria-label={`Lernaufgaben aus den Themen von ${pruefung.title} erzeugen`}
-          title="Lernaufgaben aus den Themen erzeugen"
+          aria-label={t("Lernaufgaben aus den Themen von {titel} erzeugen", { titel: pruefung.title })}
+          title={t("Lernaufgaben aus den Themen erzeugen")}
           className={cn(!generatorMoeglich && "text-muted-foreground/60")}
         >
           {laueft ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <ListPlus aria-hidden="true" />}

@@ -1,4 +1,5 @@
 import type { GespraechsPhase } from "./use-conversation";
+import { t } from "./i18n";
 
 /*
  * Was das Faultier gerade zeigt. Die Figur selbst (`components/assistant/faultier.tsx`)
@@ -9,12 +10,12 @@ import type { GespraechsPhase } from "./use-conversation";
 export type FaultierZustand = "ruhe" | "zuhoeren" | "denken" | "sprechen" | "freut" | "schlaeft";
 
 export const FAULTIER_TEXT: Record<FaultierZustand, string> = {
-  ruhe: "Bereit",
-  zuhoeren: "Hört zu",
-  denken: "Denkt nach …",
-  sprechen: "Spricht",
-  freut: "Eingetragen",
-  schlaeft: "Kein Modell verbunden",
+  ruhe: t("Bereit"),
+  zuhoeren: t("Hört zu"),
+  denken: t("Denkt nach …"),
+  sprechen: t("Spricht"),
+  freut: t("Eingetragen"),
+  schlaeft: t("Kein Modell verbunden"),
 };
 
 export interface FaultierSignale {
