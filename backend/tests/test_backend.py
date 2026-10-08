@@ -3759,15 +3759,24 @@ def test_streak_und_wochenziel_kommen_aus_den_lernsessions(
     heute = datetime.now(BERLIN).date()
     montag, sonntag = week_bounds(heute)
     # Gestern und vorgestern je 30 Minuten: eine laufende Serie von zwei Tagen.
-    _add_session(db, user, task_id, datetime.combine(heute - timedelta(days=2), time(17, 0), tzinfo=BERLIN), 30)
-    _add_session(db, user, task_id, datetime.combine(heute - timedelta(days=1), time(17, 0), tzinfo=BERLIN), 30)
-    # Eine Luecke, damit es etwas zu vergleichen gibt.
-    _add_session(db, user, task_id, datetime.combine(heute - timedelta(days=4), time(17, 0), tzinfo=BERLIN), 45)
+    # Eine Luecke vor vier Tagen, damit es etwas zu vergleichen gibt.
+    gelernt: list[tuple[date, int]] = [
+        (heute - timedelta(days=2), 30),
+        (heute - timedelta(days=1), 30),
+        (heute - timedelta(days=4), 45),
+    ]
     # Gestartet und sofort gestoppt: null Minuten, und die zaehlt nicht als Lerntag.
     _add_session(db, user, task_id, datetime.combine(heute, time(8, 0), tzinfo=BERLIN), 0)
-    # Der Montag 00:10 dieser Woche liegt immer in der Woche und immer in der
-    # Vergangenheit - auch wenn der Test an einem Montag laeuft.
-    _add_session(db, user, task_id, datetime.combine(montag, time(0, 10), tzinfo=BERLIN), 60)
+    # Der Montag 00:10 dieser Woche liegt in der Woche. Er darf aber weder heute
+    # sein (dann waere heute ein Lerntag) noch die Luecke vor der Serie schliessen
+    # (am Donnerstag ist Montag der Tag zwischen "vor 4 Tagen" und "vorgestern",
+    # die Serie waere dann vier Tage lang). An diesen beiden Wochentagen faellt
+    # die Montags-Session weg - sonst haengt das Ergebnis am Tag des Testlaufs.
+    if montag not in {heute, heute - timedelta(days=3)}:
+        gelernt.append((montag, 60))
+    zeiten = {montag: time(0, 10)}
+    for tag, minuten in gelernt:
+        _add_session(db, user, task_id, datetime.combine(tag, zeiten.get(tag, time(17, 0)), tzinfo=BERLIN), minuten)
 
     koerper = client.get("/api/v1/progress/insights").json()
     serie = koerper["streak"]
@@ -3786,21 +3795,22 @@ def test_streak_und_wochenziel_kommen_aus_den_lernsessions(
     assert woche["week_starts_on"] == montag.isoformat()
     assert woche["week_ends_on"] == sonntag.isoformat()
     assert woche["days_remaining"] == (sonntag - heute).days + 1
-    # Erwartung selbst gerechnet: die beiden Serientage liegen nur in dieser
-    # Woche, wenn heute nicht der Montag ist.
-    erwartete_tage = {montag, heute - timedelta(days=1), heute - timedelta(days=2)}
-    erwartete_tage = {tag for tag in erwartete_tage if montag <= tag <= sonntag}
-    assert woche["studied_minutes"] == 60 * len(erwartete_tage)
-    assert woche["days_studied"] == len(erwartete_tage)
+    # Erwartung aus den angelegten Sessions gerechnet: welche davon in diese
+    # Woche fallen, haengt am Wochentag des Testlaufs.
+    in_der_woche = [(tag, minuten) for tag, minuten in gelernt if montag <= tag <= sonntag]
+    wochenminuten = sum(minuten for _, minuten in in_der_woche)
+    assert woche["studied_minutes"] == wochenminuten
+    assert woche["days_studied"] == len({tag for tag, _ in in_der_woche})
     assert woche["goal_minutes"] == DEFAULT_WEEKLY_GOAL_MINUTES
     assert woche["goal_reached"] is False
-    assert woche["percent"] == round((60 * len(erwartete_tage) / DEFAULT_WEEKLY_GOAL_MINUTES) * 100, 1)
+    assert woche["percent"] == round((wochenminuten / DEFAULT_WEEKLY_GOAL_MINUTES) * 100, 1)
 
     # Ein eigenes Wochenziel wird gespeichert und im selben Fenster gemessen.
     gespeichert = client.patch("/api/v1/progress/goal", json={"goal_minutes": 30})
     assert gespeichert.status_code == 200
     assert gespeichert.json()["goal_minutes"] == 30
-    assert gespeichert.json()["goal_reached"] is True
+    # Am Montag liegt noch nichts in dieser Woche - dann ist auch ein kleines Ziel nicht erreicht.
+    assert gespeichert.json()["goal_reached"] is (wochenminuten >= 30)
     assert client.get("/api/v1/progress/insights").json()["week"]["goal_minutes"] == 30
     # Ein Ziel ist eine Zahl in einem vertretbaren Rahmen, kein Wort.
     assert client.patch("/api/v1/progress/goal", json={"goal_minutes": 0}).status_code == 422
