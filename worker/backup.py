@@ -318,13 +318,16 @@ def database_target(database_url: str) -> DatabaseTarget:
     )
 
 
-def resolve_pg_dump(binary: str = DEFAULT_PG_DUMP_BINARY) -> str:
+def resolve_pg_dump(binary: str = DEFAULT_PG_DUMP_BINARY, package_root: Path = Path("/usr/lib/postgresql")) -> str:
     """Findet ``pg_dump``: Pfad aus der Konfiguration, dann PATH, dann Linux-Pakete.
 
     Die dritte Quelle deckt Debian ab, wo ``postgresql-client`` die Binary unter
     ``/usr/lib/postgresql/<version>/bin/`` ablegt und nur einen Wrapper in
     ``/usr/bin`` anbietet. Ohne Treffer ist das ein Konfigurationsfehler, kein
     Fehlschlag des Backups - der Worker bleibt dabei gesund.
+
+    ``package_root`` ist nur fuer Tests verstellbar: auf einem CI-Runner mit
+    installiertem ``postgresql-client`` faende die dritte Quelle sonst immer etwas.
     """
     candidates: list[str] = []
     configured = os.getenv("BACKUP_PG_DUMP_BINARY", "").strip()
@@ -333,7 +336,7 @@ def resolve_pg_dump(binary: str = DEFAULT_PG_DUMP_BINARY) -> str:
     located = shutil.which(binary)
     if located:
         candidates.append(located)
-    candidates.extend(str(path) for path in sorted(Path("/usr/lib/postgresql").glob("*/bin/pg_dump"), reverse=True))
+    candidates.extend(str(path) for path in sorted(package_root.glob("*/bin/pg_dump"), reverse=True))
     for candidate in candidates:
         if Path(candidate).is_file():
             return candidate
