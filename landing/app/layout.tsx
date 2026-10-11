@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   title: "Lernraum – der Schulalltag an einem Ort",
   description,
   applicationName: "Lernraum",
-  icons: { icon: "/icon.svg" },
+  icons: { icon: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/icon.svg` },
   openGraph: {
     title: "Lernraum",
     description,
@@ -34,6 +34,12 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="de" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+      {/* Statisch (GitHub Pages) gibt es keine Antwort-Header; die CSP kommt dann als <meta>. */}
+      {process.env.STATIC_EXPORT === "true" ? (
+        <head>
+          <meta httpEquiv="Content-Security-Policy" content={process.env.LANDING_CSP} />
+        </head>
+      ) : null}
       <body>{children}</body>
     </html>
   );

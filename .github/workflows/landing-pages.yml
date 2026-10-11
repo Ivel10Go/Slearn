@@ -1,0 +1,70 @@
+name: landing page (GitHub Pages)
+
+# Baut landing/ statisch (`STATIC_EXPORT=true`) und veroeffentlicht `out/` auf
+# GitHub Pages. Die Warteliste geht dort an die Supabase Edge Function
+# `landing/supabase/functions/waitlist`; ihre Adresse steht in der Repo-Variable
+# `WAITLIST_URL` (Settings → Secrets and variables → Actions → Variables).
+# Siehe docs/landing.md, „GitHub Pages“.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "landing/**"
+      - ".github/workflows/landing-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: landing
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: landing/package-lock.json
+      - id: pages
+        uses: actions/configure-pages@v5
+      - name: install
+        run: npm ci
+      - name: test (vitest)
+        run: npm test
+      # Ein statischer Export kann keine Route-Handler bauen; die Warteliste
+      # uebernimmt hier die Edge Function.
+      - name: remove server routes
+        run: rm -rf app/api
+      - name: build (static export)
+        run: npx next build --webpack
+        env:
+          STATIC_EXPORT: "true"
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}
+          LANDING_SITE_URL: ${{ steps.pages.outputs.base_url }}
+          NEXT_PUBLIC_WAITLIST_URL: ${{ vars.WAITLIST_URL }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: landing/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

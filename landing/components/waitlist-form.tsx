@@ -10,6 +10,10 @@ type Status =
   | { kind: "done"; message: string }
   | { kind: "error"; message: string; field: WaitlistField };
 
+// Statisch auf GitHub Pages gibt es keine eigene Route; dann geht das Formular
+// an die Supabase Edge Function (`supabase/functions/waitlist`).
+const WAITLIST_URL = process.env.NEXT_PUBLIC_WAITLIST_URL || "/api/waitlist";
+
 const inputClass =
   "h-10 w-full rounded-md border border-input bg-background px-3 text-[14px] text-foreground placeholder:text-muted-foreground transition-colors hover:border-muted-foreground/60 focus-visible:border-foreground focus-visible:outline-none aria-[invalid=true]:border-foreground";
 
@@ -31,10 +35,12 @@ export function WaitlistForm({ kompakt = false, className }: { kompakt?: boolean
       platform: form.get("platform") ?? "",
       consent: form.get("consent") === "on",
       website: form.get("website") ?? "",
+      // Fuer die Edge Function: ein Referer quer ueber Herkuenfte hat keine Query mehr.
+      source: new URLSearchParams(window.location.search).get("ref") ?? "",
     };
     setStatus({ kind: "sending" });
     try {
-      const response = await fetch("/api/waitlist", {
+      const response = await fetch(WAITLIST_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
