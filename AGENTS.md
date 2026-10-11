@@ -125,6 +125,7 @@ Der Modellkatalog laedt nur Dateien. Ohne `llama-server`/`whisper-server`/`piper
 - **Eigene App, kein Teil von `frontend/`.** Die App hat SetupGate, Login und einen Service Worker; eine öffentliche Werbeseite dahinter würde in der Desktop-App mit ausgeliefert. Deshalb eigener Ordner, eigenes Lockfile, eigener CI-Job `landing`.
 - **Kopien statt Import:** `components/faultier.tsx` und die Tokens in `app/globals.css` stammen aus `frontend/`. Das Dunkelschema hängt hier an `prefers-color-scheme`, nicht an `.dark`.
 - **Warteliste:** Regeln in `lib/waitlist.ts` (ohne I/O, getestet), Speicher in `lib/waitlist-store.ts` (Supabase per REST, sonst JSONL-Datei). Doppelte Adressen und das Honigtopf-Feld bekommen dieselbe Erfolgsantwort – nicht „verbessern“, sonst verrät das Formular, wer eingetragen ist. Die Mengenbegrenzung zählt jede Anfrage, auch ungültige; lokal teilen sich alle Anfragen ohne `X-Forwarded-For` einen Schlüssel.
+- **GitHub Pages** (`.github/workflows/landing-pages.yml`): statischer Export ohne `app/api`; die Warteliste läuft dort über die Supabase Edge Function `landing/supabase/functions/waitlist`, deren `waitlist.ts` eine getestete Kopie von `lib/waitlist.ts` ist. Details in `docs/landing.md`.
 - **Aussagen auf der Seite nur aus dem Code.** Preise, Systemanforderungen und Raspberry-Pi-Betrieb sind bewusst nicht behauptet.
 - `npm install` im leeren Ordner brach mit `Cannot read properties of null (reading 'edgesOut')` ab; mit dem Lockfile aus `frontend/` als Startpunkt lief es durch.
 
