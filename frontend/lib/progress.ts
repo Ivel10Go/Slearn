@@ -16,6 +16,7 @@
 
 import { formatDuration } from "./format";
 import type { ConfidenceStep, LearningInsights, Streak, TopicProgress, WeeklyGoal, WeekdayStudyTime } from "./types";
+import { t, tn, translateServerText } from "./i18n";
 
 /**
  * Lernzeit als Text.
@@ -25,7 +26,7 @@ import type { ConfidenceStep, LearningInsights, Streak, TopicProgress, WeeklyGoa
  * fehlende Angabe.
  */
 export function lernzeit(minutes: number): string {
-  return minutes > 0 ? formatDuration(minutes) : "0 Min.";
+  return minutes > 0 ? formatDuration(minutes) : t("{n} Min.", { n: 0 });
 }
 
 /** Der Anteil eines Balkens in Prozent, begrenzt auf 0 bis 100. */
@@ -57,25 +58,25 @@ export function weekdayBalken(wochentage: WeekdayStudyTime[]): Array<WeekdayStud
  */
 export function wiederholungLabel(thema: Pick<TopicProgress, "next_review_on" | "days_until_review" | "is_due">): string {
   if (thema.next_review_on === null) {
-    return "Noch nie wiederholt";
+    return t("Noch nie wiederholt");
   }
   const tage = thema.days_until_review;
   if (tage === null) {
-    return `Wiederholen am ${thema.next_review_on}`;
+    return t("Wiederholen am {datum}", { datum: thema.next_review_on });
   }
   if (tage === 0) {
-    return "Heute wiederholen";
+    return t("Heute wiederholen");
   }
   if (tage === 1) {
-    return "Morgen wiederholen";
+    return t("Morgen wiederholen");
   }
   if (tage === -1) {
-    return "Seit gestern fällig";
+    return t("Seit gestern fällig");
   }
   if (tage < 0) {
-    return `Seit ${Math.abs(tage)} Tagen fällig`;
+    return t("Seit {n} Tagen fällig", { n: Math.abs(tage) });
   }
-  return `In ${tage} Tagen`;
+  return t("In {n} Tagen", { n: tage });
 }
 
 /**
@@ -88,17 +89,17 @@ export function wiederholungLabel(thema: Pick<TopicProgress, "next_review_on" | 
 export function streakLabel(serie: Pick<Streak, "current_days" | "studied_today">): string {
   const tage = serie.current_days;
   if (tage <= 0) {
-    return "Keine laufende Serie";
+    return t("Keine laufende Serie");
   }
   if (tage === 1) {
-    return serie.studied_today ? "1 Tag in Folge" : "1 Tag · heute noch offen";
+    return serie.studied_today ? t("1 Tag in Folge") : t("1 Tag · heute noch offen");
   }
-  return serie.studied_today ? `${tage} Tage in Folge` : `${tage} Tage · heute noch offen`;
+  return serie.studied_today ? t("{n} Tage in Folge", { n: tage }) : t("{n} Tage · heute noch offen", { n: tage });
 }
 
 /** "180 von 300 Min." - der Wochenstand mit seinem Ziel, ohne Prozentzahl. */
 export function wochenzielLabel(woche: Pick<WeeklyGoal, "studied_minutes" | "goal_minutes">): string {
-  return `${lernzeit(woche.studied_minutes)} von ${lernzeit(woche.goal_minutes)}`;
+  return t("{ist} von {ziel}", { ist: lernzeit(woche.studied_minutes), ziel: lernzeit(woche.goal_minutes) });
 }
 
 /**
@@ -112,8 +113,8 @@ export function intervallRegel(stufen: ConfidenceStep[]): string {
   if (stufen.length === 0) {
     return "";
   }
-  const teile = stufen.map((stufe) => `${stufe.label} ${stufe.interval_days} ${stufe.interval_days === 1 ? "Tag" : "Tage"}`);
-  return `Fünf Stufen, ein festes Intervall je Stufe: ${teile.join(", ")}. Je sicherer die Einschätzung, desto länger bis zur nächsten Wiederholung.`;
+  const teile = stufen.map((stufe) => `${translateServerText(stufe.label)} ${tn(stufe.interval_days, "{n} Tag", "{n} Tage")}`);
+  return t("Fünf Stufen, ein festes Intervall je Stufe: {liste}. Je sicherer die Einschätzung, desto länger bis zur nächsten Wiederholung.", { liste: teile.join(", ") });
 }
 
 /**
@@ -143,6 +144,6 @@ export function laufendeSessionHinweis(insights: Pick<LearningInsights, "open_se
   if (insights.open_sessions <= 0) {
     return null;
   }
-  const anzahl = insights.open_sessions === 1 ? "1 Lernsession läuft noch" : `${insights.open_sessions} Lernsessions laufen noch`;
-  return `${anzahl} · ${lernzeit(insights.active_minutes)} zählen erst nach dem Beenden.`;
+  const anzahl = tn(insights.open_sessions, "{n} Lernsession läuft noch", "{n} Lernsessions laufen noch");
+  return t("{anzahl} · {zeit} zählen erst nach dem Beenden.", { anzahl, zeit: lernzeit(insights.active_minutes) });
 }

@@ -23,6 +23,7 @@ import { formatDate, formatTime, isSameDay, toIsoDate } from "@/lib/format";
 import { useCollection } from "@/lib/use-collection";
 import { cn } from "@/lib/utils";
 import type { CalendarEvent } from "@/lib/types";
+import { t, tn } from "@/lib/i18n";
 
 const anchorClass = "scroll-mt-24";
 
@@ -64,10 +65,10 @@ function ausTermin(termin: CalendarEvent): KalenderFormular {
 
 function alsEingabe(formular: KalenderFormular): CalendarEventWrite | { fehler: string } {
   if (!formular.titel.trim()) {
-    return { fehler: "Gib dem Termin einen Titel." };
+    return { fehler: t("Gib dem Termin einen Titel.") };
   }
   if (!formular.tag) {
-    return { fehler: "An welchem Tag findet der Termin statt?" };
+    return { fehler: t("An welchem Tag findet der Termin statt?") };
   }
   if (formular.ganztag) {
     // Ganztag: Ende ist der **Start des Folgetags**. Das Backend lehnt
@@ -76,7 +77,7 @@ function alsEingabe(formular: KalenderFormular): CalendarEventWrite | { fehler: 
     const folgetag = toUtcIsoFromParts(naechsterTag(formular.tag), "00:00");
     const start = toUtcIsoFromParts(formular.tag, "00:00");
     if (!start || !folgetag) {
-      return { fehler: "Dieses Datum lässt sich nicht lesen. Bitte erneut wählen." };
+      return { fehler: t("Dieses Datum lässt sich nicht lesen. Bitte erneut wählen.") };
     }
     return {
       title: formular.titel.trim(),
@@ -87,17 +88,17 @@ function alsEingabe(formular: KalenderFormular): CalendarEventWrite | { fehler: 
     };
   }
   if (!formular.von || !formular.bis) {
-    return { fehler: "Von wann bis wann geht der Termin?" };
+    return { fehler: t("Von wann bis wann geht der Termin?") };
   }
   const start = toUtcIsoFromParts(formular.tag, formular.von);
   const ende = toUtcIsoFromParts(formular.tag, formular.bis);
   if (!start || !ende) {
-    return { fehler: "Diese Uhrzeit lässt sich nicht lesen. Bitte erneut wählen." };
+    return { fehler: t("Diese Uhrzeit lässt sich nicht lesen. Bitte erneut wählen.") };
   }
   if (ende <= start) {
     // Der Client faengt es ab, damit der Lernende eine verstaendliche
     // Meldung bekommt statt "end_time must not precede start_time".
-    return { fehler: "Das Ende liegt vor dem Beginn. Bitte die Zeiten prüfen." };
+    return { fehler: t("Das Ende liegt vor dem Beginn. Bitte die Zeiten prüfen.") };
   }
   return {
     title: formular.titel.trim(),
@@ -167,13 +168,13 @@ export function CalendarSection({ reference }: { reference: Date }) {
   return (
     <Card id="calendar" className={cn(anchorClass, "@container")}>
       <SectionHeader
-        title="Termine"
-        count={`${sammlung.items.length} ${sammlung.items.length === 1 ? "Termin" : "Termine"}`}
+        title={t("Termine")}
+        count={tn(sammlung.items.length, "{n} Termin", "{n} Termine")}
         loading={sammlung.status === "loading"}
         onReload={() => void sammlung.reload()}
         formOpen={formularOffen && bearbeitet === null}
         onToggleForm={() => (formularOffen && bearbeitet === null ? schliessen() : oeffnen())}
-        newLabel="Neuer Termin"
+        newLabel={t("Neuer Termin")}
       />
 
       <CardContent className="space-y-3 pb-0">
@@ -182,20 +183,20 @@ export function CalendarSection({ reference }: { reference: Date }) {
         {formularOffen ? (
           <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-border bg-muted/40 p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-semibold">{bearbeitet === null ? "Neuer Termin" : "Termin bearbeiten"}</p>
-              <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
+              <p className="text-sm font-semibold">{bearbeitet === null ? t("Neuer Termin") : t("Termin bearbeiten")}</p>
+              <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label={t("Formular schließen")}>
                 <X aria-hidden="true" />
               </Button>
             </div>
 
-            <Field id="termin-titel" label="Titel" required>
+            <Field id="termin-titel" label={t("Titel")} required>
               {(props) => (
                 <Input
                   {...props}
                   value={formular.titel}
                   onChange={(event) => setFormular((current) => ({ ...current, titel: event.target.value }))}
                   disabled={istSpeichern}
-                  placeholder="Zum Beispiel: Elternabend"
+                  placeholder={t("Zum Beispiel: Elternabend")}
                 />
               )}
             </Field>
@@ -203,7 +204,7 @@ export function CalendarSection({ reference }: { reference: Date }) {
             <div className="grid grid-cols-2 gap-4 @md:grid-cols-3">
               {/* Im schmalen Raster steht der Tag allein in der ersten Zeile,
                   Von und Bis teilen sich die zweite. */}
-              <Field id="termin-tag" label="Tag" required className="col-span-2 @md:col-span-1">
+              <Field id="termin-tag" label={t("Tag")} required className="col-span-2 @md:col-span-1">
                 {(props) => (
                   <Input
                     {...props}
@@ -215,7 +216,7 @@ export function CalendarSection({ reference }: { reference: Date }) {
                 )}
               </Field>
 
-              <Field id="termin-von" label="Von" required={!formular.ganztag}>
+              <Field id="termin-von" label={t("Von")} required={!formular.ganztag}>
                 {(props) => (
                   <Input
                     {...props}
@@ -227,7 +228,7 @@ export function CalendarSection({ reference }: { reference: Date }) {
                 )}
               </Field>
 
-              <Field id="termin-bis" label="Bis" required={!formular.ganztag}>
+              <Field id="termin-bis" label={t("Bis")} required={!formular.ganztag}>
                 {(props) => (
                   <Input
                     {...props}
@@ -248,17 +249,17 @@ export function CalendarSection({ reference }: { reference: Date }) {
                 disabled={istSpeichern}
                 className="h-4 w-4 border-input bg-card accent-[var(--foreground)]"
               />
-              Ganztägig
+              {t("Ganztägig")}
             </label>
 
-            <Field id="termin-beschreibung" label="Notiz">
+            <Field id="termin-beschreibung" label={t("Notiz")}>
               {(props) => (
                 <Textarea
                   {...props}
                   value={formular.beschreibung}
                   onChange={(event) => setFormular((current) => ({ ...current, beschreibung: event.target.value }))}
                   disabled={istSpeichern}
-                  placeholder="Aula, Eingang Nord"
+                  placeholder={t("Aula, Eingang Nord")}
                 />
               )}
             </Field>
@@ -268,23 +269,23 @@ export function CalendarSection({ reference }: { reference: Date }) {
             <div className="flex flex-wrap items-center gap-2">
               <Button type="submit" disabled={istSpeichern}>
                 {istSpeichern ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
-                {istSpeichern ? "Wird gespeichert …" : bearbeitet === null ? "Termin anlegen" : "Änderungen speichern"}
+                {istSpeichern ? t("Wird gespeichert …") : bearbeitet === null ? t("Termin anlegen") : t("Änderungen speichern")}
               </Button>
               <Button type="button" variant="ghost" onClick={schliessen} disabled={istSpeichern}>
-                Abbrechen
+                {t("Abbrechen")}
               </Button>
             </div>
           </form>
         ) : null}
 
         {sammlung.status === "loading" && sammlung.items.length === 0 ? (
-          <div className="space-y-2 pb-4" aria-busy="true" aria-label="Termine werden geladen">
+          <div className="space-y-2 pb-4" aria-busy="true" aria-label={t("Termine werden geladen")}>
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
           </div>
         ) : sammlung.items.length === 0 ? (
           <div className="pb-4">
-            <EmptyState icon={CalendarDays} title="Keine Termine" description="Dein Kalender ist frei." />
+            <EmptyState icon={CalendarDays} title={t("Keine Termine")} description={t("Dein Kalender ist frei.")} />
           </div>
         ) : (
           // Eine flache Liste statt Tagesgruppen: das Kalenderblatt vorn zeigt
@@ -339,8 +340,8 @@ function TerminZeile({
         <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
           <Clock3 className="h-3 w-3" aria-hidden="true" />
           <span className="sr-only">{formatDate(termin.start_time, { weekday: "long", day: "2-digit", month: "long" })},</span>
-          {heute ? "Heute · " : null}
-          {termin.all_day ? "Ganztägig" : `${formatTime(termin.start_time)} – ${formatTime(termin.end_time)}`}
+          {heute ? t("Heute · ") : null}
+          {termin.all_day ? t("Ganztägig") : `${formatTime(termin.start_time)} – ${formatTime(termin.end_time)}`}
         </p>
         {termin.description ? <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-muted-foreground">{termin.description}</p> : null}
       </div>

@@ -26,6 +26,8 @@
  */
 
 import type { GradeKind, GradeProjection, GradeSummary, GradeTrendPoint } from "./types";
+import { formatNumber } from "./format";
+import { t, tn } from "./i18n";
 
 /**
  * Die Art der Leistung in Worten.
@@ -35,9 +37,9 @@ import type { GradeKind, GradeProjection, GradeSummary, GradeTrendPoint } from "
  * `STATUS_LABEL` in der Dokumentenliste.
  */
 export const GRADE_ART: Record<GradeKind, string> = {
-  written_exam: "Klassenarbeit",
-  test: "Test",
-  oral: "Mündlich",
+  written_exam: t("Klassenarbeit"),
+  test: t("Test"),
+  oral: t("Mündlich"),
 };
 
 /** Die beste Note der Skala. Die schlechteste ist 6,0 - die Datenbank laesst nichts darueber zu. */
@@ -45,7 +47,7 @@ export const BESTE_NOTE = 1;
 
 /** "1,7" - mit Komma, wie man es in Deutschland schreibt. */
 export function notenText(wert: number): string {
-  return wert.toFixed(1).replace(".", ",");
+  return formatNumber(wert, 1);
 }
 
 /** Ein Schnitt, oder ein Gedankenstrich, wenn es ihn nicht gibt. */
@@ -62,17 +64,17 @@ export function schnittText(average: number | null | undefined): string {
  * Zahl hat.
  */
 export function bestandenLabel(passed: boolean): string {
-  return passed ? "bestanden" : "nicht bestanden";
+  return passed ? t("bestanden") : t("nicht bestanden");
 }
 
 /** "2 Noten" oder "1 Note" - ohne Singular-Ausnahme im Aufrufer. */
 export function notenAnzahl(count: number): string {
-  return `${count} ${count === 1 ? "Note" : "Noten"}`;
+  return tn(count, "{n} Note", "{n} Noten");
 }
 
 /** Das Gewicht hinter einer Note, wenn es vom Default abweicht. */
 export function gewichtText(weight: number): string | null {
-  return weight === 1 ? null : `zählt ${weight}×`;
+  return weight === 1 ? null : t("zählt {n}×", { n: weight });
 }
 
 /**
@@ -157,8 +159,8 @@ export function verlaufBeschriftung(trend: GradeTrendPoint[]): string | null {
   }
   const erstes = trend[0].graded_on;
   const tage = Math.max(1, Math.round((Date.parse(`${trend[trend.length - 1].graded_on}T00:00:00Z`) - Date.parse(`${erstes}T00:00:00Z`)) / 86_400_000));
-  const dauer = tage < 14 ? `${tage} Tage` : `${Math.round(tage / 7)} Wochen`;
-  return `${notenAnzahl(trend[trend.length - 1].count)} über ${dauer}`;
+  const dauer = tage < 14 ? t("{n} Tage", { n: tage }) : t("{n} Wochen", { n: Math.round(tage / 7) });
+  return t("{noten} über {dauer}", { noten: notenAnzahl(trend[trend.length - 1].count), dauer });
 }
 
 /**
@@ -174,17 +176,17 @@ export function hochrechnungText(projection: GradeProjection): string | null {
   }
   const grenze = notenText(projection.passing_grade);
   if (projection.needed_average === null) {
-    return `Auch mit lauter 1,0 im Rest ist die ${grenze} nicht mehr drin.`;
+    return t("Auch mit lauter {beste} im Rest ist die {grenze} nicht mehr drin.", { beste: notenText(BESTE_NOTE), grenze });
   }
   const noetig = notenText(projection.needed_average);
   const bester = projection.best_possible_average === null ? null : notenText(projection.best_possible_average);
-  const kern = `Ab ${noetig} im Rest klappt die ${grenze}.`;
-  return bester === null ? kern : `${kern} Mit lauter 1,0 kämst du auf ${bester}.`;
+  const kern = t("Ab {noetig} im Rest klappt die {grenze}.", { noetig, grenze });
+  return bester === null ? kern : `${kern} ${t("Mit lauter {beste} kämst du auf {wert}.", { beste: notenText(BESTE_NOTE), wert: bester })}`;
 }
 
 /** Die Beschriftung der Schwelle auf der Linie. */
 export function grenzLabel(passingGrade: number): string {
-  return `${notenText(passingGrade)} · bestanden ab hier`;
+  return t("{note} · bestanden ab hier", { note: notenText(passingGrade) });
 }
 
 /**
@@ -197,15 +199,22 @@ export function grenzLabel(passingGrade: number): string {
  */
 export function verlaufAltText(trend: GradeTrendPoint[], passingGrade: number): string {
   if (trend.length === 0) {
-    return "Noch kein Notenverlauf.";
+    return t("Noch kein Notenverlauf.");
   }
   const grenze = notenText(passingGrade);
   if (trend.length === 1) {
-    return `Eine Note: ${notenText(trend[0].average)} am ${trend[0].graded_on}. Bestehensgrenze ${grenze}.`;
+    return t("Eine Note: {note} am {datum}. Bestehensgrenze {grenze}.", { note: notenText(trend[0].average), datum: trend[0].graded_on, grenze });
   }
   const erstes = trend[0];
   const letztes = trend[trend.length - 1];
-  return `Schnittverlauf: ${notenText(erstes.average)} am ${erstes.graded_on} bis ${notenText(letztes.average)} am ${letztes.graded_on}, aus ${notenAnzahl(letztes.count)}. Bestehensgrenze ${grenze}.`;
+  return t("Schnittverlauf: {von} am {vonDatum} bis {bis} am {bisDatum}, aus {noten}. Bestehensgrenze {grenze}.", {
+    von: notenText(erstes.average),
+    vonDatum: erstes.graded_on,
+    bis: notenText(letztes.average),
+    bisDatum: letztes.graded_on,
+    noten: notenAnzahl(letztes.count),
+    grenze,
+  });
 }
 
 /**
@@ -218,10 +227,10 @@ export function verlaufAltText(trend: GradeTrendPoint[], passingGrade: number): 
 export function aktuellesHalbjahr(jetzt: Date): { start: string; label: string } {
   const jahr = jetzt.getFullYear();
   const start = jetzt.getMonth() >= 7 ? new Date(jahr, 7, 1) : new Date(jahr, 1, 1);
-  const ende = jetzt.getMonth() >= 7 ? "Januar" : "August";
+  const ende = jetzt.getMonth() >= 7 ? t("Januar") : t("August");
   return {
     start: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-01`,
-    label: `${start.getFullYear()} bis ${ende}`,
+    label: t("{jahr} bis {monat}", { jahr: start.getFullYear(), monat: ende }),
   };
 }
 
@@ -234,7 +243,7 @@ export function notenZeile(grade: { grade_value: number; kind: GradeKind; weight
 /** Die Zaehlung in der Kopfzeile der Karte. */
 export function kopfZahl(summary: GradeSummary): string {
   if (summary.total_count === 0) {
-    return "Noch keine Noten";
+    return t("Noch keine Noten");
   }
-  return `${notenAnzahl(summary.total_count)} · Schnitt ${notenText(summary.overall.average)}`;
+  return t("{noten} · Schnitt {schnitt}", { noten: notenAnzahl(summary.total_count), schnitt: notenText(summary.overall.average) });
 }

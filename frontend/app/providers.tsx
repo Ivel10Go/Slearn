@@ -6,6 +6,18 @@ import { DesktopBridge } from "@/components/desktop-bridge";
 import { NotificationBridge } from "@/components/notification-bridge";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { SetupGate } from "@/components/setup-gate";
+import { getLocale } from "@/lib/i18n";
+
+/**
+ * `<html lang>` folgt der Oberflaechensprache. Das Layout rendert auf dem Server
+ * immer `de` - die gewaehlte Sprache kennt erst der Browser.
+ */
+function LanguageSync() {
+  useEffect(() => {
+    document.documentElement.lang = getLocale();
+  }, []);
+  return null;
+}
 
 function ThemeColorSync() {
   const { resolvedTheme } = useTheme();
@@ -36,6 +48,7 @@ export function AppProviders({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <ThemeColorSync />
+      <LanguageSync />
       <DesktopBridge />
       <ServiceWorkerRegister />
       {/*

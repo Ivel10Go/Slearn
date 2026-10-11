@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import os
 import sys
 import tempfile
 import unittest
@@ -187,9 +188,11 @@ class DatabaseTargetTests(unittest.TestCase):
 
 class PgDumpResolutionTests(unittest.TestCase):
     def test_reports_a_missing_binary_in_german(self) -> None:
-        # Ein Name, den es garantiert nicht gibt, muss sauber scheitern.
-        with self.assertRaises(BackupConfigurationError) as context:
-            resolve_pg_dump("pg_dump-die-es-nicht-gibt")
+        # Ein Name, den es garantiert nicht gibt, muss sauber scheitern - auch auf
+        # einem Rechner, auf dem unter /usr/lib/postgresql ein echtes pg_dump liegt.
+        with tempfile.TemporaryDirectory() as leer, mock.patch.dict(os.environ, {"BACKUP_PG_DUMP_BINARY": ""}):
+            with self.assertRaises(BackupConfigurationError) as context:
+                resolve_pg_dump("pg_dump-die-es-nicht-gibt", package_root=Path(leer))
         self.assertIn("pg_dump", str(context.exception))
         self.assertIn("BACKUP_PG_DUMP_BINARY", str(context.exception))
 

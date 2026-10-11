@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getLearningInsights, getTopicProgress, saveTopicProgress, setWeeklyGoal } from "./api";
 import type { LearningInsights, TopicProgress } from "./types";
 import { errorMessage } from "./use-collection";
+import { t } from "./i18n";
 
 type ProgressStatus = "loading" | "ready" | "error";
 
@@ -60,7 +61,7 @@ export function useProgress(refreshKey = 0): ProgressApi & ProgressState {
       if (currentRequest !== requestId.current) {
         return;
       }
-      setState((current) => ({ ...current, error: errorMessage(loadError, "Der Lernfortschritt konnte nicht geladen werden."), status: "error" }));
+      setState((current) => ({ ...current, error: errorMessage(loadError, t("Der Lernfortschritt konnte nicht geladen werden.")), status: "error" }));
     }
   }, []);
 
@@ -91,7 +92,7 @@ export function useProgress(refreshKey = 0): ProgressApi & ProgressState {
       }));
       return gespeichert;
     } catch (actionError) {
-      setState((current) => ({ ...current, actionError: errorMessage(actionError, "Der Lernstand konnte nicht gespeichert werden.") }));
+      setState((current) => ({ ...current, actionError: errorMessage(actionError, t("Der Lernstand konnte nicht gespeichert werden.")) }));
       return null;
     } finally {
       setState((current) => (current.pending === schluessel ? { ...current, pending: null } : current));
@@ -105,7 +106,7 @@ export function useProgress(refreshKey = 0): ProgressApi & ProgressState {
       setState((current) => ({ ...current, insights: current.insights ? { ...current.insights, week: woche } : current.insights }));
       return true;
     } catch (actionError) {
-      setState((current) => ({ ...current, actionError: errorMessage(actionError, "Das Wochenziel konnte nicht gespeichert werden.") }));
+      setState((current) => ({ ...current, actionError: errorMessage(actionError, t("Das Wochenziel konnte nicht gespeichert werden.")) }));
       return false;
     } finally {
       setState((current) => (current.pending === "goal" ? { ...current, pending: null } : current));

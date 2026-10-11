@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 /*
  * Die Entscheidungen des Sprach-Assistenten - ohne React, ohne DOM.
  *
@@ -219,12 +220,12 @@ export function naechsterAufnahmeZustand(zustand: AufnahmeZustand, aktion: Aufna
 /** Wie eine Aufnahme in diesem Zustand heisst. Deutsch, ohne Farbe, ohne Punkt. */
 export function beschreibeAufnahme(zustand: AufnahmeZustand, sekunden: number): string {
   if (zustand === "nimmt_auf") {
-    return `Nimmt auf · ${formatSekunden(sekunden)}`;
+    return t("Nimmt auf · {dauer}", { dauer: formatSekunden(sekunden) });
   }
   if (zustand === "wird_gesendet") {
-    return "Wird ausgewertet …";
+    return t("Wird ausgewertet …");
   }
-  return "Bereit";
+  return t("Bereit");
 }
 
 /** Sekunden als `m:ss`. Negative und nicht endliche Werte ergeben `0:00`. */
@@ -324,13 +325,13 @@ export function sprachZustand(faehigkeiten: FaehigkeitenEingabe | null | undefin
 export function sprachHinweis(zustand: SprachZustand): string {
   switch (zustand) {
     case "vollstaendig":
-      return "Spracheingabe und Sprachausgabe sind bereit.";
+      return t("Spracheingabe und Sprachausgabe sind bereit.");
     case "nur_eingabe":
-      return "Du kannst hier sprechen. Gelesen wird der Text weiterhin von dir - eine Stimme dafür wäre ein eigenes Modell.";
+      return t("Du kannst hier sprechen. Gelesen wird der Text weiterhin von dir - eine Stimme dafür wäre ein eigenes Modell.");
     case "nur_ausgabe":
-      return "Die Antwort wird vorgelesen. Tippen kannst du weiterhin - Spracheingabe wäre ein eigenes Modell.";
+      return t("Die Antwort wird vorgelesen. Tippen kannst du weiterhin - Spracheingabe wäre ein eigenes Modell.");
     default:
-      return "Tippen geht immer. Spracheingabe und Sprachausgabe kommen hinzu, sobald die passenden Modelle geladen sind.";
+      return t("Tippen geht immer. Spracheingabe und Sprachausgabe kommen hinzu, sobald die passenden Modelle geladen sind.");
   }
 }
 
@@ -370,15 +371,15 @@ export function mikrofonZustand(ursache: unknown): MikrofonZustand {
 export function mikrofonHinweis(zustand: MikrofonZustand): string {
   switch (zustand) {
     case "erlaubt":
-      return "Das Mikrofon ist bereit.";
+      return t("Das Mikrofon ist bereit.");
     case "verweigert":
-      return "Ohne Mikrofon kannst du hier tippen. Falls du es doch erlauben willst, steht es oben in der Adresszeile des Browsers.";
+      return t("Ohne Mikrofon kannst du hier tippen. Falls du es doch erlauben willst, steht es oben in der Adresszeile des Browsers.");
     case "fehlt":
-      return "An diesem Geraet wurde kein Mikrofon gefunden. Tippen geht genauso.";
+      return t("An diesem Geraet wurde kein Mikrofon gefunden. Tippen geht genauso.");
     case "blockiert":
-      return "Das Mikrofon liess sich nicht oeffnen - es wird gerade von einem anderen Programm benutzt.";
+      return t("Das Mikrofon liess sich nicht oeffnen - es wird gerade von einem anderen Programm benutzt.");
     default:
-      return "Das Mikrofon wurde noch nicht angesprochen. Tippen geht jederzeit.";
+      return t("Das Mikrofon wurde noch nicht angesprochen. Tippen geht jederzeit.");
   }
 }
 
@@ -597,15 +598,15 @@ export function parseVoiceList(payload: unknown): VoiceListPayload | null {
 export function beschreibeStimmstatus(status: string): string {
   switch (status) {
     case "installed":
-      return "Geladen";
+      return t("Geladen");
     case "downloading":
-      return "Wird geladen";
+      return t("Wird geladen");
     case "interrupted":
-      return "Unterbrochen";
+      return t("Unterbrochen");
     case "failed":
-      return "Fehlgeschlagen";
+      return t("Fehlgeschlagen");
     default:
-      return "Nicht geladen";
+      return t("Nicht geladen");
   }
 }
 
@@ -613,11 +614,11 @@ export function beschreibeStimmstatus(status: string): string {
 export function beschreibeQualitaet(quality: string): string {
   switch (quality) {
     case "low":
-      return "niedrig";
+      return t("niedrig");
     case "medium":
-      return "mittel";
+      return t("mittel");
     case "high":
-      return "hoch";
+      return t("hoch");
     default:
       return quality;
   }
@@ -632,7 +633,17 @@ export function beschreibeQualitaet(quality: string): string {
  * Sprache, und das wird hier benannt statt stillschweigend akzeptiert.
  */
 export function brauchtDeutscheStimme(voices: VoicePayload[]): boolean {
-  return voices.some((stimme) => stimme.status.status === "installed" && stimme.language === "de_DE");
+  return hatStimmeInSprache(voices, "de");
+}
+
+/** Spricht eine Stimme (`de_DE`, `en_US`) die Sprache `locale`? */
+export function stimmeSpricht(stimme: Pick<VoicePayload, "language">, locale: string): boolean {
+  return stimme.language.toLowerCase().split("_")[0] === locale;
+}
+
+/** Ist eine Stimme in der Sprache der Oberflaeche geladen? Dieselbe Regel wie im Backend (`voice_matches`). */
+export function hatStimmeInSprache(voices: VoicePayload[], locale: string): boolean {
+  return voices.some((stimme) => stimme.status.status === "installed" && stimmeSpricht(stimme, locale));
 }
 /**
  * Ist das ein Mac? Fuer die **Beschriftung** des Tastenkuerzels, nicht fuer die

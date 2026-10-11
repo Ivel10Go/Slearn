@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { apiRequest } from "./api";
+import { t } from "./i18n";
 
 /*
  * Der Wochenplaner (`/api/v1/study/planner`): verteilt offene Aufgaben,
@@ -106,11 +107,11 @@ export type PlannerDay = z.infer<typeof daySchema>;
 export type PlannerResult = z.infer<typeof plannerResultSchema>;
 
 export const KIND_LABEL: Record<PlannerItemKind, string> = {
-  task: "Aufgabe",
-  homework: "Hausaufgabe",
-  exam_topic: "Klausur",
-  exam_review: "Klausur",
-  review: "Wiederholung",
+  task: t("Aufgabe"),
+  homework: t("Hausaufgabe"),
+  exam_topic: t("Klausur"),
+  exam_review: t("Klausur"),
+  review: t("Wiederholung"),
 };
 
 async function post(path: "preview" | "apply", options: PlannerOptions): Promise<PlannerResult> {
@@ -163,14 +164,14 @@ const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 export function validateOptions(options: PlannerOptions): string | null {
   for (const value of [options.earliest, options.weekend_earliest, options.latest]) {
     if (!CLOCK.test(value)) {
-      return "Bitte Uhrzeiten als HH:MM angeben.";
+      return t("Bitte Uhrzeiten als HH:MM angeben.");
     }
   }
   if (options.latest <= options.earliest || options.latest <= options.weekend_earliest) {
-    return "Das Ende muss nach dem frühesten Beginn liegen.";
+    return t("Das Ende muss nach dem frühesten Beginn liegen.");
   }
   if (!Number.isFinite(options.max_minutes_per_day) || options.max_minutes_per_day < 15 || options.max_minutes_per_day > 600) {
-    return "Pro Tag sind 15 bis 600 Minuten möglich.";
+    return t("Pro Tag sind 15 bis 600 Minuten möglich.");
   }
   return null;
 }

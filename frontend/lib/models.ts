@@ -1,3 +1,5 @@
+import { formatNumber } from "./format";
+import { t } from "./i18n";
 /*
  * Reine Helfer fuer den Modellkatalog und den Download-Manager.
  *
@@ -175,24 +177,24 @@ export function formatModelBytes(bytes: number | null | undefined): string {
   }
   const mib = bytes / (1024 * 1024);
   if (mib < 1024) {
-    return `${mib.toFixed(1).replace(".", ",")} MiB`;
+    return `${formatNumber(mib, 1)} MiB`;
   }
-  return `${(mib / 1024).toFixed(1).replace(".", ",")} GiB`;
+  return `${formatNumber(mib / 1024, 1)} GiB`;
 }
 
 /** Der Zustand als deutsche Beschriftung. Kein Farbcode, nur ein Wort. */
 export function describeModelStatus(status: string): string {
   switch (status) {
     case "installed":
-      return "Geladen";
+      return t("Geladen");
     case "downloading":
-      return "Wird geladen";
+      return t("Wird geladen");
     case "interrupted":
-      return "Unterbrochen";
+      return t("Unterbrochen");
     case "failed":
-      return "Fehlgeschlagen";
+      return t("Fehlgeschlagen");
     default:
-      return "Nicht geladen";
+      return t("Nicht geladen");
   }
 }
 
@@ -227,15 +229,15 @@ export function canDeleteModel(status: ModelStatusPayload): boolean {
 export function describeModelTask(task: string): string {
   switch (task) {
     case "text_generation":
-      return "Text";
+      return t("Text");
     case "speech_to_text":
-      return "Sprache zu Text";
+      return t("Sprache zu Text");
     case "text_to_speech":
-      return "Text zu Sprache";
+      return t("Text zu Sprache");
     case "embedding":
-      return "Einbettungen";
+      return t("Einbettungen");
     case "image_to_text":
-      return "Bild zu Text";
+      return t("Bild zu Text");
     default:
       return task;
   }

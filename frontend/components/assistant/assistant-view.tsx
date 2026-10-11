@@ -41,6 +41,7 @@ import { beschreibeAufnahme } from "@/lib/speech";
 import { PHASEN_TEXT, useConversation } from "@/lib/use-conversation";
 import { useSpeech } from "@/lib/use-speech";
 import { cn } from "@/lib/utils";
+import { t, tSplit } from "@/lib/i18n";
 
 /*
  * Der Assistent: ein Gespraech mit dem gewaehlten Modell ueber Unterlagen,
@@ -192,7 +193,7 @@ export function AssistantView() {
               states[index] = "eingetragen";
             }
           });
-          text = fehlgeschlagen ? "Das hat leider nicht geklappt. Trag es bitte über den Knopf ein." : "Erledigt, ist eingetragen.";
+          text = fehlgeschlagen ? t("Das hat leider nicht geklappt. Trag es bitte über den Knopf ein.") : t("Erledigt, ist eingetragen.");
           if (fehlgeschlagen) {
             letzte.reply?.proposals.forEach((_, index) => (states[index] = "offen"));
           } else {
@@ -205,7 +206,7 @@ export function AssistantView() {
             }
           });
           feedbackNebenbei(letzte.reply?.training_example_id, "rejected");
-          text = "Okay, ich trage nichts ein.";
+          text = t("Okay, ich trage nichts ein.");
         }
         const aktualisiert = verlauf.map((message) => (message.id === letzte.id ? { ...message, proposalStates: states } : message));
         const fertig = [...aktualisiert, mitId({ role: "assistant", content: text })];
@@ -230,7 +231,7 @@ export function AssistantView() {
         }
         return antwort.reply;
       } catch (ursache) {
-        setFehler(fehlertext(ursache, "Der Assistent hat nicht geantwortet."));
+        setFehler(fehlertext(ursache, t("Der Assistent hat nicht geantwortet.")));
         return null;
       } finally {
         setSendet(false);
@@ -318,7 +319,7 @@ export function AssistantView() {
       vorschlagSetzen(messageId, index, "eingetragen", ergebnis.message);
       freuen();
     } catch (ursache) {
-      vorschlagSetzen(messageId, index, "offen", fehlertext(ursache, "Der Eintrag ist fehlgeschlagen."));
+      vorschlagSetzen(messageId, index, "offen", fehlertext(ursache, t("Der Eintrag ist fehlgeschlagen.")));
     }
   }
 
@@ -351,28 +352,28 @@ export function AssistantView() {
     <div className="space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Assistent</h1>
+          <h1 className="text-[22px] font-semibold leading-8 tracking-tight">{t("Assistent")}</h1>
           <p className="mt-0.5 max-w-2xl text-[13px] leading-5 text-muted-foreground">
-            Frag zu deinen Unterlagen, plane deine Woche oder lass Prüfungen, Hausaufgaben und Termine eintragen. Tippen oder sprechen.
+            {t("Frag zu deinen Unterlagen, plane deine Woche oder lass Prüfungen, Hausaufgaben und Termine eintragen. Tippen oder sprechen.")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label htmlFor="assistent-modell" className="sr-only">
-            Modell
+            {t("Modell")}
           </label>
           <Select id="assistent-modell" value={auswahl} onChange={(event) => setAuswahl(event.target.value)} className="h-8 w-auto min-w-48">
-            <option value={AUTO}>Automatisch (lokal zuerst)</option>
+            <option value={AUTO}>{t("Automatisch (lokal zuerst)")}</option>
             {(routes ?? []).map((route) => (
               <option key={routeKey(route)} value={routeKey(route)}>
                 {route.local_model_id
-                  ? `${route.name} (auf diesem Rechner)`
-                  : `${route.name} · ${route.model}${route.source === "local" ? " (lokal)" : " (online)"}`}
+                  ? t("{name} (auf diesem Rechner)", { name: route.name })
+                  : `${route.name} · ${route.model} ${route.source === "local" ? t("(lokal)") : t("(online)")}`}
               </option>
             ))}
           </Select>
           <Button type="button" size="sm" variant="outline" onClick={neuesGespraech} disabled={messages.length === 0 && !fehler}>
             <RotateCcw aria-hidden="true" />
-            Neues Gespräch
+            {t("Neues Gespräch")}
           </Button>
         </div>
       </header>
@@ -405,7 +406,7 @@ export function AssistantView() {
               {sendet ? (
                 <p className="flex items-center gap-2.5 text-[13px] text-muted-foreground" role="status">
                   <Faultier zustand="denken" groesse={28} />
-                  Denkt nach … (beim ersten Mal startet das Modell, das dauert ein paar Sekunden)
+                  {t("Denkt nach … (beim ersten Mal startet das Modell, das dauert ein paar Sekunden)")}
                 </p>
               ) : null}
               <div ref={listenEnde} />
@@ -434,18 +435,18 @@ export function AssistantView() {
                   {gespraech.hinweis ? (
                     <p className="text-xs text-muted-foreground">{gespraech.hinweis}</p>
                   ) : gespraech.erkannt ? (
-                    <p className="truncate text-xs text-muted-foreground">Verstanden: „{gespraech.erkannt}“</p>
+                    <p className="truncate text-xs text-muted-foreground">{t("Verstanden: „{text}“", { text: gespraech.erkannt })}</p>
                   ) : null}
                 </div>
                 {gespraech.phase === "antwortet" ? (
                   <Button type="button" size="sm" variant="outline" onClick={gespraech.unterbrechen}>
                     <Square aria-hidden="true" />
-                    Unterbrechen
+                    {t("Unterbrechen")}
                   </Button>
                 ) : null}
                 <Button type="button" size="sm" onClick={gespraech.beenden}>
                   <PhoneOff aria-hidden="true" />
-                  Gespräch beenden
+                  {t("Gespräch beenden")}
                 </Button>
               </div>
             ) : gespraech.hinweis ? (
@@ -456,7 +457,7 @@ export function AssistantView() {
 
             <form onSubmit={absenden} className="space-y-2 border-t border-border p-3">
               <label htmlFor="assistent-eingabe" className="sr-only">
-                Nachricht an den Assistenten
+                {t("Nachricht an den Assistenten")}
               </label>
               <Textarea
                 id="assistent-eingabe"
@@ -464,7 +465,7 @@ export function AssistantView() {
                 value={eingabe}
                 onChange={(event) => setEingabe(event.target.value)}
                 onKeyDown={tastendruck}
-                placeholder="z. B. „Trag die Mathe-Klausur nächsten Freitag ein“ oder „Erklär mir den Zellzyklus aus meinem Skript“"
+                placeholder={t("z. B. „Trag die Mathe-Klausur nächsten Freitag ein“ oder „Erklär mir den Zellzyklus aus meinem Skript“")}
                 disabled={sendet}
                 className="resize-none"
               />
@@ -476,10 +477,10 @@ export function AssistantView() {
                       size="sm"
                       onClick={gespraech.starten}
                       disabled={!gespraechMoeglich || sendet}
-                      title={gespraechMoeglich ? "Freihändig reden: zuhören, antworten, vorlesen" : sprache.grundEingabe || sprache.grundAusgabe}
+                      title={gespraechMoeglich ? t("Freihändig reden: zuhören, antworten, vorlesen") : sprache.grundEingabe || sprache.grundAusgabe}
                     >
                       <AudioLines aria-hidden="true" />
-                      Gespräch starten
+                      {t("Gespräch starten")}
                     </Button>
                   ) : null}
                   <Button
@@ -507,10 +508,10 @@ export function AssistantView() {
                         sprache.beenden();
                       }
                     }}
-                    title={sprache.kannEingabe ? "Gedrückt halten und sprechen" : sprache.grundEingabe}
+                    title={sprache.kannEingabe ? t("Gedrückt halten und sprechen") : sprache.grundEingabe}
                   >
                     {laeuftAufnahme ? <Square aria-hidden="true" /> : wirdErkannt ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Mic aria-hidden="true" />}
-                    {laeuftAufnahme ? "Loslassen zum Senden" : wirdErkannt ? "Wird erkannt …" : "Halten zum Sprechen"}
+                    {laeuftAufnahme ? t("Loslassen zum Senden") : wirdErkannt ? t("Wird erkannt …") : t("Halten zum Sprechen")}
                   </Button>
                   <Button
                     type="button"
@@ -519,16 +520,16 @@ export function AssistantView() {
                     aria-pressed={vorlesen}
                     onClick={vorlesenUmschalten}
                     disabled={!sprache.kannAusgabe}
-                    title={sprache.kannAusgabe ? "Neue Antworten automatisch vorlesen" : sprache.grundAusgabe}
+                    title={sprache.kannAusgabe ? t("Neue Antworten automatisch vorlesen") : sprache.grundAusgabe}
                   >
                     {vorlesen ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}
-                    Antworten vorlesen
+                    {t("Antworten vorlesen")}
                   </Button>
                   {laeuftAufnahme ? <span className="text-xs text-muted-foreground">{beschreibeAufnahme(sprache.aufnahmeZustand, sprache.sekunden)}</span> : null}
                 </div>
                 <Button type="submit" size="sm" disabled={sendet || !eingabe.trim()}>
                   {sendet ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CornerDownLeft aria-hidden="true" />}
-                  Senden
+                  {t("Senden")}
                 </Button>
               </div>
               {sprache.fehler ? (
@@ -538,13 +539,13 @@ export function AssistantView() {
               ) : null}
               {!sprache.kannEingabe || !sprache.kannAusgabe ? (
                 <p className="text-[11px] leading-4 text-muted-foreground">
-                  {!sprache.kannEingabe ? `Sprechen: ${sprache.grundEingabe || "nicht verfügbar"} ` : ""}
-                  {!sprache.kannAusgabe ? `Vorlesen: ${sprache.grundAusgabe || "nicht verfügbar"} ` : ""}
-                  Modelle und Stimmen richtest du unter{" "}
+                  {!sprache.kannEingabe ? `${t("Sprechen: {grund}", { grund: sprache.grundEingabe || t("nicht verfügbar") })} ` : ""}
+                  {!sprache.kannAusgabe ? `${t("Vorlesen: {grund}", { grund: sprache.grundAusgabe || t("nicht verfügbar") })} ` : ""}
+                  {tSplit("Modelle und Stimmen richtest du unter {link} ein.")[0]}
                   <Link href="/ki" className="underline underline-offset-2 hover:text-foreground">
-                    KI &amp; Modelle
-                  </Link>{" "}
-                  ein.
+                    {t("KI & Modelle")}
+                  </Link>
+                  {tSplit("Modelle und Stimmen richtest du unter {link} ein.")[1]}
                 </p>
               ) : null}
             </form>
@@ -567,23 +568,23 @@ export function AssistantView() {
 
 function Leer({ ohneModell, zustand, onBeispiel }: { ohneModell: boolean; zustand: FaultierZustand; onBeispiel: (text: string) => void }) {
   const beispiele = [
-    "Was steht diese Woche an?",
-    "Trag die Bio-Klausur am nächsten Donnerstag ein.",
-    "Fasse mein Skript zum Zellzyklus zusammen.",
-    "Ich lerne am besten abends mit Karteikarten.",
+    t("Was steht diese Woche an?"),
+    t("Trag die Bio-Klausur am nächsten Donnerstag ein."),
+    t("Fasse mein Skript zum Zellzyklus zusammen."),
+    t("Ich lerne am besten abends mit Karteikarten."),
   ];
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
       <Faultier zustand={zustand} groesse={104} koerper folgen className="mb-1 lg:hidden" />
-      <p className="text-sm font-semibold">Worüber möchtest du reden?</p>
+      <p className="text-sm font-semibold">{t("Worüber möchtest du reden?")}</p>
       <p className="max-w-md text-xs leading-5 text-muted-foreground">
-        Der Assistent kennt deine Dokumente, deinen Stundenplan, Prüfungen, Hausaufgaben und Termine. Was er über dich lernt, siehst du rechts.
+        {t("Der Assistent kennt deine Dokumente, deinen Stundenplan, Prüfungen, Hausaufgaben und Termine. Was er über dich lernt, siehst du rechts.")}
       </p>
       {ohneModell ? (
         <p className="max-w-md text-xs leading-5 text-muted-foreground">
-          Noch kein Modell verbunden – ohne Modell antwortet er nur aus deinen Daten.{" "}
+          {t("Noch kein Modell verbunden – ohne Modell antwortet er nur aus deinen Daten.")}{" "}
           <Link href="/ki" className="underline underline-offset-2 hover:text-foreground">
-            Modell verbinden
+            {t("Modell verbinden")}
           </Link>
         </p>
       ) : null}
@@ -639,24 +640,24 @@ function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {describeProposalTime(proposal)}
-                        {proposal.subject_name ? ` · ${proposal.subject_name}${proposal.subject_id === null ? " (Fach nicht gefunden)" : ""}` : ""}
+                        {proposal.subject_name ? ` · ${proposal.subject_name}${proposal.subject_id === null ? ` ${t("(Fach nicht gefunden)")}` : ""}` : ""}
                       </p>
                       {proposal.description ? <p className="mt-0.5 text-xs text-muted-foreground">{proposal.description}</p> : null}
                     </div>
                     {state === "eingetragen" ? (
                       <Badge variant="success">
                         <Check className="mr-1 h-3 w-3" aria-hidden="true" />
-                        Eingetragen
+                        {t("Eingetragen")}
                       </Badge>
                     ) : state === "verworfen" ? (
-                      <Badge variant="outline">Verworfen</Badge>
+                      <Badge variant="outline">{t("Verworfen")}</Badge>
                     ) : (
                       <div className="flex gap-1.5">
                         <Button type="button" size="sm" onClick={() => onEintragen(index, proposal)} disabled={state === "laeuft"}>
                           {state === "laeuft" ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Plus aria-hidden="true" />}
-                          Eintragen
+                          {t("Eintragen")}
                         </Button>
-                        <Button type="button" size="sm" variant="ghost" onClick={() => onVerwerfen(index)} aria-label="Vorschlag verwerfen">
+                        <Button type="button" size="sm" variant="ghost" onClick={() => onVerwerfen(index)} aria-label={t("Vorschlag verwerfen")}>
                           <X aria-hidden="true" />
                         </Button>
                       </div>
@@ -674,12 +675,12 @@ function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen
         ) : null}
 
         {reply && reply.memories_added.length > 0 ? (
-          <p className="text-xs text-muted-foreground">Gemerkt: {reply.memories_added.map((memory) => memory.content).join(" · ")}</p>
+          <p className="text-xs text-muted-foreground">{t("Gemerkt:")}{" "}{reply.memories_added.map((memory) => memory.content).join(" · ")}</p>
         ) : null}
 
         <div className="flex flex-wrap items-center gap-1.5">
           {herkunft ? <Badge variant={herkunft.fromModel ? "info" : "outline"}>{herkunft.text}</Badge> : null}
-          {reply?.grades_shared ? <Badge variant="outline">Noten mitgeschickt</Badge> : null}
+          {reply?.grades_shared ? <Badge variant="outline">{t("Noten mitgeschickt")}</Badge> : null}
           {kannVorlesen ? (
             <button
               type="button"
@@ -687,11 +688,11 @@ function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen
               className="inline-flex items-center gap-1 rounded-[5px] px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               {spielt ? <VolumeX className="h-3.5 w-3.5" aria-hidden="true" /> : <Volume2 className="h-3.5 w-3.5" aria-hidden="true" />}
-              {spielt ? "Stopp" : "Vorlesen"}
+              {spielt ? t("Stopp") : t("Vorlesen")}
             </button>
           ) : null}
           {reply?.training_example_id != null ? (
-            <span className="inline-flex items-center gap-0.5" role="group" aria-label="Antwort bewerten (fürs Training)">
+            <span className="inline-flex items-center gap-0.5" role="group" aria-label={t("Antwort bewerten (fürs Training)")}>
               {(["good", "bad"] as const).map((wert) => {
                 const aktiv = message.bewertung === wert;
                 const Icon = wert === "good" ? ThumbsUp : ThumbsDown;
@@ -701,14 +702,14 @@ function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen
                     type="button"
                     onClick={() => onBewerten(wert)}
                     aria-pressed={aktiv}
-                    title={wert === "good" ? "Gute Antwort" : "Antwort lag daneben"}
+                    title={wert === "good" ? t("Gute Antwort") : t("Antwort lag daneben")}
                     className={cn(
                       "inline-flex items-center rounded-[5px] px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground",
                       aktiv && "bg-muted text-foreground",
                     )}
                   >
                     <Icon className="h-3.5 w-3.5" fill={aktiv ? "currentColor" : "none"} aria-hidden="true" />
-                    <span className="sr-only">{wert === "good" ? "Gute Antwort" : "Antwort lag daneben"}</span>
+                    <span className="sr-only">{wert === "good" ? t("Gute Antwort") : t("Antwort lag daneben")}</span>
                   </button>
                 );
               })}
@@ -719,14 +720,14 @@ function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen
         {reply && reply.sources.length > 0 ? (
           <details className="text-xs text-muted-foreground">
             <summary className="cursor-pointer select-none hover:text-foreground">
-              {reply.sources.length} {reply.sources.length === 1 ? "Quelle" : "Quellen"} aus deinen Unterlagen
+              {reply.sources.length} {reply.sources.length === 1 ? t("Quelle") : t("Quellen")} {t("aus deinen Unterlagen")}
             </summary>
             <ul className="mt-1.5 space-y-1.5">
               {reply.sources.map((source) => (
                 <li key={`${source.document_id}-${source.chunk_index}`} className="rounded-md border border-border px-3 py-2">
                   <p className="font-medium text-foreground">
                     {source.filename}
-                    <span className="ml-2 font-normal text-muted-foreground">Abschnitt {source.chunk_index + 1}</span>
+                    <span className="ml-2 font-normal text-muted-foreground">{t("Abschnitt {n}", { n: source.chunk_index + 1 })}</span>
                   </p>
                   <p className="mt-0.5 line-clamp-2 leading-5">{source.content}</p>
                 </li>
@@ -772,7 +773,7 @@ function GedaechtnisCard({ messages }: { messages: ViewMessage[] }) {
       setMemories((aktuell) => [memory, ...aktuell]);
       setNeu("");
     } catch (ursache) {
-      setFehler(fehlertext(ursache, "Konnte nicht gespeichert werden."));
+      setFehler(fehlertext(ursache, t("Konnte nicht gespeichert werden.")));
     }
   }
 
@@ -782,23 +783,23 @@ function GedaechtnisCard({ messages }: { messages: ViewMessage[] }) {
       await deleteAssistantMemory(id);
       setMemories((aktuell) => aktuell.filter((memory) => memory.id !== id));
     } catch (ursache) {
-      setFehler(fehlertext(ursache, "Konnte nicht gelöscht werden."));
+      setFehler(fehlertext(ursache, t("Konnte nicht gelöscht werden.")));
     }
   }
 
   return (
     <Card className="self-start">
       <CardHeader className="pb-3">
-        <CardTitle>Was er über dich weiß</CardTitle>
-        <CardDescription>Der Assistent merkt sich Vorlieben und Ziele aus euren Gesprächen. Alles hier steht bei jeder Frage im Kontext.</CardDescription>
+        <CardTitle>{t("Was er über dich weiß")}</CardTitle>
+        <CardDescription>{t("Der Assistent merkt sich Vorlieben und Ziele aus euren Gesprächen. Alles hier steht bei jeder Frage im Kontext.")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <form onSubmit={(event) => void hinzufuegen(event)} className="flex gap-1.5">
           <label htmlFor="gedaechtnis-neu" className="sr-only">
-            Neue Notiz
+            {t("Neue Notiz")}
           </label>
-          <Input id="gedaechtnis-neu" value={neu} onChange={(event) => setNeu(event.target.value)} placeholder="z. B. Schwäche: Bruchrechnen" className="h-8" maxLength={400} />
-          <Button type="submit" size="sm" variant="outline" disabled={!neu.trim()} aria-label="Notiz hinzufügen">
+          <Input id="gedaechtnis-neu" value={neu} onChange={(event) => setNeu(event.target.value)} placeholder={t("z. B. Schwäche: Bruchrechnen")} className="h-8" maxLength={400} />
+          <Button type="submit" size="sm" variant="outline" disabled={!neu.trim()} aria-label={t("Notiz hinzufügen")}>
             <Plus aria-hidden="true" />
           </Button>
         </form>
@@ -808,14 +809,14 @@ function GedaechtnisCard({ messages }: { messages: ViewMessage[] }) {
           </p>
         ) : null}
         {memories.length === 0 ? (
-          <p className="text-xs leading-5 text-muted-foreground">Noch nichts. Erzähl ihm z. B., wie du am liebsten lernst.</p>
+          <p className="text-xs leading-5 text-muted-foreground">{t("Noch nichts. Erzähl ihm z. B., wie du am liebsten lernst.")}</p>
         ) : (
           <ul className="divide-y divide-border">
             {memories.map((memory) => (
               <li key={memory.id} className="flex items-start justify-between gap-2 py-1.5">
                 <p className="text-xs leading-5">
                   {memory.content}
-                  {memory.source === "manual" ? <span className="ml-1 text-muted-foreground">(von dir)</span> : null}
+                  {memory.source === "manual" ? <span className="ml-1 text-muted-foreground">{t("(von dir)")}</span> : null}
                 </p>
                 <button
                   type="button"

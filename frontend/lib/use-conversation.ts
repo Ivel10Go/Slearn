@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, fetchSpeechAudio, transcribeAudio } from "./api";
 import { bereiteVorlesetext } from "./speech";
 import { concatFrames, createVoiceDetector, encodeWav16k, rms, type VoiceDetector } from "./voice";
+import { t } from "./i18n";
 
 /*
  * Der Gespraechsmodus: einmal einschalten, dann reden wie mit einem Menschen.
@@ -26,13 +27,13 @@ import { concatFrames, createVoiceDetector, encodeWav16k, rms, type VoiceDetecto
 export type GespraechsPhase = "aus" | "startet" | "hoert" | "nimmt_auf" | "erkennt" | "denkt" | "antwortet";
 
 export const PHASEN_TEXT: Record<GespraechsPhase, string> = {
-  aus: "Gespräch aus",
-  startet: "Mikrofon wird eingeschaltet …",
-  hoert: "Ich höre zu – sprich einfach.",
-  nimmt_auf: "Du sprichst …",
-  erkennt: "Verstehe …",
-  denkt: "Denke nach …",
-  antwortet: "Antworte …",
+  aus: t("Gespräch aus"),
+  startet: t("Mikrofon wird eingeschaltet …"),
+  hoert: t("Ich höre zu – sprich einfach."),
+  nimmt_auf: t("Du sprichst …"),
+  erkennt: t("Verstehe …"),
+  denkt: t("Denke nach …"),
+  antwortet: t("Antworte …"),
 };
 
 const BLOCK_SIZE = 2048;
@@ -62,10 +63,10 @@ function meldung(ursache: unknown, ersatz: string) {
     return ursache.message;
   }
   if (ursache instanceof DOMException && (ursache.name === "NotAllowedError" || ursache.name === "SecurityError")) {
-    return "Der Mikrofonzugriff wurde nicht erlaubt.";
+    return t("Der Mikrofonzugriff wurde nicht erlaubt.");
   }
   if (ursache instanceof DOMException && ursache.name === "NotFoundError") {
-    return "Es wurde kein Mikrofon gefunden.";
+    return t("Es wurde kein Mikrofon gefunden.");
   }
   return ersatz;
 }
@@ -146,7 +147,7 @@ export function useConversation({ onUtterance }: ConversationOptions): Conversat
         await element.play();
       } catch (ursache) {
         if (lauf.current === meinLauf) {
-          setHinweis(meldung(ursache, "Die Antwort konnte nicht vorgelesen werden."));
+          setHinweis(meldung(ursache, t("Die Antwort konnte nicht vorgelesen werden.")));
           zuhoeren();
         }
       }
@@ -167,7 +168,7 @@ export function useConversation({ onUtterance }: ConversationOptions): Conversat
         const text = ergebnis.text.trim();
         // Whisper liefert bei Stille gern Platzhalter wie "[Musik]" oder "(Applaus)".
         if (!text || /^[[(].*[\])]$/.test(text) || text.replace(/[^\p{L}]/gu, "").length < 2) {
-          setHinweis("Das habe ich nicht verstanden – sag es bitte noch einmal.");
+          setHinweis(t("Das habe ich nicht verstanden – sag es bitte noch einmal."));
           zuhoeren();
           return;
         }
@@ -185,7 +186,7 @@ export function useConversation({ onUtterance }: ConversationOptions): Conversat
         }
       } catch (ursache) {
         if (lauf.current === meinLauf) {
-          setHinweis(meldung(ursache, "Die Aufnahme konnte nicht verarbeitet werden."));
+          setHinweis(meldung(ursache, t("Die Aufnahme konnte nicht verarbeitet werden.")));
           zuhoeren();
         }
       }
@@ -288,7 +289,7 @@ export function useConversation({ onUtterance }: ConversationOptions): Conversat
     } catch (ursache) {
       aufraeumen();
       setPhase("aus");
-      setHinweis(meldung(ursache, "Das Mikrofon konnte nicht eingeschaltet werden."));
+      setHinweis(meldung(ursache, t("Das Mikrofon konnte nicht eingeschaltet werden.")));
     }
   }, [aufraeumen, setPhase, verarbeiten, zuhoeren]);
 

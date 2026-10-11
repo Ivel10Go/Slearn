@@ -11,6 +11,7 @@ import {
   type DesktopSettings,
   type DesktopUpdateStatus,
 } from "@/lib/desktop";
+import { t } from "@/lib/i18n";
 
 /**
  * Was nur die Desktop-App kann: Datenordner, Autostart, Infobereich, Updates.
@@ -72,16 +73,16 @@ export function DesktopCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Desktop-App</CardTitle>
+        <CardTitle>{t("Desktop-App")}</CardTitle>
         <CardDescription>
-          Datenbank, Dokumente und Modelle liegen in einem Ordner. Zum Sichern Lernraum beenden und den Ordner kopieren.
+          {t("Datenbank, Dokumente und Modelle liegen in einem Ordner. Zum Sichern Lernraum beenden und den Ordner kopieren.")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="break-all rounded-md bg-muted px-3 py-2 font-mono text-xs text-muted-foreground">{bridge.dataFolder}</p>
         <Button type="button" variant="outline" size="sm" onClick={() => void bridge.openDataFolder()}>
           <FolderOpen aria-hidden="true" />
-          Ordner öffnen
+          {t("Ordner öffnen")}
         </Button>
 
         {settings ? (
@@ -94,9 +95,11 @@ export function DesktopCard() {
                 onChange={(event) => void autostart(event.target.checked)}
               />
               <span>
-                Beim Anmelden starten
+                {t("Beim Anmelden starten")}
                 <span className="block text-xs text-muted-foreground">
-                  Ohne Fenster, nur {mac ? "in der Menüleiste" : "im Infobereich"} - damit Erinnerungen auch ohne geöffnete App kommen.
+                  {mac
+                    ? t("Ohne Fenster, nur in der Menüleiste - damit Erinnerungen auch ohne geöffnete App kommen.")
+                    : t("Ohne Fenster, nur im Infobereich - damit Erinnerungen auch ohne geöffnete App kommen.")}
                 </span>
               </span>
             </label>
@@ -109,8 +112,8 @@ export function DesktopCard() {
                   onChange={(event) => void infobereich(event.target.checked)}
                 />
                 <span>
-                  Beim Schließen im Infobereich weiterlaufen
-                  <span className="block text-xs text-muted-foreground">Beenden dann über das Symbol im Infobereich.</span>
+                  {t("Beim Schließen im Infobereich weiterlaufen")}
+                  <span className="block text-xs text-muted-foreground">{t("Beenden dann über das Symbol im Infobereich.")}</span>
                 </span>
               </label>
             )}
@@ -119,13 +122,13 @@ export function DesktopCard() {
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
           <div className="text-xs text-muted-foreground">
-            {bridge.version ? <span>Version {bridge.version}</span> : null}
+            {bridge.version ? <span>{t("Version {n}", { n: bridge.version })}</span> : null}
             {updateText ? <span className="block">{updateText}</span> : null}
           </div>
           {settings?.updatesSupported && bridge.checkForUpdates ? (
             <Button type="button" variant="outline" size="sm" onClick={() => void suchen()} disabled={checking}>
               <RefreshCw aria-hidden="true" />
-              Nach Updates suchen
+              {t("Nach Updates suchen")}
             </Button>
           ) : null}
         </div>

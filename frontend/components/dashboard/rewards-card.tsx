@@ -22,6 +22,7 @@ import {
 import { useRewards } from "@/lib/use-rewards";
 import type { RewardBadge, RewardEntry, RewardOverview } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 /**
  * Die Belohnungskarte des Dashboards.
@@ -91,7 +92,7 @@ function BadgeZeile({ badge }: { badge: RewardBadge }) {
           {badge.title}
         </p>
         <p className="shrink-0 text-xs font-semibold text-muted-foreground">
-          {badge.awarded ? "Erreicht" : badgeFortschrittLabel(badge)}
+          {badge.awarded ? t("Erreicht") : badgeFortschrittLabel(badge)}
         </p>
       </div>
       <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
@@ -99,7 +100,7 @@ function BadgeZeile({ badge }: { badge: RewardBadge }) {
       </p>
       {badge.awarded ? null : <Balken anteil={anteil} label={`${badge.title}: ${badgeFortschrittLabel(badge)}`} className="mt-2" />}
       {badge.repeatable && badge.awarded ? (
-        <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">Wiederholbar · nächste Woche neu</p>
+        <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">{t("Wiederholbar · nächste Woche neu")}</p>
       ) : null}
     </li>
   );
@@ -143,17 +144,17 @@ function KartenInhalt({ overview, error }: { overview: RewardOverview; error: st
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Kennzahl
-          titel="Heute"
+          titel={t("Heute")}
           wert={`${summary.today_points}`}
-          zusatz={`von ${summary.today_cap} Punkten möglich`}
+          zusatz={t("von {n} Punkten möglich", { n: summary.today_cap })}
           balken={heuteAnteil}
-          balkenLabel={`Punkte heute: ${punkteLabel(summary)}`}
+          balkenLabel={t("Punkte heute: {wert}", { wert: punkteLabel(summary) })}
         />
-        <Kennzahl titel="Diese Woche" wert={`${summary.week_points}`} zusatz={wochenLabel(summary)} />
+        <Kennzahl titel={t("Diese Woche")} wert={`${summary.week_points}`} zusatz={wochenLabel(summary)} />
         <Kennzahl
-          titel="Auszeichnungen"
+          titel={t("Auszeichnungen")}
           wert={`${bilanz.erreicht}`}
-          zusatz={`von ${bilanz.moeglich} im Katalog`}
+          zusatz={t("von {n} im Katalog", { n: bilanz.moeglich })}
         />
       </div>
 
@@ -163,24 +164,24 @@ function KartenInhalt({ overview, error }: { overview: RewardOverview; error: st
         Eintraege, von denen die Karte nur die naechsten zeigt.
       */}
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-t border-border pt-4">
-        <h3 className="text-xs font-medium text-muted-foreground">Insgesamt</h3>
-        <p className="text-sm font-semibold tabular-nums">{summary.total_points} Punkte</p>
+        <h3 className="text-xs font-medium text-muted-foreground">{t("Insgesamt")}</h3>
+        <p className="text-sm font-semibold tabular-nums">{summary.total_points} {t("Punkte")}</p>
       </div>
 
       <div>
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-xs font-medium text-muted-foreground">Auszeichnungen</h3>
+          <h3 className="text-xs font-medium text-muted-foreground">{t("Auszeichnungen")}</h3>
           <p className="text-xs text-muted-foreground">
-            {haufen.erreicht.length > 0 ? `${haufen.erreicht.length} erreicht` : "Noch keine erreicht"}
-            {haufen.offen.length > 0 ? ` · ${haufen.offen.length} offen` : ""}
+            {haufen.erreicht.length > 0 ? t("{n} erreicht", { n: haufen.erreicht.length }) : t("Noch keine erreicht")}
+            {haufen.offen.length > 0 ? ` · ${t("{n} offen", { n: haufen.offen.length })}` : ""}
           </p>
         </div>
 
         {badges.length === 0 ? (
           <EmptyState
             icon={Award}
-            title="Noch keine Auszeichnungen"
-            description="Auszeichnungen entstehen aus deiner Arbeit an Fächern und Themen — nicht aus der Zahl der Klicks. Sie tauchen hier auf, sobald es etwas zu zeigen gibt."
+            title={t("Noch keine Auszeichnungen")}
+            description={t("Auszeichnungen entstehen aus deiner Arbeit an Fächern und Themen — nicht aus der Zahl der Klicks. Sie tauchen hier auf, sobald es etwas zu zeigen gibt.")}
           />
         ) : (
           <ul className="space-y-2.5">
@@ -193,15 +194,15 @@ function KartenInhalt({ overview, error }: { overview: RewardOverview; error: st
 
       <div>
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-xs font-medium text-muted-foreground">Zuletzt gutgeschrieben</h3>
+          <h3 className="text-xs font-medium text-muted-foreground">{t("Zuletzt gutgeschrieben")}</h3>
           <p className="text-xs text-muted-foreground">
-            {entries.length > sichtbareEintraege.length ? `die letzten ${sichtbareEintraege.length} von ${entries.length}` : "die letzten Buchungen"}
+            {entries.length > sichtbareEintraege.length ? t("die letzten {n} von {gesamt}", { n: sichtbareEintraege.length, gesamt: entries.length }) : t("die letzten Buchungen")}
           </p>
         </div>
 
         {sichtbareEintraege.length === 0 ? (
           <p className="border border-dashed border-border bg-muted/30 px-3 py-4 text-sm leading-6 text-muted-foreground">
-            Noch nichts gebucht. Punkte gibt es für erledigte Aufgaben mit Thema und für abgeschlossene Lernzeit in einem Fach.
+            {t("Noch nichts gebucht. Punkte gibt es für erledigte Aufgaben mit Thema und für abgeschlossene Lernzeit in einem Fach.")}
           </p>
         ) : (
           <ul className="max-h-80 space-y-2 overflow-y-auto pr-1">
@@ -230,9 +231,9 @@ export function RewardsCard({ refreshKey = 0 }: { refreshKey?: number }) {
     return (
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle>Belohnung</CardTitle>
+          <CardTitle>{t("Belohnung")}</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3" aria-busy="true" aria-label="Belohnung wird geladen">
+        <CardContent className="space-y-3" aria-busy="true" aria-label={t("Belohnung wird geladen")}>
           <Skeleton className="h-20 w-full" />
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-32 w-full" />
@@ -245,12 +246,12 @@ export function RewardsCard({ refreshKey = 0 }: { refreshKey?: number }) {
     return (
       <Card role="alert">
         <CardHeader className="pb-4">
-          <CardTitle>Belohnung</CardTitle>
+          <CardTitle>{t("Belohnung")}</CardTitle>
         </CardHeader>
         <CardContent>
           <Button type="button" size="sm" variant="outline" onClick={() => void reload()}>
             <RefreshCw aria-hidden="true" />
-            Erneut versuchen
+            {t("Erneut versuchen")}
           </Button>
         </CardContent>
       </Card>
@@ -261,9 +262,9 @@ export function RewardsCard({ refreshKey = 0 }: { refreshKey?: number }) {
     <Card>
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
-          <CardTitle>Belohnung</CardTitle>
+          <CardTitle>{t("Belohnung")}</CardTitle>
         </div>
-        <Button type="button" size="icon" variant="ghost" onClick={() => void reload()} aria-label="Belohnungen neu laden" disabled={status === "loading"}>
+        <Button type="button" size="icon" variant="ghost" onClick={() => void reload()} aria-label={t("Belohnungen neu laden")} disabled={status === "loading"}>
           <RefreshCw className={cn(status === "loading" && "animate-spin")} aria-hidden="true" />
         </Button>
       </CardHeader>

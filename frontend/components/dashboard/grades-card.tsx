@@ -33,6 +33,7 @@ import { useGrades, type ImportInput } from "@/lib/use-grades";
 import { useSubjectOptions } from "@/lib/use-subject-options";
 import { cn } from "@/lib/utils";
 import type { DocumentRecord, GradeImportPreview, GradeKind, GradeSharing, GradeTrendPoint } from "@/lib/types";
+import { t, tSplit } from "@/lib/i18n";
 
 /**
  * Die Notenkarte des Dashboards.
@@ -207,20 +208,20 @@ function NotenFormular({ laeuft, onSchliessen, onSpeichern }: { laeuft: boolean;
     // "2,0" und "2.0" sind beide eine Note, alles andere nicht.
     const zahl = Number(wert.trim().replace(",", "."));
     if (!Number.isFinite(zahl) || zahl <= 0 || zahl > 6) {
-      setFehler("Die Note muss zwischen 1,0 und 6,0 liegen.");
+      setFehler(t("Die Note muss zwischen 1,0 und 6,0 liegen."));
       return;
     }
     const faktor = Number(gewicht);
     if (!Number.isInteger(faktor) || faktor < 1 || faktor > 20) {
-      setFehler("Die Gewichtung muss zwischen 1 und 20 liegen.");
+      setFehler(t("Die Gewichtung muss zwischen 1 und 20 liegen."));
       return;
     }
     if (!fachId) {
-      setFehler("Wähle das Fach, um das es geht.");
+      setFehler(t("Wähle das Fach, um das es geht."));
       return;
     }
     if (!datum) {
-      setFehler("Wann wurde die Leistung erbracht? Ein Datum wird benötigt.");
+      setFehler(t("Wann wurde die Leistung erbracht? Ein Datum wird benötigt."));
       return;
     }
     setFehler(null);
@@ -238,25 +239,25 @@ function NotenFormular({ laeuft, onSchliessen, onSpeichern }: { laeuft: boolean;
   return (
     <form onSubmit={absenden} noValidate className="space-y-4 border border-border p-4">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-semibold">Note eintragen</p>
-        <Button type="button" size="icon" variant="ghost" onClick={onSchliessen} disabled={laeuft} aria-label="Formular schließen">
+        <p className="text-sm font-semibold">{t("Note eintragen")}</p>
+        <Button type="button" size="icon" variant="ghost" onClick={onSchliessen} disabled={laeuft} aria-label={t("Formular schließen")}>
           <X aria-hidden="true" />
         </Button>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field id="note-wert" label="Note" required hint="Von 1,0 bis 6,0.">
+        <Field id="note-wert" label={t("Note")} required hint={t("Von 1,0 bis 6,0.")}>
           {(props) => (
             <Input {...props} value={wert} onChange={(event) => setWert(event.target.value)} disabled={laeuft} inputMode="decimal" placeholder="2,0" />
           )}
         </Field>
-        <Field id="note-art" label="Art" required>
+        <Field id="note-art" label={t("Art")} required>
           {(props) => <ArtWahl props={props} wert={art} setWert={setArt} disabled={laeuft} />}
         </Field>
-        <Field id="note-fach" label="Fach" required hint={fach.status === "loading" ? "Fächer werden geladen …" : undefined}>
+        <Field id="note-fach" label={t("Fach")} required hint={fach.status === "loading" ? t("Fächer werden geladen …") : undefined}>
           {(props) => (
             <Select {...props} value={fachId} onChange={(event) => setFachId(event.target.value)} disabled={laeuft || fach.status === "loading"}>
-              <option value="">Fach wählen …</option>
+              <option value="">{t("Fach wählen …")}</option>
               {fach.options.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.name}
@@ -266,17 +267,17 @@ function NotenFormular({ laeuft, onSchliessen, onSpeichern }: { laeuft: boolean;
           )}
         </Field>
         <div className="grid grid-cols-2 gap-4">
-          <Field id="note-datum" label="Datum" required>
+          <Field id="note-datum" label={t("Datum")} required>
             {(props) => <Input {...props} type="date" value={datum} onChange={(event) => setDatum(event.target.value)} disabled={laeuft} />}
           </Field>
-          <Field id="note-gewicht" label="Gewicht" hint="Zählt öfter.">
+          <Field id="note-gewicht" label={t("Gewicht")} hint={t("Zählt öfter.")}>
             {(props) => <Input {...props} type="number" min={1} max={20} value={gewicht} onChange={(event) => setGewicht(event.target.value)} disabled={laeuft} />}
           </Field>
         </div>
       </div>
 
-      <Field id="note-kommentar" label="Kommentar">
-        {(props) => <Input {...props} value={kommentar} onChange={(event) => setKommentar(event.target.value)} disabled={laeuft} placeholder="Nur mit viel Übung" />}
+      <Field id="note-kommentar" label={t("Kommentar")}>
+        {(props) => <Input {...props} value={kommentar} onChange={(event) => setKommentar(event.target.value)} disabled={laeuft} placeholder={t("Nur mit viel Übung")} />}
       </Field>
 
       <FormError message={fehler} />
@@ -284,15 +285,14 @@ function NotenFormular({ laeuft, onSchliessen, onSpeichern }: { laeuft: boolean;
       <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" disabled={laeuft}>
           {laeuft ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Plus aria-hidden="true" />}
-          {laeuft ? "Wird gespeichert …" : "Note speichern"}
+          {laeuft ? t("Wird gespeichert …") : t("Note speichern")}
         </Button>
         <Button type="button" variant="ghost" onClick={onSchliessen} disabled={laeuft}>
-          Abbrechen
+          {t("Abbrechen")}
         </Button>
       </div>
       <p className="text-xs leading-5 text-muted-foreground">
-        Die Note geht in den Schnitt ihres Faches ein. Steht das Fach über der Bestehensgrenze, hebt sie dort die Priorität der
-        Lernaufgaben an.
+        {t("Die Note geht in den Schnitt ihres Faches ein. Steht das Fach über der Bestehensgrenze, hebt sie dort die Priorität der Lernaufgaben an.")}
       </p>
     </form>
   );
@@ -352,16 +352,16 @@ function NotenImport({ laeuft, onGeaendert }: { laeuft: boolean; onGeaendert: ()
   return (
     <div className="space-y-4 border border-border p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm font-semibold">Aus einem Dokument übernehmen</p>
-        <Badge variant="secondary">erst ansehen, dann anlegen</Badge>
+        <p className="text-sm font-semibold">{t("Aus einem Dokument übernehmen")}</p>
+        <Badge variant="secondary">{t("erst ansehen, dann anlegen")}</Badge>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
           id="import-dokument"
-          label="Dokument"
+          label={t("Dokument")}
           required
-          hint={dokumente.status === "loading" ? "Dokumente werden geladen …" : "Eine hochgeladene Textdatei mit deinem Notenspiegel."}
+          hint={dokumente.status === "loading" ? t("Dokumente werden geladen …") : t("Eine hochgeladene Textdatei mit deinem Notenspiegel.")}
         >
           {(props) => (
             <Select
@@ -375,7 +375,7 @@ function NotenImport({ laeuft, onGeaendert }: { laeuft: boolean; onGeaendert: ()
               }}
               disabled={laeuft || dokumente.status === "loading"}
             >
-              <option value="">Dokument wählen …</option>
+              <option value="">{t("Dokument wählen …")}</option>
               {dokumente.items.map((dokument) => (
                 <option key={dokument.id} value={dokument.id}>
                   {dokument.filename}
@@ -384,10 +384,10 @@ function NotenImport({ laeuft, onGeaendert }: { laeuft: boolean; onGeaendert: ()
             </Select>
           )}
         </Field>
-        <Field id="import-fach" label="Fach für Zeilen ohne Namen" hint="Greift nur, wenn die Zeile kein Fach nennt.">
+        <Field id="import-fach" label={t("Fach für Zeilen ohne Namen")} hint={t("Greift nur, wenn die Zeile kein Fach nennt.")}>
           {(props) => (
             <Select {...props} value={fachId} onChange={(event) => setFachId(event.target.value)} disabled={laeuft || fach.status === "loading"}>
-              <option value="">Kein Vorgabefach</option>
+              <option value="">{t("Kein Vorgabefach")}</option>
               {fach.options.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.name}
@@ -396,14 +396,14 @@ function NotenImport({ laeuft, onGeaendert }: { laeuft: boolean; onGeaendert: ()
             </Select>
           )}
         </Field>
-        <Field id="import-art" label="Art ohne Angabe">
+        <Field id="import-art" label={t("Art ohne Angabe")}>
           {(props) => <ArtWahl props={props} wert={art} setWert={setArt} disabled={laeuft} />}
         </Field>
         <div className="grid grid-cols-2 gap-4">
-          <Field id="import-gewicht" label="Gewicht">
+          <Field id="import-gewicht" label={t("Gewicht")}>
             {(props) => <Input {...props} type="number" min={1} max={20} value={gewicht} onChange={(event) => setGewicht(event.target.value)} disabled={laeuft} />}
           </Field>
-          <Field id="import-datum" label="Datum ohne Angabe">
+          <Field id="import-datum" label={t("Datum ohne Angabe")}>
             {(props) => <Input {...props} type="date" value={datum} onChange={(event) => setDatum(event.target.value)} disabled={laeuft} />}
           </Field>
         </div>
@@ -412,12 +412,12 @@ function NotenImport({ laeuft, onGeaendert }: { laeuft: boolean; onGeaendert: ()
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" variant="outline" onClick={() => void zeilenLaden()} disabled={laeuft || !dokumentId || vorschau.pending}>
           {vorschau.pending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <FileText aria-hidden="true" />}
-          {vorschau.pending ? "Wird gelesen …" : "Zeilen anzeigen"}
+          {vorschau.pending ? t("Wird gelesen …") : t("Zeilen anzeigen")}
         </Button>
         {bestaetigt ? (
           <Button type="button" size="sm" onClick={() => void uebernehmen()} disabled={laeuft || ergebnis.pending || bestaetigt.length === 0}>
             {ergebnis.pending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : null}
-            {bestaetigt.length} {bestaetigt.length === 1 ? "Note" : "Noten"} übernehmen
+            {bestaetigt.length} {bestaetigt.length === 1 ? t("Note") : t("Noten")} {t("übernehmen")}
           </Button>
         ) : null}
       </div>
@@ -426,15 +426,14 @@ function NotenImport({ laeuft, onGeaendert }: { laeuft: boolean; onGeaendert: ()
 
       {ergebnis.result ? (
         <p className="border border-foreground/20 bg-foreground/5 px-3 py-2 text-sm font-semibold" role="status">
-          {ergebnis.result.created} {ergebnis.result.created === 1 ? "Note" : "Noten"} angelegt
+          {ergebnis.result.created} {ergebnis.result.created === 1 ? t("Note") : t("Noten")} {t("angelegt")}
           {ergebnis.result.skipped > 0 ? `, ${ergebnis.result.skipped} waren schon da` : ""}.
         </p>
       ) : null}
 
       {dokumente.status === "ready" && dokumente.items.length === 0 ? (
         <p className="border border-dashed border-border px-3 py-2 text-xs leading-5 text-muted-foreground">
-          Es ist noch kein Dokument vorhanden. Lade unter <span className="font-semibold">Dokumente</span> eine Textdatei mit deinem
-          Notenspiegel hoch.
+          {tSplit("Es ist noch kein Dokument vorhanden. Lade unter {link} eine Textdatei mit deinem Notenspiegel hoch.")[0]}<span className="font-semibold">{t("Dokumente")}</span>{tSplit("Es ist noch kein Dokument vorhanden. Lade unter {link} eine Textdatei mit deinem Notenspiegel hoch.")[1]}
         </p>
       ) : null}
 
@@ -442,8 +441,8 @@ function NotenImport({ laeuft, onGeaendert }: { laeuft: boolean; onGeaendert: ()
         vorschau.result.entries.length === 0 ? (
           <EmptyState
             icon={FileText}
-            title="Keine Noten gefunden"
-            description="In diesem Dokument steht keine Zeile mit einer Zahl zwischen 1,0 und 6,0. Was nicht erkannt wird, wird nicht geraten."
+            title={t("Keine Noten gefunden")}
+            description={t("In diesem Dokument steht keine Zeile mit einer Zahl zwischen 1,0 und 6,0. Was nicht erkannt wird, wird nicht geraten.")}
           />
         ) : (
           <ul className="space-y-2">
@@ -471,17 +470,17 @@ function NotenImport({ laeuft, onGeaendert }: { laeuft: boolean; onGeaendert: ()
                   />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">
-                      {notenText(zeile.value)} · {zeile.subject_name ?? "Fach nicht erkannt"}
+                      {notenText(zeile.value)} · {zeile.subject_name ?? t("Fach nicht erkannt")}
                     </p>
                     <p className="text-[11px] text-muted-foreground">
                       {GRADE_ART[zeile.kind]} · {formatDate(zeile.graded_on)}
-                      {zeile.subject_recognized ? "" : " · Vorgabefach"}
-                      {zeile.already_imported ? " · schon importiert" : ""}
+                      {zeile.subject_recognized ? "" : t(" · Vorgabefach")}
+                      {zeile.already_imported ? t(" · schon importiert") : ""}
                     </p>
                     {zeile.comment ? <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{zeile.comment}</p> : null}
                   </div>
                   <label htmlFor={`import-zeile-${zeile.key}`} className="sr-only">
-                    Zeile {zeile.line_number} übernehmen: {zeile.line}
+                    {t("Zeile {n} übernehmen: {text}", { n: zeile.line_number, text: zeile.line })}
                   </label>
                 </li>
               );
@@ -511,18 +510,20 @@ function FreigabeSchalter({ sharing, laeuft, onAendern }: { sharing: GradeSharin
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="flex items-center gap-2 text-xs font-semibold">
           <ShieldAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
-          Noten an den KI-Dienst senden
+          {t("Noten an den KI-Dienst senden")}
         </p>
-        <Badge variant={aktiv ? "default" : "outline"}>{aktiv ? "Ja, ausdrücklich" : "Nein"}</Badge>
+        <Badge variant={aktiv ? "default" : "outline"}>{aktiv ? t("Ja, ausdrücklich") : t("Nein")}</Badge>
       </div>
       <p className="mt-2 text-xs leading-5 text-muted-foreground">
         {aktiv
-          ? `Deine Noten gehen an den Assistenten und stehen im Willkommenssatz${orte ? `: ${orte}` : ""}. Ohne verbundenen Provider wird nichts verschickt.`
-          : "Ohne diese Zustimmung verlassen deine Noten den Rechner nicht — weder der Assistent noch der Willkommenssatz sehen sie. Schnitt und Hochrechnung oben rechnen trotzdem, sie stehen nur nicht im Prompt."}
+          ? orte
+            ? t("Deine Noten gehen an den Assistenten und stehen im Willkommenssatz: {orte}. Ohne verbundenen Provider wird nichts verschickt.", { orte })
+            : t("Deine Noten gehen an den Assistenten und stehen im Willkommenssatz. Ohne verbundenen Provider wird nichts verschickt.")
+          : t("Ohne diese Zustimmung verlassen deine Noten den Rechner nicht — weder der Assistent noch der Willkommenssatz sehen sie. Schnitt und Hochrechnung oben rechnen trotzdem, sie stehen nur nicht im Prompt.")}
       </p>
       <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => onAendern(!aktiv)} disabled={laeuft} aria-pressed={aktiv}>
         {laeuft ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : null}
-        {aktiv ? "Freigabe zurücknehmen" : "Freigabe erteilen"}
+        {aktiv ? t("Freigabe zurücknehmen") : t("Freigabe erteilen")}
       </Button>
     </div>
   );
@@ -548,9 +549,9 @@ export function GradesCard() {
     return (
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle>Noten</CardTitle>
+          <CardTitle>{t("Noten")}</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3" aria-busy="true" aria-label="Noten werden geladen">
+        <CardContent className="space-y-3" aria-busy="true" aria-label={t("Noten werden geladen")}>
           <Skeleton className="h-20 w-full" />
           <Skeleton className="h-24 w-full" />
         </CardContent>
@@ -562,12 +563,12 @@ export function GradesCard() {
     return (
       <Card role="alert">
         <CardHeader className="pb-4">
-          <CardTitle>Noten</CardTitle>
+          <CardTitle>{t("Noten")}</CardTitle>
         </CardHeader>
         <CardContent>
           <Button type="button" size="sm" variant="outline" onClick={() => void noten.reload()}>
             <RefreshCw aria-hidden="true" />
-            Erneut versuchen
+            {t("Erneut versuchen")}
           </Button>
         </CardContent>
       </Card>
@@ -582,11 +583,11 @@ export function GradesCard() {
     <Card>
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
-          <CardTitle>Noten</CardTitle>
+          <CardTitle>{t("Noten")}</CardTitle>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={ohneNoten ? "secondary" : zusammenfassung.overall.passed ? "outline" : "default"}>{kopfZahl(zusammenfassung)}</Badge>
-          <Button type="button" size="icon" variant="ghost" onClick={() => void noten.reload()} aria-label="Noten neu laden" disabled={noten.status === "loading"}>
+          <Button type="button" size="icon" variant="ghost" onClick={() => void noten.reload()} aria-label={t("Noten neu laden")} disabled={noten.status === "loading"}>
             <RefreshCw className={cn(noten.status === "loading" && "animate-spin")} aria-hidden="true" />
           </Button>
         </div>
@@ -603,16 +604,16 @@ export function GradesCard() {
         {ohneNoten ? (
           <EmptyState
             icon={GraduationCap}
-            title="Noch keine Noten"
-            description="Trag eine Note ein oder übernimm sie aus einem hochgeladenen Notenspiegel. Erst mit Noten kann der Lernplan seine Prioritäten daran ausrichten."
+            title={t("Noch keine Noten")}
+            description={t("Trag eine Note ein oder übernimm sie aus einem hochgeladenen Notenspiegel. Erst mit Noten kann der Lernplan seine Prioritäten daran ausrichten.")}
           />
         ) : (
           <>
             <div className="grid gap-4 sm:grid-cols-3">
-              <Kennzahl titel="Schnitt gesamt" wert={schnittText(zusammenfassung.overall.average)} zusatz={bestandenLabel(zusammenfassung.overall.passed)} />
-              <Kennzahl titel="Fächer" wert={`${gefaecht}`} zusatz={durchgefallen > 0 ? `${durchgefallen} nicht bestanden` : "alle bestanden"} />
+              <Kennzahl titel={t("Schnitt gesamt")} wert={schnittText(zusammenfassung.overall.average)} zusatz={bestandenLabel(zusammenfassung.overall.passed)} />
+              <Kennzahl titel={t("Fächer")} wert={`${gefaecht}`} zusatz={durchgefallen > 0 ? t("{n} nicht bestanden", { n: durchgefallen }) : t("alle bestanden")} />
               <Kennzahl
-                titel="Zuletzt"
+                titel={t("Zuletzt")}
                 wert={neueste ? notenText(neueste.grade_value) : "—"}
                 zusatz={neueste ? `${GRADE_ART[neueste.kind]} · ${formatDate(neueste.graded_on, { day: "2-digit", month: "short" })}` : "—"}
               />
@@ -620,8 +621,8 @@ export function GradesCard() {
 
             <div>
               <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="text-xs font-medium text-muted-foreground">Verlauf des Schnitts</h3>
-                <p className="text-xs text-muted-foreground">{verlaufBeschriftung(zusammenfassung.trend) ?? "noch kein Verlauf"}</p>
+                <h3 className="text-xs font-medium text-muted-foreground">{t("Verlauf des Schnitts")}</h3>
+                <p className="text-xs text-muted-foreground">{verlaufBeschriftung(zusammenfassung.trend) ?? t("noch kein Verlauf")}</p>
               </div>
               <VerlaufLinie trend={zusammenfassung.trend} passingGrade={zusammenfassung.passing_grade} />
               <p className="mt-1.5 text-[11px] text-muted-foreground">{grenzLabel(zusammenfassung.passing_grade)}</p>
@@ -629,7 +630,7 @@ export function GradesCard() {
 
             {zusammenfassung.by_subject.length > 0 ? (
               <div>
-                <h3 className="mb-3 text-xs font-medium text-muted-foreground">Schnitt je Fach</h3>
+                <h3 className="mb-3 text-xs font-medium text-muted-foreground">{t("Schnitt je Fach")}</h3>
                 <ul className="space-y-2.5">
                   {zusammenfassung.by_subject.map((fach) => (
                     <FachZeile
@@ -654,44 +655,44 @@ export function GradesCard() {
               Raten, nicht Rechnen.
             */}
             <div>
-              <h3 className="mb-3 text-xs font-medium text-muted-foreground">Hochrechnung</h3>
+              <h3 className="mb-3 text-xs font-medium text-muted-foreground">{t("Hochrechnung")}</h3>
               <form onSubmit={hochrechnungBerechnen} noValidate className="flex flex-wrap items-end gap-3">
-                <Field id="noten-offen" label="Noch offen" hint="Gewichtung der Leistungen, die noch kommen." className="w-44">
+                <Field id="noten-offen" label={t("Noch offen")} hint={t("Gewichtung der Leistungen, die noch kommen.")} className="w-44">
                   {(props) => <Input {...props} type="number" min={0} max={MAX_OFFEN} value={offen} onChange={(event) => setOffen(event.target.value)} disabled={noten.status === "loading"} />}
                 </Field>
                 <Button type="submit" size="sm" variant="outline" disabled={noten.status === "loading"}>
                   <TrendingUp aria-hidden="true" />
-                  Hochrechnen
+                  {t("Hochrechnen")}
                 </Button>
               </form>
               {hochrechnung ? (
                 <p className="mt-3 border border-border bg-muted/30 px-3 py-2 text-sm">{hochrechnung}</p>
               ) : (
                 <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                  Trage oben ein, was noch aussteht — die Karte nennt dann den Schnitt, der ab jetzt nötig wäre.
+                  {t("Trage oben ein, was noch aussteht — die Karte nennt dann den Schnitt, der ab jetzt nötig wäre.")}
                 </p>
               )}
             </div>
 
             <div>
               <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="text-xs font-medium text-muted-foreground">Zuletzt notiert</h3>
+                <h3 className="text-xs font-medium text-muted-foreground">{t("Zuletzt notiert")}</h3>
                 <p className="text-xs text-muted-foreground">{notenAnzahl(zusammenfassung.total_count)}</p>
               </div>
               {noten.grades.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Die Liste konnte nicht geladen werden.</p>
+                <p className="text-xs text-muted-foreground">{t("Die Liste konnte nicht geladen werden.")}</p>
               ) : (
                 <ul className="max-h-72 space-y-2 overflow-y-auto pr-1">
                   {noten.grades.map((note) => (
                     <li key={note.id} className="flex items-start gap-3 border border-border bg-card/60 px-3 py-2.5">
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold">
-                          {notenText(note.grade_value)} · {note.subject_name ?? "Ohne Fach"}
+                          {notenText(note.grade_value)} · {note.subject_name ?? t("Ohne Fach")}
                         </p>
                         <p className="text-[11px] text-muted-foreground">
                           {GRADE_ART[note.kind]} · {formatDate(note.graded_on)}
                           {gewichtText(note.weight) ? ` · ${gewichtText(note.weight)}` : ""}
-                          {note.source !== "manual" ? " · aus dem Dokument" : ""}
+                          {note.source !== "manual" ? t(" · aus dem Dokument") : ""}
                         </p>
                         {note.comment ? <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{note.comment}</p> : null}
                       </div>
@@ -700,7 +701,7 @@ export function GradesCard() {
                         size="icon"
                         variant="ghost"
                         onClick={() => void noten.loeschen(note.id)}
-                        aria-label={`Note ${notenText(note.grade_value)} in ${note.subject_name ?? "ohne Fach"} löschen`}
+                        aria-label={t("Note {note} in {fach} löschen", { note: notenText(note.grade_value), fach: note.subject_name ?? t("ohne Fach") })}
                         disabled={noten.pending !== null}
                       >
                         {noten.pending === `delete:${note.id}` ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
@@ -718,11 +719,11 @@ export function GradesCard() {
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" size="sm" onClick={() => setFormularOffen((war) => !war)} aria-expanded={formularOffen}>
             <Plus aria-hidden="true" />
-            Note erfassen
+            {t("Note erfassen")}
           </Button>
           <Button type="button" size="sm" variant="outline" onClick={() => setImportOffen((war) => !war)} aria-expanded={importOffen}>
             <FileText aria-hidden="true" />
-            Aus Dokument übernehmen
+            {t("Aus Dokument übernehmen")}
           </Button>
         </div>
 

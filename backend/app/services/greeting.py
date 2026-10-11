@@ -29,6 +29,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.core.language import DEFAULT_LANGUAGE, Language
 from app.core.time import as_utc, resolve_timezone_name, utc_now, zone_or_utc
 from app.schemas.dashboard import DashboardResponse
 from app.services import ai_routing
@@ -51,6 +52,25 @@ _SYSTEM_PROMPT: Final = (
     "Beginne mit einem Begrüßungssatz wie 'Herzlich willkommen'."
 )
 
+#: Dieselben Regeln fuer eine englische Oberflaeche. Ein eigener Prompt statt
+#: eines Zusatzes, weil der deutsche ausdruecklich eine deutschsprachige
+#: Begruessung verlangt - zwei widersprechende Anweisungen loest ein kleines
+#: Modell nicht zuverlaessig auf.
+_SYSTEM_PROMPT_EN: Final = (
+    "You are a study assistant for school students. "
+    "Write ONE friendly greeting in English for the dashboard. "
+    "Rules: at most 25 words, one or two sentences, no emoji, no list, "
+    "no Markdown, no quotation marks. "
+    "Address the student directly. "
+    "Only mention what is in the data and invent nothing; the data is in German, translate it. "
+    "Only mention grades if some were explicitly provided. "
+    "Start with a greeting such as 'Welcome'."
+)
+
+
+def system_prompt(language: Language) -> str:
+    return _SYSTEM_PROMPT_EN if language == "en" else _SYSTEM_PROMPT
+
 
 @dataclass(frozen=True, slots=True)
 class GreetingOutcome:
@@ -63,13 +83,18 @@ def greeting_cache_is_fresh(stored_on: date, today: date) -> bool:
     return stored_on == today
 
 
-def build_fallback_greeting(data: DashboardResponse, now: datetime, zone: ZoneInfo) -> str:
+def build_fallback_greeting(
+    data: DashboardResponse, now: datetime, zone: ZoneInfo, language: Language = DEFAULT_LANGUAGE
+) -> str:
     """Baut den Satz aus den Daten, ohne ein Modell zu befragen."""
     stunden = data.summary.total_lessons
     naechste = _next_lesson(data, now, zone)
     termine = [ereignis for ereignis in data.calendar_events if not ereignis.all_day]
     hausaufgaben = data.summary.open_homework
     lernen = [aufgabe for aufgabe in data.study_tasks if aufgabe.status != "done"]
+
+    if language == "en":
+        return _fallback_english(stunden, naechste, len(termine), hausaufgaben, len(lernen))
 
     if naechste is not None:
         satz = f"Herzlich willkommen. Um {naechste['uhrzeit']} Uhr beginnt {naechste['fach']}."
@@ -91,6 +116,31 @@ def build_fallback_greeting(data: DashboardResponse, now: datetime, zone: ZoneIn
     if termine:
         anzahl = len(termine)
         satz = f"{satz} Dazu {anzahl} {'Termin' if anzahl == 1 else 'Termine'} im Kalender."
+    return _hard_limit(satz)
+
+
+def _fallback_english(
+    stunden: int, naechste: dict[str, str] | None, termine: int, hausaufgaben: int, lernen: int
+) -> str:
+    """Derselbe Satz auf Englisch - dieselben Faelle in derselben Reihenfolge."""
+    if naechste is not None:
+        satz = f"Welcome. {naechste['fach']} starts at {naechste['uhrzeit']}."
+    elif stunden:
+        satz = "Welcome. There are no more lessons today."
+    elif termine:
+        satz = "Welcome. Only appointments are waiting for you today."
+    else:
+        satz = "Welcome. Nothing is scheduled for today."
+
+    offen: list[str] = []
+    if hausaufgaben:
+        offen.append(f"{hausaufgaben} {'homework task' if hausaufgaben == 1 else 'homework tasks'}")
+    if lernen:
+        offen.append(f"{lernen} {'study task' if lernen == 1 else 'study tasks'}")
+    if offen:
+        satz = f"{satz} Still open: {', '.join(offen)}."
+    if termine:
+        satz = f"{satz} Plus {termine} {'appointment' if termine == 1 else 'appointments'} in your calendar."
     return _hard_limit(satz)
 
 
@@ -188,6 +238,7 @@ def render_greeting(
     user_timezone: str | None = None,
     force: bool = False,
     grade_lines: Sequence[str] = (),
+    language: Language = DEFAULT_LANGUAGE,
 ) -> GreetingOutcome:
     """Liefert den Satz und sagt, welcher Weg ihn geschrieben hat.
 
@@ -207,11 +258,11 @@ def render_greeting(
     zone = zone_or_utc(resolve_timezone_name(user_timezone or settings.timezone, settings.timezone))
 
     def aus_daten() -> str:
-        return build_fallback_greeting(data, moment, zone)
+        return build_fallback_greeting(data, moment, zone, language)
 
     outcome = ai_routing.generate_with_routes(
         ai_routing.resolve_ai_routes(db, user_id, settings),
-        _SYSTEM_PROMPT,
+        system_prompt(language),
         build_prompt(data, moment, zone, grade_lines),
         max_tokens=120,
         local_timeout=settings.ai_local_timeout_seconds,

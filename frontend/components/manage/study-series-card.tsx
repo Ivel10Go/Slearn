@@ -18,12 +18,13 @@ import { formatDate, formatDuration, toIsoDate } from "@/lib/format";
 import { useCollection } from "@/lib/use-collection";
 import { cn } from "@/lib/utils";
 import { MAX_TASK_PRIORITY, type StudyPlan, type StudyTaskRecurrence, type StudyTaskSeries, type StudyTaskSeriesInput } from "@/lib/types";
+import { t } from "@/lib/i18n";
 
 const WIEDERHOLUNG_LABEL: Record<StudyTaskRecurrence, string> = {
-  daily: "täglich",
-  weekly: "wöchentlich",
-  biweekly: "alle zwei Wochen",
-  monthly: "monatlich",
+  daily: t("täglich"),
+  weekly: t("wöchentlich"),
+  biweekly: t("alle zwei Wochen"),
+  monthly: t("monatlich"),
 };
 
 const WIEDERHOLUNGEN = Object.entries(WIEDERHOLUNG_LABEL) as Array<[StudyTaskRecurrence, string]>;
@@ -113,29 +114,29 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
   async function absenden(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!formular.titel.trim()) {
-      setFormularFehler("Gib der Serie einen Titel.");
+      setFormularFehler(t("Gib der Serie einen Titel."));
       return;
     }
     const dauer = Number(formular.dauer);
     if (!Number.isInteger(dauer) || dauer < 1 || dauer > 1440) {
-      setFormularFehler("Die Dauer muss zwischen 1 und 1440 Minuten liegen.");
+      setFormularFehler(t("Die Dauer muss zwischen 1 und 1440 Minuten liegen."));
       return;
     }
     const prioritaet = Number(formular.prioritaet);
     if (!Number.isInteger(prioritaet) || prioritaet < 0 || prioritaet > MAX_TASK_PRIORITY) {
-      setFormularFehler(`Die Priorität muss zwischen 0 und ${MAX_TASK_PRIORITY} liegen.`);
+      setFormularFehler(t("Die Priorität muss zwischen 0 und {max} liegen.", { max: MAX_TASK_PRIORITY }));
       return;
     }
 
     const grenze = formular.grenze.trim() ? Number(formular.grenze) : null;
     if (grenze !== null && (!Number.isInteger(grenze) || grenze < 1 || grenze > 1000)) {
-      setFormularFehler("Die Anzahl der Wiederholungen muss zwischen 1 und 1000 liegen.");
+      setFormularFehler(t("Die Anzahl der Wiederholungen muss zwischen 1 und 1000 liegen."));
       return;
     }
 
     const bis = formular.bis.trim() ? toUtcIsoFromParts(formular.bis, "23:59") : null;
     if (formular.bis.trim() && !bis) {
-      setFormularFehler("Dieses Datum lässt sich nicht lesen. Bitte erneut wählen.");
+      setFormularFehler(t("Dieses Datum lässt sich nicht lesen. Bitte erneut wählen."));
       return;
     }
 
@@ -162,11 +163,11 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
 
     const start = toUtcIsoFromParts(formular.start, "00:00");
     if (!start) {
-      setFormularFehler("Ab wann soll die Serie laufen? Ein Startdatum wird benötigt.");
+      setFormularFehler(t("Ab wann soll die Serie laufen? Ein Startdatum wird benötigt."));
       return;
     }
     if (!formular.plan) {
-      setFormularFehler("Wähle den Lernplan, zu dem die Serie gehört.");
+      setFormularFehler(t("Wähle den Lernplan, zu dem die Serie gehört."));
       return;
     }
 
@@ -191,17 +192,17 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
     <Card className="border-border/80 bg-card/90">
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
-          <CardTitle>Wiederkehrende Serien</CardTitle>
-          <CardDescription className="mt-1">Aus einer Vorlage entstehen automatisch einzelne Aufgaben.</CardDescription>
+          <CardTitle>{t("Wiederkehrende Serien")}</CardTitle>
+          <CardDescription className="mt-1">{t("Aus einer Vorlage entstehen automatisch einzelne Aufgaben.")}</CardDescription>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="secondary">{sammlung.items.length} Serien</Badge>
-          <Button type="button" size="icon" variant="ghost" onClick={() => void sammlung.reload()} aria-label="Serien neu laden" disabled={sammlung.status === "loading"}>
+          <Badge variant="secondary">{sammlung.items.length} {t("Serien")}</Badge>
+          <Button type="button" size="icon" variant="ghost" onClick={() => void sammlung.reload()} aria-label={t("Serien neu laden")} disabled={sammlung.status === "loading"}>
             <RefreshCw className={cn(sammlung.status === "loading" && "animate-spin")} aria-hidden="true" />
           </Button>
           <Button type="button" size="sm" onClick={() => (formularOffen && bearbeitet === null ? schliessen() : oeffnen())} aria-expanded={formularOffen && bearbeitet === null} disabled={plans.length === 0}>
             {formularOffen && bearbeitet === null ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
-            {formularOffen && bearbeitet === null ? "Schließen" : "Neu"}
+            {formularOffen && bearbeitet === null ? t("Schließen") : t("Neu")}
           </Button>
         </div>
       </CardHeader>
@@ -211,34 +212,34 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
 
         {plans.length === 0 ? (
           <p className="border border-dashed border-border bg-muted/30 px-4 py-3 text-xs leading-5 text-muted-foreground">
-            Eine Serie gehört zu einem Lernplan. Lege oben zuerst einen Plan an.
+            {t("Eine Serie gehört zu einem Lernplan. Lege oben zuerst einen Plan an.")}
           </p>
         ) : null}
 
         {formularOffen && plans.length > 0 ? (
           <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-semibold">{bearbeitet === null ? "Neue Serie" : "Serie bearbeiten"}</p>
-              <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
+              <p className="text-sm font-semibold">{bearbeitet === null ? t("Neue Serie") : t("Serie bearbeiten")}</p>
+              <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label={t("Formular schließen")}>
                 <X aria-hidden="true" />
               </Button>
             </div>
 
-            <Field id="serie-titel" label="Titel" required>
+            <Field id="serie-titel" label={t("Titel")} required>
               {(props) => (
                 <Input
                   {...props}
                   value={formular.titel}
                   onChange={(event) => setFormular((current) => ({ ...current, titel: event.target.value }))}
                   disabled={istSpeichern}
-                  placeholder="Zum Beispiel: Vokabeln zehn Minuten täglich"
+                  placeholder={t("Zum Beispiel: Vokabeln zehn Minuten täglich")}
                 />
               )}
             </Field>
 
             <div className="grid gap-4 sm:grid-cols-2">
               {bearbeitet === null ? (
-                <Field id="serie-plan" label="Lernplan" required>
+                <Field id="serie-plan" label={t("Lernplan")} required>
                   {(props) => (
                     <Select
                       {...props}
@@ -246,7 +247,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
                       onChange={(event) => setFormular((current) => ({ ...current, plan: event.target.value }))}
                       disabled={istSpeichern}
                     >
-                      <option value="">Bitte wählen</option>
+                      <option value="">{t("Bitte wählen")}</option>
                       {plans.map((plan) => (
                         <option key={plan.id} value={plan.id}>
                           {plan.title}
@@ -257,7 +258,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
                 </Field>
               ) : null}
 
-              <Field id="serie-wiederholung" label="Wiederholung" required hint={bearbeitet !== null ? "Gilt erst ab der nächsten Aufgabe." : undefined}>
+              <Field id="serie-wiederholung" label={t("Wiederholung")} required hint={bearbeitet !== null ? t("Gilt erst ab der nächsten Aufgabe.") : undefined}>
                 {(props) => (
                   <Select
                     {...props}
@@ -276,7 +277,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
             </div>
 
             <div className="grid gap-4 sm:grid-cols-3">
-              <Field id="serie-dauer" label="Dauer in Minuten" required>
+              <Field id="serie-dauer" label={t("Dauer in Minuten")} required>
                 {(props) => (
                   <Input
                     {...props}
@@ -291,7 +292,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
                 )}
               </Field>
 
-              <Field id="serie-prioritaet" label={`Priorität (0–${MAX_TASK_PRIORITY})`} required>
+              <Field id="serie-prioritaet" label={t("Priorität (0–{max})", { max: MAX_TASK_PRIORITY })} required>
                 {(props) => (
                   <Input
                     {...props}
@@ -306,7 +307,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
               </Field>
 
               {bearbeitet === null ? (
-                <Field id="serie-start" label="Start" required>
+                <Field id="serie-start" label={t("Start")} required>
                   {(props) => (
                     <Input
                       {...props}
@@ -321,7 +322,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field id="serie-bis" label="Läuft bis" hint="Optional. Danach endet die Serie.">
+              <Field id="serie-bis" label={t("Läuft bis")} hint={t("Optional. Danach endet die Serie.")}>
                 {(props) => (
                   <Input
                     {...props}
@@ -333,7 +334,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
                 )}
               </Field>
 
-              <Field id="serie-grenze" label="Höchstzahl" hint="Optional. Anzahl der erzeugten Aufgaben, höchstens 1000.">
+              <Field id="serie-grenze" label={t("Höchstzahl")} hint={t("Optional. Anzahl der erzeugten Aufgaben, höchstens 1000.")}>
                 {(props) => (
                   <Input
                     {...props}
@@ -349,7 +350,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
               </Field>
             </div>
 
-            <Field id="serie-beschreibung" label="Notiz" hint="Optional.">
+            <Field id="serie-beschreibung" label={t("Notiz")} hint={t("Optional.")}>
               {(props) => (
                 <Textarea
                   {...props}
@@ -365,21 +366,21 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
             <div className="flex flex-wrap items-center gap-2">
               <Button type="submit" disabled={istSpeichern}>
                 {istSpeichern ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
-                {istSpeichern ? "Wird gespeichert …" : bearbeitet === null ? "Serie anlegen" : "Vorlage speichern"}
+                {istSpeichern ? t("Wird gespeichert …") : bearbeitet === null ? t("Serie anlegen") : t("Vorlage speichern")}
               </Button>
               <Button type="button" variant="ghost" onClick={schliessen} disabled={istSpeichern}>
-                Abbrechen
+                {t("Abbrechen")}
               </Button>
             </div>
           </form>
         ) : null}
 
         {sammlung.status === "loading" && sammlung.items.length === 0 ? (
-          <div className="space-y-3" aria-busy="true" aria-label="Serien werden geladen">
+          <div className="space-y-3" aria-busy="true" aria-label={t("Serien werden geladen")}>
             <Skeleton className="h-16 w-full" />
           </div>
         ) : sammlung.items.length === 0 ? (
-          <EmptyState icon={Repeat} title="Keine Serien" description="Eine Serie erzeugt aus einer Vorlage mehrere Aufgaben – etwa tägliche Vokabelübungen." />
+          <EmptyState icon={Repeat} title={t("Keine Serien")} description={t("Eine Serie erzeugt aus einer Vorlage mehrere Aufgaben – etwa tägliche Vokabelübungen.")} />
         ) : (
           <ul className="space-y-2.5">
             {sammlung.items.map((serie) => (
@@ -388,25 +389,25 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
                   <div className="flex flex-wrap items-center gap-2">
                     <p className={cn("truncate text-sm font-semibold", serie.status !== "active" && "text-muted-foreground")}>{serie.title}</p>
                     <Badge variant="outline">{WIEDERHOLUNG_LABEL[serie.recurrence]}</Badge>
-                    {serie.status !== "active" ? <Badge variant="secondary">{serie.status === "finished" ? "Beendet" : "Storniert"}</Badge> : null}
+                    {serie.status !== "active" ? <Badge variant="secondary">{serie.status === "finished" ? t("Beendet") : t("Storniert")}</Badge> : null}
                   </div>
                   {serie.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{serie.description}</p> : null}
                   <p className="mt-1.5 text-xs font-semibold text-muted-foreground">
                     {formatDuration(serie.duration_minutes)}
                     <span className="text-border"> · </span>
-                    Priorität {serie.priority}
+                    {t("Priorität {n}", { n: serie.priority })}
                     <span className="text-border"> · </span>
-                    {serie.occurrences} {serie.occurrences === 1 ? "Aufgabe" : "Aufgaben"}
+                    {serie.occurrences} {serie.occurrences === 1 ? t("Aufgabe") : t("Aufgaben")}
                     {serie.next_due_on ? (
                       <>
                         <span className="text-border"> · </span>
-                        als Nächstes {formatDate(serie.next_due_on, { day: "2-digit", month: "short" })}
+                        {t("als Nächstes {datum}", { datum: formatDate(serie.next_due_on, { day: "2-digit", month: "short" }) })}
                       </>
                     ) : null}
                     {serie.until ? (
                       <>
                         <span className="text-border"> · </span>
-                        bis {formatDate(serie.until, { day: "2-digit", month: "short", year: "numeric" })}
+                        {t("bis {datum}", { datum: formatDate(serie.until, { day: "2-digit", month: "short", year: "numeric" }) })}
                       </>
                     ) : null}
                   </p>

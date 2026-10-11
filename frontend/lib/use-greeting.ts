@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getGreeting, refreshGreeting as refreshGreetingRequest } from "./api";
 import type { Greeting } from "./types";
+import { t } from "./i18n";
 
 type GreetingStatus = "loading" | "ready" | "error";
 
@@ -43,7 +44,7 @@ export function useGreeting() {
           }
           setState({
             greeting: null,
-            error: error instanceof Error ? error.message : "Der Willkommenssatz konnte nicht geladen werden.",
+            error: error instanceof Error ? error.message : t("Der Willkommenssatz konnte nicht geladen werden."),
             status: "error",
           });
         });
@@ -62,7 +63,7 @@ export function useGreeting() {
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "Der Satz konnte nicht erneuert werden.",
+        error: error instanceof Error ? error.message : t("Der Satz konnte nicht erneuert werden."),
       }));
     } finally {
       setRefreshing(false);

@@ -5,6 +5,7 @@ import { Check, LoaderCircle, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-
 import { Button } from "@/components/ui/button";
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 interface RowActionsProps {
   /** Bezeichnung des Eintrags, fuer die Screenreader-Beschriftung der Knoepfe. */
@@ -41,7 +42,7 @@ export function RowActions({ label, onEdit, onDelete, busy }: RowActionsProps) {
   return (
     <div className="flex shrink-0 items-center gap-1.5">
       {onEdit ? (
-        <Button type="button" size="icon" variant="ghost" onClick={onEdit} disabled={busy || deleting} aria-label={`${label} bearbeiten`}>
+        <Button type="button" size="icon" variant="ghost" onClick={onEdit} disabled={busy || deleting} aria-label={t("{titel} bearbeiten", { titel: label })}>
           <Pencil aria-hidden="true" />
         </Button>
       ) : null}
@@ -49,14 +50,14 @@ export function RowActions({ label, onEdit, onDelete, busy }: RowActionsProps) {
         <>
           <Button type="button" size="sm" variant="destructive" onClick={() => void handleDelete()} disabled={deleting}>
             {deleting ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}
-            Wirklich loeschen
+            {t("Wirklich loeschen")}
           </Button>
           <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={deleting}>
-            Abbrechen
+            {t("Abbrechen")}
           </Button>
         </>
       ) : (
-        <Button type="button" size="icon" variant="ghost" onClick={() => setConfirming(true)} disabled={busy || deleting} aria-label={`${label} loeschen`}>
+        <Button type="button" size="icon" variant="ghost" onClick={() => setConfirming(true)} disabled={busy || deleting} aria-label={t("{titel} löschen", { titel: label })}>
           <Trash2 aria-hidden="true" />
         </Button>
       )}
@@ -90,7 +91,7 @@ export function SectionHeader({ title, count, loading, onReload, formOpen, onTog
       <CardTitle>{title}</CardTitle>
       <div className="-mr-1.5 flex items-center gap-0.5">
         <span className="mr-1.5 text-xs tabular-nums text-muted-foreground">{count}</span>
-        <Button type="button" size="icon" variant="ghost" onClick={onReload} aria-label={`${title} neu laden`} title="Neu laden" disabled={loading}>
+        <Button type="button" size="icon" variant="ghost" onClick={onReload} aria-label={t("{titel} neu laden", { titel: title })} title={t("Neu laden")} disabled={loading}>
           <RefreshCw className={cn(loading && "animate-spin")} aria-hidden="true" />
         </Button>
         <Button
@@ -99,8 +100,8 @@ export function SectionHeader({ title, count, loading, onReload, formOpen, onTog
           variant={formOpen ? "secondary" : "ghost"}
           onClick={onToggleForm}
           aria-expanded={formOpen}
-          aria-label={formOpen ? "Formular schließen" : newLabel}
-          title={formOpen ? "Schließen" : newLabel}
+          aria-label={formOpen ? t("Formular schließen") : newLabel}
+          title={formOpen ? t("Schließen") : newLabel}
         >
           {formOpen ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
         </Button>
@@ -133,7 +134,7 @@ export function SectionBanner({ error, actionError, onRetry }: SectionBannerProp
           <span>{error}</span>
           {onRetry ? (
             <Button type="button" size="sm" variant="outline" onClick={onRetry}>
-              Erneut versuchen
+              {t("Erneut versuchen")}
             </Button>
           ) : null}
         </div>

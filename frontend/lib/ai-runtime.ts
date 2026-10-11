@@ -1,3 +1,4 @@
+import { t, translateServerText } from "./i18n";
 /*
  * Die Regeln der lokalen KI in der Oberflaeche - ohne React, ohne `fetch`.
  *
@@ -182,9 +183,9 @@ export function describeSource(source: AnswerSource, model?: string | null): Sou
     case "provider":
       return { text: model ? `KI-Antwort · ${model}` : "KI-Antwort", fromModel: true };
     case "none":
-      return { text: "Keine Treffer", fromModel: false };
+      return { text: t("Keine Treffer"), fromModel: false };
     default:
-      return { text: "Aus deinen Daten", fromModel: false };
+      return { text: t("Aus deinen Daten"), fromModel: false };
   }
 }
 
@@ -280,7 +281,7 @@ export function containerTrapNote(url: string): string | null {
   if (!replacement) {
     return null;
   }
-  return `Läuft der Lernraum in Docker, zeigt „${url.trim()}“ auf den Container, nicht auf deinen Rechner. Nimm ${replacement}.`;
+  return t("Läuft der Lernraum in Docker, zeigt „{url}“ auf den Container, nicht auf deinen Rechner. Nimm {ersatz}.", { url: url.trim(), ersatz: replacement });
 }
 
 export interface RuntimeOption {
@@ -334,7 +335,7 @@ export function presetFields(preset: LocalRuntimePayload, native = false): Recor
 
 /** Die Reihenfolge der Wege als Text fuer die Oberflaeche. */
 export function describeStages(runtime: AiRuntimePayload): string[] {
-  return runtime.stages.length > 0 ? runtime.stages : ["1. Kein KI-Server eingetragen."];
+  return runtime.stages.length > 0 ? runtime.stages.map(translateServerText) : [t("1. Kein KI-Server eingetragen.")];
 }
 
 /** Der Port als deutsche Anzeige, oder `null` wenn unbekannt. */

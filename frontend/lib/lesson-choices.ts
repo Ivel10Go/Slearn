@@ -1,4 +1,5 @@
 import { apiRequest } from "./api";
+import { t } from "./i18n";
 
 export interface LessonChoiceOption {
   subject_id: number;
@@ -29,7 +30,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function parseGroups(payload: unknown): LessonChoiceGroup[] {
   if (!Array.isArray(payload)) {
-    throw new Error("Der Server hat die Parallelstunden in einem unerwarteten Format beantwortet.");
+    throw new Error(t("Der Server hat die Parallelstunden in einem unerwarteten Format beantwortet."));
   }
   const groups: LessonChoiceGroup[] = [];
   for (const raw of payload) {
@@ -66,7 +67,7 @@ export async function saveLessonChoices(attended: Record<string, number[]>): Pro
   const selections = Object.entries(attended).map(([key, ids]) => ({ key, attended: ids }));
   const payload = await apiRequest("/v1/timetable/choices", { method: "PUT", body: JSON.stringify({ selections }) });
   if (!isRecord(payload)) {
-    throw new Error("Der Server hat die Auswahl in einem unerwarteten Format beantwortet.");
+    throw new Error(t("Der Server hat die Auswahl in einem unerwarteten Format beantwortet."));
   }
   return { groups: parseGroups(payload.groups), resynced: payload.resynced === true };
 }

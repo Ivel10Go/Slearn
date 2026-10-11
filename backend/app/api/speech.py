@@ -34,7 +34,7 @@ from typing import cast
 
 from fastapi import APIRouter, File, HTTPException, Response, UploadFile, status
 
-from app.api.deps import CurrentUser, ModelDownloads, Speech
+from app.api.deps import CurrentUser, ModelDownloads, RequestLanguage, Speech
 from app.schemas.common import MessageResponse
 from app.schemas.speech import (
     SpeakRequest,
@@ -182,7 +182,7 @@ def _raise_for_speech_error(error: Exception) -> None:
 
 
 @router.get("/capabilities", response_model=SpeechCapabilitiesRead)
-def read_capabilities(_user: CurrentUser, speech: Speech) -> SpeechCapabilitiesRead:
+def read_capabilities(_user: CurrentUser, speech: Speech, language: RequestLanguage) -> SpeechCapabilitiesRead:
     """Was gerade geht - und wenn nicht, warum.
 
     **Immer 200.** Auch ohne ein einziges Modell, ohne Laufzeit und mit
@@ -191,7 +191,7 @@ def read_capabilities(_user: CurrentUser, speech: Speech) -> SpeechCapabilitiesR
     verliert die Information, *warum* - und die Oberflaeche koennte ihre Frage
     dann nur noch raten.
     """
-    capabilities = speech.capabilities()
+    capabilities = speech.capabilities(language)
     return SpeechCapabilitiesRead(
         text_mode_available=capabilities.text_mode_available,
         text_mode_note=capabilities.text_mode_note,
@@ -223,9 +223,11 @@ def read_capabilities(_user: CurrentUser, speech: Speech) -> SpeechCapabilitiesR
 
 
 @router.get("/voices", response_model=VoiceListRead)
-def list_voices(_user: CurrentUser, downloads: ModelDownloads, speech: Speech) -> VoiceListRead:
+def list_voices(
+    _user: CurrentUser, downloads: ModelDownloads, speech: Speech, language: RequestLanguage
+) -> VoiceListRead:
     """Alle Stimmen mit ihrem Stand - Deutsch zuerst, danach nach Groesse."""
-    stimme = speech.usable_voice()
+    stimme = speech.usable_voice(language)
     return VoiceListRead(
         voices=[_voice_read(voice, downloads) for voice in sorted_voices()],
         default_voice_id=stimme.id if stimme else None,
@@ -287,6 +289,7 @@ def delete_voice(voice_id: str, _user: CurrentUser, downloads: ModelDownloads) -
 def transcribe_audio(
     _user: CurrentUser,
     speech: Speech,
+    language: RequestLanguage,
     file: UploadFile = File(...),
 ) -> TranscriptionRead:
     """Macht aus einer Aufnahme einen Text.
@@ -344,6 +347,7 @@ def transcribe_audio(
         ergebnis = speech.transcribe(
             payload,
             content_type=file.content_type,
+            language=language,
         )
     except (SpeechRuntimeError, SpeechInputError) as exc:
         _raise_for_speech_error(exc)
@@ -363,7 +367,7 @@ def transcribe_audio(
 
 
 @router.post("/speak")
-def speak_text(_user: CurrentUser, speech: Speech, payload: SpeakRequest) -> Response:
+def speak_text(_user: CurrentUser, speech: Speech, payload: SpeakRequest, language: RequestLanguage) -> Response:
     """Liest einen Text vor und liefert eine WAV-Datei als Rohdaten.
 
     **Kein JSON mit base64.** Eine WAV-Datei waere als base64 um ein Drittel
@@ -378,7 +382,7 @@ def speak_text(_user: CurrentUser, speech: Speech, payload: SpeakRequest) -> Res
     Uebersetzung wie bei den Stimmrouten, nur mit der Id aus dem Request-Body.
     """
     try:
-        ton, stimme = speech.speak(payload.text, payload.voice_id)
+        ton, stimme = speech.speak(payload.text, payload.voice_id, language)
     except ModelCatalogError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (SpeechRuntimeError, SpeechInputError) as exc:

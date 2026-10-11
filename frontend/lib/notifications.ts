@@ -28,6 +28,7 @@ import type {
   NotificationSettings,
   QuietHours,
 } from "./types";
+import { t } from "./i18n";
 
 export type { LernraumNotification, NotificationKind, NotificationSettings, QuietHours };
 
@@ -115,7 +116,7 @@ export function ankerFuer(art: NotificationKind): string {
 
 /** Wie eine Art auf Deutsch heisst. Fuer die Einstellungen und das Log. */
 export function bezeichnung(art: NotificationKind): string {
-  return art === "exam_due" ? "Prüfung" : "Lernaufgabe";
+  return art === "exam_due" ? t("Prüfung") : t("Lernaufgabe");
 }
 
 /**
@@ -143,9 +144,9 @@ export function pushVerfuegbar(
  */
 export function beschreibeRuhezeit(ruhe: QuietHours): string {
   if (!ruhe.enabled) {
-    return "aus";
+    return t("aus");
   }
-  return `${ruhe.start} bis ${ruhe.end}${ruhe.spans_midnight ? " (über Mitternacht)" : ""}`;
+  return t("{von} bis {bis}", { von: ruhe.start, bis: ruhe.end }) + (ruhe.spans_midnight ? ` ${t("(über Mitternacht)")}` : "");
 }
 
 /**

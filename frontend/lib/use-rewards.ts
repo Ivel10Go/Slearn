@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getRewards } from "./api";
 import type { RewardOverview } from "./types";
 import { errorMessage } from "./use-collection";
+import { t } from "./i18n";
 
 type RewardsStatus = "loading" | "ready" | "error";
 
@@ -63,7 +64,7 @@ export function useRewards(refreshKey = 0): RewardsApi & RewardsState {
       }
       setState((current) => ({
         ...current,
-        error: errorMessage(loadError, "Die Belohnungen konnten nicht geladen werden."),
+        error: errorMessage(loadError, t("Die Belohnungen konnten nicht geladen werden.")),
         status: "error",
       }));
     }

@@ -3,9 +3,11 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowRight, LoaderCircle } from "lucide-react";
 import { BrandMark } from "@/components/app-shell";
+import { LanguageSelect } from "@/components/language-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError, completeSetup, getSetupStatus } from "@/lib/api";
+import { t } from "@/lib/i18n";
 
 type GateState = "checking" | "needed" | "ready";
 
@@ -74,25 +76,28 @@ function Onboarding() {
       // eben noch im Speicher hat.
       window.location.replace("/");
     } catch (submitError) {
-      setError(submitError instanceof ApiError ? submitError.message : "Das hat nicht geklappt. Bitte versuche es noch einmal.");
+      setError(submitError instanceof ApiError ? submitError.message : t("Das hat nicht geklappt. Bitte versuche es noch einmal."));
       setPending(false);
     }
   }
 
   return (
     <main className="flex min-h-screen flex-col bg-background">
-      <div className="app-drag h-10 shrink-0" aria-hidden="true" />
+      <div className="app-drag flex h-10 shrink-0 items-start justify-end px-4 pt-2">
+        {/* Die Sprache steht vor allem anderen: die Frage nach dem Namen soll man schon lesen koennen. */}
+        <LanguageSelect id="setup-sprache" className="app-no-drag h-8 w-auto" />
+      </div>
       <div className="flex flex-1 items-center justify-center px-6 pb-16">
         <div className="w-full max-w-sm">
           <BrandMark className="h-9 w-9 rounded-[7px] text-lg" />
-          <h1 className="mt-6 text-2xl font-semibold tracking-tight">Willkommen im Lernraum</h1>
+          <h1 className="mt-6 text-2xl font-semibold tracking-tight">{t("Willkommen im Lernraum")}</h1>
           <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
-            Stundenplan, Hausaufgaben, Prüfungen und Lernzeit an einem Ort. Alles bleibt auf diesem Rechner.
+            {t("Stundenplan, Hausaufgaben, Prüfungen und Lernzeit an einem Ort. Alles bleibt auf diesem Rechner.")}
           </p>
 
           <form onSubmit={(event) => void submit(event)} className="mt-8 space-y-3">
             <label htmlFor="setup-name" className="block text-[13px] font-medium">
-              Wie sollen wir dich nennen?
+              {t("Wie sollen wir dich nennen?")}
             </label>
             <Input
               id="setup-name"
@@ -101,7 +106,7 @@ function Onboarding() {
               maxLength={100}
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="Vorname"
+              placeholder={t("Vorname")}
               disabled={pending}
               aria-describedby={error ? "setup-error" : undefined}
             />
@@ -112,13 +117,13 @@ function Onboarding() {
             ) : null}
             <Button type="submit" className="w-full" disabled={pending || !name.trim()}>
               {pending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : null}
-              Los geht&apos;s
+              {t("Los geht's")}
               {pending ? null : <ArrowRight aria-hidden="true" />}
             </Button>
           </form>
 
           <p className="mt-8 text-xs leading-5 text-muted-foreground">
-            Stundenplan aus WebUntis, Kalender und KI-Dienste kannst du später in den Einstellungen verbinden.
+            {t("Stundenplan aus WebUntis, Kalender und KI-Dienste kannst du später in den Einstellungen verbinden.")}
           </p>
         </div>
       </div>

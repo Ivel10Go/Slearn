@@ -13,6 +13,7 @@ import {
   type TimetableEntryDraft,
   type TimetableExtraction,
 } from "@/lib/timetable-upload";
+import { t } from "@/lib/i18n";
 
 const WOCHENTAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
 const ERLAUBT = ".pdf,.png,.jpg,.jpeg,.webp";
@@ -26,7 +27,7 @@ interface TimetableUploadCardProps {
 }
 
 function fehlertext(error: unknown): string {
-  return error instanceof Error ? error.message : "Das hat nicht geklappt.";
+  return error instanceof Error ? error.message : t("Das hat nicht geklappt.");
 }
 
 /**
@@ -97,13 +98,13 @@ export function TimetableUploadCard({ onApplied, open, onToggle }: TimetableUplo
     <Card className="border-border/80 bg-card/90">
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
-          <CardTitle>Stundenplan hochladen</CardTitle>
+          <CardTitle>{t("Stundenplan hochladen")}</CardTitle>
           <CardDescription className="mt-1">
-            Kein Schulportal? Lade deinen Plan als PDF oder Bild hoch. Fächer und Stunden werden daraus übernommen.
+            {t("Kein Schulportal? Lade deinen Plan als PDF oder Bild hoch. Fächer und Stunden werden daraus übernommen.")}
           </CardDescription>
         </div>
         <Button type="button" size="sm" variant="outline" onClick={onToggle} aria-expanded={open}>
-          {open ? "Schließen" : "Öffnen"}
+          {open ? t("Schließen") : t("Öffnen")}
         </Button>
       </CardHeader>
 
@@ -114,7 +115,7 @@ export function TimetableUploadCard({ onApplied, open, onToggle }: TimetableUplo
               ref={eingabe}
               type="file"
               accept={ERLAUBT}
-              aria-label="Stundenplan als PDF oder Bild wählen"
+              aria-label={t("Stundenplan als PDF oder Bild wählen")}
               className="max-w-full text-[13px] file:mr-3 file:rounded-md file:border file:border-border file:bg-card file:px-3 file:py-1.5 file:text-[13px] file:font-medium"
               disabled={arbeitet !== null}
               onChange={(event) => {
@@ -126,30 +127,30 @@ export function TimetableUploadCard({ onApplied, open, onToggle }: TimetableUplo
             />
             <Button type="button" onClick={() => void auslesen()} disabled={!datei || arbeitet !== null}>
               {arbeitet === "lesen" ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <FileUp aria-hidden="true" />}
-              {arbeitet === "lesen" ? "Wird gelesen …" : "Auslesen"}
+              {arbeitet === "lesen" ? t("Wird gelesen …") : t("Auslesen")}
             </Button>
           </div>
           <p className="text-xs leading-5 text-muted-foreground">
-            Das Auslesen läuft über deinen KI-Anbieter (unter „KI &amp; Modelle“). Für Bilder braucht das Modell Bildeingabe.
+            {t("Das Auslesen läuft über deinen KI-Anbieter (unter „KI & Modelle“). Für Bilder braucht das Modell Bildeingabe.")}
           </p>
 
           <FormError message={fehler} />
 
           {ergebnis ? (
             <p className="text-[13px] text-muted-foreground" role="status">
-              {ergebnis.created_subjects} neue Fächer und {ergebnis.imported_lessons} Stunden übernommen.
+              {t("{faecher} neue Fächer und {stunden} Stunden übernommen.", { faecher: ergebnis.created_subjects, stunden: ergebnis.imported_lessons })}
             </p>
           ) : null}
 
           {vorschlag ? (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-semibold">Gelesen: {eintraege.length} Stunden</p>
-                {neueFaecher.length > 0 ? <Badge variant="secondary">{neueFaecher.length} neue Fächer</Badge> : null}
+                <p className="text-sm font-semibold">{t("Gelesen: {n} Stunden", { n: eintraege.length })}</p>
+                {neueFaecher.length > 0 ? <Badge variant="secondary">{t("{n} neue Fächer", { n: neueFaecher.length })}</Badge> : null}
               </div>
               {neueFaecher.length > 0 ? (
                 <p className="text-xs leading-5 text-muted-foreground">
-                  Neu angelegt werden: {neueFaecher.map((fach) => fach.name).join(", ")}.
+                  {t("Neu angelegt werden: {liste}.", { liste: neueFaecher.map((fach) => fach.name).join(", ") })}
                 </p>
               ) : null}
 
@@ -164,12 +165,12 @@ export function TimetableUploadCard({ onApplied, open, onToggle }: TimetableUplo
                             {stunde.start}–{stunde.end}
                           </span>
                           <span className="min-w-0 flex-1 truncate font-medium">{stunde.subject}</span>
-                          {stunde.room ? <span className="text-xs text-muted-foreground">Raum {stunde.room}</span> : null}
+                          {stunde.room ? <span className="text-xs text-muted-foreground">{t("Raum {raum}", { raum: stunde.room })}</span> : null}
                           <Button
                             type="button"
                             size="icon"
                             variant="ghost"
-                            aria-label={`${stunde.subject} am ${tag.name} um ${stunde.start} entfernen`}
+                            aria-label={t("{fach} am {tag} um {zeit} entfernen", { fach: stunde.subject, tag: tag.name, zeit: stunde.start })}
                             disabled={arbeitet !== null}
                             onClick={() => setEintraege((liste) => liste.filter((e) => e !== stunde))}
                           >
@@ -185,14 +186,14 @@ export function TimetableUploadCard({ onApplied, open, onToggle }: TimetableUplo
               <div className="flex flex-wrap items-center gap-2">
                 <Button type="button" onClick={() => void uebernehmen()} disabled={eintraege.length === 0 || arbeitet !== null}>
                   {arbeitet === "speichern" ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
-                  {arbeitet === "speichern" ? "Wird übernommen …" : "Übernehmen"}
+                  {arbeitet === "speichern" ? t("Wird übernommen …") : t("Übernehmen")}
                 </Button>
                 <Button type="button" variant="ghost" onClick={zuruecksetzen} disabled={arbeitet !== null}>
-                  Verwerfen
+                  {t("Verwerfen")}
                 </Button>
               </div>
               <p className="text-xs leading-5 text-muted-foreground">
-                Der Plan gilt für die nächsten 8 Wochen. Stunden aus dem Schulportal bleiben unberührt.
+                {t("Der Plan gilt für die nächsten 8 Wochen. Stunden aus dem Schulportal bleiben unberührt.")}
               </p>
             </div>
           ) : null}

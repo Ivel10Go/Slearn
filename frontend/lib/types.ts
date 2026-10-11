@@ -1,5 +1,6 @@
 import { parseDashboardApiResponse, parseGreetingResponse, parseScheduleRangeResponse, parseStudyActionResponse, parseStudySession, parseStudyTask } from "./schemas";
 import { normalizeSource, type AiSource, type AnswerSource } from "./ai-runtime";
+import { t } from "./i18n";
 
 export type ApiIdentifier = string | number;
 export type StudyTaskStatus = "todo" | "in_progress" | "completed";
@@ -1064,9 +1065,9 @@ export function normalizeStudyTask(task: unknown): DashboardStudyTask {
   const status = normalizeStatus(parsed.status, progress, session);
   return {
     id: String(parsed.id),
-    subject: text(parsed.subject ?? parsed.subject_name, "Lernen"),
-    title: text(parsed.title, "Lernaufgabe"),
-    topic: text(parsed.topic ?? parsed.topic_name, "Selbstständiges Lernen"),
+    subject: text(parsed.subject ?? parsed.subject_name, t("Lernen")),
+    title: text(parsed.title, t("Lernaufgabe")),
+    topic: text(parsed.topic ?? parsed.topic_name, t("Selbstständiges Lernen")),
     durationMinutes: Math.max(0, Math.round(numberValue(parsed.duration_minutes, 25))),
     status,
     progress,
@@ -1084,7 +1085,7 @@ export function normalizeStudyTask(task: unknown): DashboardStudyTask {
 export function normalizeStudyAction(payload: unknown, fallbackTaskId: ApiIdentifier): StudyActionResult {
   const parsed: any = parseStudyActionResponse(payload);
   const source = typeof parsed === "object" && parsed !== null && "data" in parsed ? parsed.data : parsed;
-  if (typeof source !== "object" || source === null) throw new Error("Die Lernaktionsantwort ist ungültig.");
+  if (typeof source !== "object" || source === null) throw new Error(t("Die Lernaktionsantwort ist ungültig."));
   const taskPayload = "task" in source ? source.task : "title" in source ? source : null;
   const task = typeof taskPayload === "object" && taskPayload !== null ? normalizeStudyTask(taskPayload) : null;
   const sessionPayload = "session" in source ? source.session : "study_session" in source ? source.study_session : "active_session" in source ? source.active_session : source.started_at || source.start || source.start_time ? source : task?.session;
@@ -1111,9 +1112,9 @@ function normalizeLesson(raw: unknown): DashboardLesson {
     // Ohne Kuerzel aus dem Portal bleibt der ausgeschriebene Name stehen,
     // damit die Kachel nie leer wird.
     subjectShort: text(lesson.subject_short_name, subjectName),
-    title: text(lesson.title ?? lesson.subject_name ?? lesson.subject, "Unterricht"),
-    teacher: text(lesson.teacher ?? lesson.teacher_name, "Nicht angegeben"),
-    room: text(lesson.room ?? lesson.room_name, "Nicht angegeben"),
+    title: text(lesson.title ?? lesson.subject_name ?? lesson.subject, t("Unterricht")),
+    teacher: text(lesson.teacher ?? lesson.teacher_name, t("Nicht angegeben")),
+    room: text(lesson.room ?? lesson.room_name, t("Nicht angegeben")),
     startTime,
     endTime: text(lesson.end_time, startTime),
     color: text(lesson.color ?? lesson.subject_color, "#6366f1"),
@@ -1153,10 +1154,10 @@ export function normalizeDashboard(payload: unknown): DashboardData {
   const lessons = (parsed.lessons ?? []).map((lesson: unknown) => normalizeLesson(lesson));
   const upcomingExams = (parsed.upcoming_exams ?? []).map((exam: any) => ({
     id: String(exam.id),
-    subject: text(exam.subject ?? exam.subject_name, "Allgemein"),
-    title: text(exam.title, "Prüfung"),
+    subject: text(exam.subject ?? exam.subject_name, t("Allgemein")),
+    title: text(exam.title, t("Prüfung")),
     date: exam.date,
-    description: text(exam.description, "Vorbereitung auf die nächste Prüfung."),
+    description: text(exam.description, t("Vorbereitung auf die nächste Prüfung.")),
     topics: normalizeTopics(exam.topics),
     progress: examProgress(exam.progress, exam.topics),
   }));

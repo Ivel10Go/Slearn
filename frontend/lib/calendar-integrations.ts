@@ -14,14 +14,15 @@
 
 import type { IntegrationCatalog, IntegrationRead } from "./types";
 import type { IntegrationWrite } from "./api";
+import { t } from "./i18n";
 
 /** Wozu der Knopf in dieser Art Integration tatsächlich abruft. */
 export const SYNC_LABELS: Record<string, string> = {
-  webuntis: "Stundenplan aktualisieren",
-  documents: "Dokumente indexieren",
-  ical: "Termine holen",
-  google_calendar: "Termine abgleichen",
-  caldav: "Termine abgleichen",
+  webuntis: t("Stundenplan aktualisieren"),
+  documents: t("Dokumente indexieren"),
+  ical: t("Termine holen"),
+  google_calendar: t("Termine abgleichen"),
+  caldav: t("Termine abgleichen"),
 };
 
 /**
@@ -62,20 +63,20 @@ export function isSecretField(field: string): boolean {
 }
 
 const FIELD_LABELS: Record<string, string> = {
-  base_url: "Basis-URL",
-  school: "Schule",
-  username: "Benutzername",
-  password: "Passwort",
-  model: "Modell",
-  api_key: "API-Schlüssel",
-  path: "Ablageort",
-  url: "ICS-Adresse",
-  client_id: "Client-ID",
-  client_secret: "Client-Schlüssel",
-  calendar_id: "Kalender-ID",
-  redirect_uri: "Weiterleitungs-Adresse",
-  refresh_token: "Zugriff von Google",
-  token_scope: "Erteilte Rechte",
+  base_url: t("Basis-URL"),
+  school: t("Schule"),
+  username: t("Benutzername"),
+  password: t("Passwort"),
+  model: t("Modell"),
+  api_key: t("API-Schlüssel"),
+  path: t("Ablageort"),
+  url: t("ICS-Adresse"),
+  client_id: t("Client-ID"),
+  client_secret: t("Client-Schlüssel"),
+  calendar_id: t("Kalender-ID"),
+  redirect_uri: t("Weiterleitungs-Adresse"),
+  refresh_token: t("Zugriff von Google"),
+  token_scope: t("Erteilte Rechte"),
   runtime: "Laufzeit",
 };
 
@@ -133,19 +134,19 @@ export function validateIntegrationInput(
     const gewaehlt = felder.filter((field) => combined[field]?.trim());
     if (gewaehlt.length > 1) {
       return {
-        message: `Trage nur eine Angabe ein: ${felder.map(fieldLabel).join(" oder ")}.`,
+        message: t("Trage nur eine Angabe ein: {liste}.", { liste: felder.map(fieldLabel).join(` ${t("oder")} `) }),
         invalid: gewaehlt,
       };
     }
     if (gewaehlt.length === 0) {
-      beschriftungen.push(felder.map(fieldLabel).join(" oder "));
+      beschriftungen.push(felder.map(fieldLabel).join(` ${t("oder")} `));
     }
   }
 
   if (beschriftungen.length === 0) {
     return null;
   }
-  return { message: `Diese Angaben fehlen noch: ${beschriftungen.join(", ")}.`, invalid: fehlend };
+  return { message: t("Diese Angaben fehlen noch: {liste}.", { liste: beschriftungen.join(", ") }), invalid: fehlend };
 }
 
 /**

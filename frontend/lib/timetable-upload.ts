@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api";
+import { t } from "./i18n";
 
 /** Eine wiederkehrende Stunde der Woche (`weekday`: 0 = Montag). */
 export interface TimetableEntryDraft {
@@ -44,7 +45,7 @@ function text(value: unknown): string | null {
  */
 export function parseExtraction(payload: unknown): TimetableExtraction {
   if (!isRecord(payload) || !Array.isArray(payload.entries) || !Array.isArray(payload.subjects)) {
-    throw new Error("Der Server hat den Plan in einem unerwarteten Format beantwortet.");
+    throw new Error(t("Der Server hat den Plan in einem unerwarteten Format beantwortet."));
   }
   const entries: TimetableEntryDraft[] = [];
   for (const raw of payload.entries) {
@@ -66,7 +67,7 @@ export function parseExtraction(payload: unknown): TimetableExtraction {
 
 export function parseApplied(payload: unknown): TimetableApplied {
   if (!isRecord(payload) || typeof payload.imported_lessons !== "number" || typeof payload.created_subjects !== "number") {
-    throw new Error("Der Server hat die Übernahme in einem unerwarteten Format beantwortet.");
+    throw new Error(t("Der Server hat die Übernahme in einem unerwarteten Format beantwortet."));
   }
   return {
     created_subjects: payload.created_subjects,

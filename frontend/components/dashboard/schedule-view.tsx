@@ -25,6 +25,7 @@ import { useNow } from "@/lib/use-now";
 import { useScheduleRange } from "@/lib/use-schedule-range";
 import type { DashboardLesson } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { t, tn } from "@/lib/i18n";
 
 type RangeId = "today" | "threeDays" | "week";
 
@@ -36,9 +37,9 @@ interface RangeOption {
 }
 
 const RANGE_OPTIONS: RangeOption[] = [
-  { id: "today", label: "Heute", days: 1 },
-  { id: "threeDays", label: "3 Tage", days: 3 },
-  { id: "week", label: "1 Woche", days: 7 },
+  { id: "today", label: t("Heute"), days: 1 },
+  { id: "threeDays", label: t("3 Tage"), days: 3 },
+  { id: "week", label: t("1 Woche"), days: 7 },
 ];
 
 /** Breite der Zeitspalte links: "07:45" plus Luft. */
@@ -125,8 +126,8 @@ function LessonCell({ lesson, reference, detailed }: { lesson: DashboardLesson; 
             {lesson.title && lesson.title !== lesson.subject ? <span className="font-normal text-muted-foreground"> · {lesson.title}</span> : null}
           </span>
           <span className="shrink-0 truncate text-xs text-muted-foreground">{[lesson.room, lesson.teacher].filter(Boolean).join(" · ")}</span>
-          {isCurrent ? <span className="shrink-0 text-[11px] font-medium text-foreground">Jetzt</span> : null}
-          {lesson.isCancelled ? <span className="shrink-0 text-[11px] font-medium text-destructive">Entfallen</span> : null}
+          {isCurrent ? <span className="shrink-0 text-[11px] font-medium text-foreground">{t("Jetzt")}</span> : null}
+          {lesson.isCancelled ? <span className="shrink-0 text-[11px] font-medium text-destructive">{t("Entfallen")}</span> : null}
         </>
       ) : (
         <>
@@ -134,7 +135,7 @@ function LessonCell({ lesson, reference, detailed }: { lesson: DashboardLesson; 
             {lesson.subjectShort ?? lesson.subject}
           </span>
           <span className="truncate text-[10px] text-muted-foreground">{lesson.room}</span>
-          {lesson.isCancelled ? <span className="sr-only">Entfallen</span> : null}
+          {lesson.isCancelled ? <span className="sr-only">{t("Entfallen")}</span> : null}
         </>
       )}
     </div>
@@ -269,9 +270,9 @@ export function ScheduleCard() {
     <Card id="schedule" className="scroll-mt-24">
       <CardHeader className="gap-2.5 pb-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <CardTitle>Stundenplan</CardTitle>
+          <CardTitle>{t("Stundenplan")}</CardTitle>
           <span className="text-xs font-semibold tabular-nums text-muted-foreground">
-            {start && end ? `${formatWeekNumber(start)} · ${formatDateRange(start, end)}` : "lädt …"}
+            {start && end ? `${formatWeekNumber(start)} · ${formatDateRange(start, end)}` : t("lädt …")}
           </span>
           <Badge variant="secondary">{total}</Badge>
         </div>
@@ -280,14 +281,14 @@ export function ScheduleCard() {
             options={RANGE_OPTIONS}
             value={rangeId}
             onChange={selectRange}
-            label="Zeitraum wählen"
+            label={t("Zeitraum wählen")}
           />
           <div className="flex items-center border border-border">
             <button
               type="button"
               onClick={() => setOffset((current) => current - 1)}
               className="flex h-7 w-7 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:opacity-80"
-              aria-label={option.days === 1 ? "Ein Tag zurück" : `Um ${option.days} Tage zurück`}
+              aria-label={option.days === 1 ? t("Ein Tag zurück") : t("Um {n} Tage zurück", { n: option.days })}
             >
               <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
@@ -297,18 +298,18 @@ export function ScheduleCard() {
               disabled={offset === 0}
               className="h-7 border-x border-border px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:opacity-80 disabled:pointer-events-none disabled:opacity-40"
             >
-              {offset === 0 ? (option.days === 1 ? "Heute" : "Aktuell") : `${offset > 0 ? "+" : ""}${offset * option.days}T`}
+              {offset === 0 ? (option.days === 1 ? t("Heute") : t("Aktuell")) : `${offset > 0 ? "+" : ""}${t("{n}T", { n: offset * option.days })}`}
             </button>
             <button
               type="button"
               onClick={() => setOffset((current) => current + 1)}
               className="flex h-7 w-7 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:opacity-80"
-              aria-label={option.days === 1 ? "Ein Tag vor" : `Um ${option.days} Tage vor`}
+              aria-label={option.days === 1 ? t("Ein Tag vor") : t("Um {n} Tage vor", { n: option.days })}
             >
               <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </div>
-          <Button type="button" variant="ghost" size="icon" onClick={reload} disabled={isLoading} aria-label="Stundenplan neu laden">
+          <Button type="button" variant="ghost" size="icon" onClick={reload} disabled={isLoading} aria-label={t("Stundenplan neu laden")}>
             <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} aria-hidden="true" />
           </Button>
         </div>
@@ -332,8 +333,8 @@ export function ScheduleCard() {
         ) : total === 0 && !error ? (
           <EmptyState
             icon={CalendarDays}
-            title="Keine Stunden in diesem Zeitraum"
-            description="Für die gewählten Tage ist nichts eingetragen. Mit „Stundenplan aktualisieren“ in den Einstellungen holst du den Plan aus deinem Schulportal."
+            title={t("Keine Stunden in diesem Zeitraum")}
+            description={t("Für die gewählten Tage ist nichts eingetragen. Mit „Stundenplan aktualisieren“ in den Einstellungen holst du den Plan aus deinem Schulportal.")}
           />
         ) : (
           <div className="-mx-1 overflow-x-auto px-1">
@@ -347,7 +348,7 @@ export function ScheduleCard() {
               */}
               <div
                 role="grid"
-                aria-label="Stundenplan nach Tagen"
+                aria-label={t("Stundenplan nach Tagen")}
                 style={{ gridTemplateColumns: gridTemplate(visibleDays.length) }}
                 className="grid"
               >
@@ -383,9 +384,9 @@ export function ScheduleCard() {
                         <p className="mt-0.5 truncate text-[10px] font-medium text-muted-foreground/70">
                           {anzahl === 0
                             ? day.getDay() === 0 || day.getDay() === 6
-                              ? "Wochenende"
-                              : "Frei"
-                            : `${anzahl} ${anzahl === 1 ? "Stunde" : "Stunden"}`}
+                              ? t("Wochenende")
+                              : t("Frei")
+                            : tn(anzahl, "{n} Stunde", "{n} Stunden")}
                         </p>
                       </div>
                     );

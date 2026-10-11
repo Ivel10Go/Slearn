@@ -16,18 +16,19 @@ import { formatDateTime } from "@/lib/format";
 import { useAction, useList } from "@/lib/use-collection";
 import { cn } from "@/lib/utils";
 import type { DocumentRecord, DocumentSearchResult, FileUploadResult, MaterialKind } from "@/lib/types";
+import { t, tSplit } from "@/lib/i18n";
 
 /** `POST /v1/files` nimmt eine Datei entgegen. Das Backend kennt keine Größengrenze über HTTP. */
 const MAX_UPLOAD_HINWEIS = 10 * 1024 * 1024;
 
 const STATUS_LABEL: Record<string, string> = {
-  indexed: "Indexiert",
-  queued: "Wird abgeschrieben",
-  needs_model: "Bildmodell fehlt",
-  pending: "In Arbeit",
-  processed: "Verarbeitet",
-  error: "Fehler",
-  failed: "Fehlgeschlagen",
+  indexed: t("Indexiert"),
+  queued: t("Wird abgeschrieben"),
+  needs_model: t("Bildmodell fehlt"),
+  pending: t("In Arbeit"),
+  processed: t("Verarbeitet"),
+  error: t("Fehler"),
+  failed: t("Fehlgeschlagen"),
 };
 
 function statusLabel(status: string) {
@@ -35,17 +36,17 @@ function statusLabel(status: string) {
 }
 
 const ART_LABEL: Record<MaterialKind, string> = {
-  aufschrieb: "Aufschrieb",
-  arbeitsblatt: "Arbeitsblatt",
-  loesung: "Lösung",
-  sonstiges: "Sonstiges",
+  aufschrieb: t("Aufschrieb"),
+  arbeitsblatt: t("Arbeitsblatt"),
+  loesung: t("Lösung"),
+  sonstiges: t("Sonstiges"),
 };
 
 const QUELLE_LABEL: Record<string, string> = {
-  ocr_local: "abgeschrieben auf diesem Rechner",
-  ocr_online: "abgeschrieben vom KI-Dienst",
-  pdf: "aus dem PDF",
-  text: "Textdatei",
+  ocr_local: t("abgeschrieben auf diesem Rechner"),
+  ocr_online: t("abgeschrieben vom KI-Dienst"),
+  pdf: t("aus dem PDF"),
+  text: t("Textdatei"),
 };
 
 /** Fotos, Scans und PDFs gehen ins Abschreiben; Text wird sofort gelesen. */
@@ -95,12 +96,12 @@ export function DocumentsView() {
       setArtFehler(null);
       await reload();
     } catch {
-      setArtFehler("Die Art ließ sich nicht speichern.");
+      setArtFehler(t("Die Art ließ sich nicht speichern."));
     }
   }
 
   const hochladen = useCallback(async () => {    if (!datei) {
-      setUploadHinweis("Wähle zuerst eine Datei aus.");
+      setUploadHinweis(t("Wähle zuerst eine Datei aus."));
       return;
     }
     if (datei.size > MAX_UPLOAD_HINWEIS) {
@@ -108,7 +109,7 @@ export function DocumentsView() {
       // nach dem Hochladen scheitern - nach der Wartezeit, die niemandem
       // nützt. Die Zahl ist eine Obergrenze für die Oberfläche, keine
       // Zusage des Servers.
-      setUploadHinweis("Bitte wähle eine Datei bis 10 MB.");
+      setUploadHinweis(t("Bitte wähle eine Datei bis 10 MB."));
       return;
     }
     setUploadHinweis(null);
@@ -132,10 +133,9 @@ export function DocumentsView() {
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Dokumente</h1>
+        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">{t("Dokumente")}</h1>
         <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">
-          Lade Unterlagen hoch und durchsuche sie; Fragen dazu beantwortet der Assistent. Ohne verbundenen KI-Dienst wird aus den Treffern
-          zitiert.
+          {t("Lade Unterlagen hoch und durchsuche sie; Fragen dazu beantwortet der Assistent. Ohne verbundenen KI-Dienst wird aus den Treffern zitiert.")}
         </p>
       </header>
 
@@ -144,12 +144,12 @@ export function DocumentsView() {
           <Card className="border-border/80 bg-card/90">
             <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
               <div>
-                <CardTitle>Bibliothek</CardTitle>
+                <CardTitle>{t("Bibliothek")}</CardTitle>
                 <CardDescription className="mt-1">
-                  {sammlung.items.length} {sammlung.items.length === 1 ? "Dokument" : "Dokumente"} im Bestand.
+                  {sammlung.items.length} {sammlung.items.length === 1 ? t("Dokument") : t("Dokumente")} {t("im Bestand.")}
                 </CardDescription>
               </div>
-              <Button type="button" size="icon" variant="ghost" onClick={() => void sammlung.reload()} aria-label="Dokumente neu laden" disabled={sammlung.status === "loading"}>
+              <Button type="button" size="icon" variant="ghost" onClick={() => void sammlung.reload()} aria-label={t("Dokumente neu laden")} disabled={sammlung.status === "loading"}>
                 <RefreshCw className={cn(sammlung.status === "loading" && "animate-spin")} aria-hidden="true" />
               </Button>
             </CardHeader>
@@ -178,24 +178,22 @@ export function DocumentsView() {
                 <div className="flex flex-wrap items-center gap-3">
                   <Button type="submit" size="sm" disabled={upload.pending || !datei}>
                     {upload.pending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Upload aria-hidden="true" />}
-                    {upload.pending ? "Wird hochgeladen …" : "Hochladen"}
+                    {upload.pending ? t("Wird hochgeladen …") : t("Hochladen")}
                   </Button>
                 </div>
                 <FormError message={uploadHinweis ?? upload.error} />
                 <p className="text-xs leading-5 text-muted-foreground">
-                  Text, PDF und Fotos (JPG, PNG, WebP). Fotos und Scans – auch handschriftliche Aufschriebe – schreibt das Bildmodell im
-                  Hintergrund ab; die Art (Aufschrieb, Arbeitsblatt, Lösung) erkennt der Lernraum selbst, und du kannst sie korrigieren. Ein
-                  ganzer Ordner lässt sich unter <span className="font-semibold">Einstellungen</span> über eine Dokumentverbindung indexieren.
+                  {tSplit("Text, PDF und Fotos (JPG, PNG, WebP). Fotos und Scans – auch handschriftliche Aufschriebe – schreibt das Bildmodell im Hintergrund ab; die Art (Aufschrieb, Arbeitsblatt, Lösung) erkennt der Lernraum selbst, und du kannst sie korrigieren. Ein ganzer Ordner lässt sich unter {link} über eine Dokumentverbindung indexieren.")[0]}<span className="font-semibold">{t("Einstellungen")}</span>{tSplit("Text, PDF und Fotos (JPG, PNG, WebP). Fotos und Scans – auch handschriftliche Aufschriebe – schreibt das Bildmodell im Hintergrund ab; die Art (Aufschrieb, Arbeitsblatt, Lösung) erkennt der Lernraum selbst, und du kannst sie korrigieren. Ein ganzer Ordner lässt sich unter {link} über eine Dokumentverbindung indexieren.")[1]}
                 </p>
               </form>
 
               {sammlung.status === "loading" && sammlung.items.length === 0 ? (
-                <div className="space-y-3" aria-busy="true" aria-label="Dokumente werden geladen">
+                <div className="space-y-3" aria-busy="true" aria-label={t("Dokumente werden geladen")}>
                   <Skeleton className="h-16 w-full" />
                   <Skeleton className="h-16 w-full" />
                 </div>
               ) : sammlung.items.length === 0 ? (
-                <EmptyState icon={FolderTree} title="Noch keine Dokumente" description="Lade eine Datei hoch oder verbinde unter den Einstellungen einen Dokumentordner." />
+                <EmptyState icon={FolderTree} title={t("Noch keine Dokumente")} description={t("Lade eine Datei hoch oder verbinde unter den Einstellungen einen Dokumentordner.")} />
               ) : (
                 <ul className="space-y-2.5">
                   {artFehler ? (
@@ -215,12 +213,12 @@ export function DocumentsView() {
                             {statusLabel(dokument.status)}
                           </Badge>
                           <select
-                            aria-label={`Art von ${dokument.filename}`}
+                            aria-label={t("Art von {datei}", { datei: dokument.filename })}
                             value={dokument.material_kind ?? ""}
                             onChange={(event) => void artSetzen(dokument.id, event.target.value as MaterialKind)}
                             className="h-6 rounded-[5px] border border-border bg-background px-1.5 text-xs"
                           >
-                            {dokument.material_kind ? null : <option value="">Art …</option>}
+                            {dokument.material_kind ? null : <option value="">{t("Art …")}</option>}
                             {(Object.keys(ART_LABEL) as MaterialKind[]).map((art) => (
                               <option key={art} value={art}>
                                 {ART_LABEL[art]}
@@ -237,11 +235,11 @@ export function DocumentsView() {
                         ) : null}
                         {dokument.status === "needs_model" ? (
                           <p className="mt-1 text-xs text-muted-foreground">
-                            Für Fotos und Scans lädst du unter{" "}
+                            {tSplit("Für Fotos und Scans lädst du unter {link} das Bildmodell Qwen2.5-VL. Danach wird es automatisch abgeschrieben.")[0]}
                             <Link href="/ki" className="underline underline-offset-2">
-                              KI &amp; Modelle
-                            </Link>{" "}
-                            das Bildmodell Qwen2.5-VL. Danach wird es automatisch abgeschrieben.
+                              {t("KI & Modelle")}
+                            </Link>
+                            {tSplit("Für Fotos und Scans lädst du unter {link} das Bildmodell Qwen2.5-VL. Danach wird es automatisch abgeschrieben.")[1]}
                           </p>
                         ) : null}
                         <p className="mt-1 text-xs font-semibold text-muted-foreground">
@@ -264,26 +262,26 @@ export function DocumentsView() {
 
           <Card className="border-border/80 bg-card/90">
             <CardHeader>
-              <CardTitle>Durchsuchen</CardTitle>
-              <CardDescription className="mt-1">Findet Textstellen, ohne ein Modell zu befragen.</CardDescription>
+              <CardTitle>{t("Durchsuchen")}</CardTitle>
+              <CardDescription className="mt-1">{t("Findet Textstellen, ohne ein Modell zu befragen.")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <form onSubmit={(event) => void suchen(event)} className="flex gap-2" role="search">
                 <label htmlFor="dokument-suche" className="sr-only">
-                  Dokumente durchsuchen
+                  {t("Dokumente durchsuchen")}
                 </label>
                 <Input
                   id="dokument-suche"
                   type="search"
                   value={suchText}
                   onChange={(event) => setSuchText(event.target.value)}
-                  placeholder="Zum Beispiel:Photosynthese"
+                  placeholder={t("Zum Beispiel: Photosynthese")}
                   disabled={suche.pending}
                   className="min-w-0 flex-1"
                 />
                 <Button type="submit" disabled={suche.pending || !suchText.trim()}>
                   {suche.pending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Search aria-hidden="true" />}
-                  Suchen
+                  {t("Suchen")}
                 </Button>
               </form>
 
@@ -292,17 +290,17 @@ export function DocumentsView() {
               {suche.result ? (
                 <div className="space-y-2.5">
                   <p className="text-xs font-medium text-muted-foreground">
-                    {suche.result.hits.length} Treffer zu „{suche.result.query}“
+                    {t("{n} Treffer zu „{suche}“", { n: suche.result.hits.length, suche: suche.result.query })}
                   </p>
                   {suche.result.hits.length === 0 ? (
-                    <EmptyState icon={Search} title="Nichts gefunden" description="Für diese Formulierung gibt es keinen Treffer in deinen Dokumenten." />
+                    <EmptyState icon={Search} title={t("Nichts gefunden")} description={t("Für diese Formulierung gibt es keinen Treffer in deinen Dokumenten.")} />
                   ) : (
                     <ul className="space-y-2.5">
                       {suche.result.hits.map((treffer) => (
                         <li key={`${treffer.document_id}-${treffer.chunk_index}`} className="border border-border bg-card/60 p-3">
                           <p className="text-xs font-semibold">
                             {treffer.filename}
-                            <span className="ml-2 font-semibold text-muted-foreground">Abschnitt {treffer.chunk_index + 1}</span>
+                            <span className="ml-2 font-semibold text-muted-foreground">{t("Abschnitt")}{" "}{treffer.chunk_index + 1}</span>
                             {treffer.distance !== null ? (
                               <span className="ml-2 font-mono font-semibold text-muted-foreground">{treffer.distance.toFixed(3)}</span>
                             ) : null}
@@ -320,13 +318,13 @@ export function DocumentsView() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Frag den Assistenten</CardTitle>
-            <CardDescription className="mt-1">Fragen zu deinen Unterlagen beantwortet jetzt der Assistent – mit Quellen, Gedächtnis und Sprache.</CardDescription>
+            <CardTitle>{t("Frag den Assistenten")}</CardTitle>
+            <CardDescription className="mt-1">{t("Fragen zu deinen Unterlagen beantwortet jetzt der Assistent – mit Quellen, Gedächtnis und Sprache.")}</CardDescription>
           </CardHeader>
           <CardContent>
             <Link href="/assistent" className={buttonVariants({ variant: "outline" })}>
               <MessageSquareText aria-hidden="true" />
-              Zum Assistenten
+              {t("Zum Assistenten")}
             </Link>
           </CardContent>
         </Card>
@@ -339,7 +337,7 @@ function DateiAuswahl({ datei, setDatei, disabled }: { datei: File | null; setDa
   return (
     <div className="space-y-2">
       <label htmlFor="dokument-datei" className="block text-sm font-semibold">
-        Datei
+        {t("Datei")}
       </label>
       <input
         id="dokument-datei"
@@ -351,7 +349,7 @@ function DateiAuswahl({ datei, setDatei, disabled }: { datei: File | null; setDa
       />
       {datei ? (
         <p className="text-xs font-semibold text-muted-foreground">
-          Gewählt: {datei.name} · {(datei.size / 1024).toFixed(0)} KB
+          {t("Gewählt: {name} · {kb} KB", { name: datei.name, kb: (datei.size / 1024).toFixed(0) })}
         </p>
       ) : null}
     </div>

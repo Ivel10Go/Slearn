@@ -14,6 +14,7 @@ import {
 } from "./api";
 import type { Grade, GradeImportPreview, GradeImportResult, GradeKind, GradeSharing, GradeSummary } from "./types";
 import { errorMessage } from "./use-collection";
+import { t } from "./i18n";
 
 type GradesStatus = "loading" | "ready" | "error";
 
@@ -100,7 +101,7 @@ export function useGrades(): GradesApi & GradesState {
       if (currentRequest !== requestId.current) {
         return;
       }
-      setState((current) => ({ ...current, error: errorMessage(loadError, "Die Noten konnten nicht geladen werden."), status: "error" }));
+      setState((current) => ({ ...current, error: errorMessage(loadError, t("Die Noten konnten nicht geladen werden.")), status: "error" }));
     }
   }, [projectedWeight]);
 

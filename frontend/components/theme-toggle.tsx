@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
+import { t } from "@/lib/i18n";
 
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
@@ -22,8 +23,8 @@ export function ThemeToggle() {
       type="button"
       variant="ghost"
       size="icon"
-      aria-label={isDark ? "Helles Design aktivieren" : "Dunkles Design aktivieren"}
-      title={isDark ? "Helles Design" : "Dunkles Design"}
+      aria-label={isDark ? t("Helles Design aktivieren") : t("Dunkles Design aktivieren")}
+      title={isDark ? t("Helles Design") : t("Dunkles Design")}
       onClick={() => setTheme(nextTheme)}
     >
       {mounted && isDark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}

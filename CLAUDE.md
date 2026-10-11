@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-`AGENTS.md` is the main contributor guide. It is imported below and holds the hard-won pitfalls for each feature area. `README.md` is only the entry point; the full reference lives in `docs/` (`server.md` operations/backup/HTTPS/secret rotation, `api.md` API table, `konfiguration.md` every env variable, `entwicklung.md` tests/CI, `desktop.md` desktop app). `PLAN.md` is the feature TODO list. Every one of these docs, the code comments, the UI text, and the test names is in **German**. Keep new UI strings and test names German as well.
+`AGENTS.md` is the main contributor guide. It is imported below and holds the hard-won pitfalls for each feature area. `README.md` is only the entry point; the full reference lives in `docs/` (`server.md` operations/backup/HTTPS/secret rotation, `api.md` API table, `konfiguration.md` every env variable, `entwicklung.md` tests/CI, `desktop.md` desktop app). `PLAN.md` is the feature TODO list. Every one of these docs, the code comments, and the test names is in **German**. The UI is bilingual (German/English): write new UI strings in German and wrap them in `t()` from `frontend/lib/i18n.ts`, then add the English entry to `frontend/lib/i18n/en.ts` - `lib/i18n.test.ts` fails otherwise. See "Mehrsprachigkeit" in AGENTS.md.
 
 @AGENTS.md
 
@@ -11,8 +11,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Several feature waves have been merged since AGENTS.md was last updated: grades, calendar sync, notifications, rewards, local models, speech, and AI routing. Before quoting any of these points, check them against the code:
 
 - **The worker is not healthcheck-only any more.** It also runs the `pg_dump` backup runner (`worker/backup.py`, `worker/env.py`, `worker/tests/test_backup.py`). The CI compile check covers all four files: `python -m py_compile worker/main.py worker/healthcheck.py worker/env.py worker/backup.py`.
-- **There are 15 Alembic revisions, not 6** (`0007` grades through `0010` rewards, `0011` assistant memories, `0012` training examples, `0013` subject colors, `0014` materials, `0015` homework link for the week planner). Run `Get-ChildItem backend/alembic/versions`.
-- **Backend tests now span** `tests/test_backend.py`, `tests/test_rewards.py`, `tests/test_assistant.py`, `tests/test_training.py` and `tests/test_planner.py`.
+- **There are 16 Alembic revisions, not 6** (`0007` grades through `0010` rewards, `0011` assistant memories, `0012` training examples, `0013` subject colors, `0014` materials, `0015` homework link for the week planner, `0016` greeting language). Run `Get-ChildItem backend/alembic/versions`.
+- **Backend tests now span** `tests/test_backend.py`, `tests/test_rewards.py`, `tests/test_assistant.py`, `tests/test_training.py`, `tests/test_planner.py` and `tests/test_language.py`.
+- **`test_streak_und_wochenziel_kommen_aus_den_lernsessions` is date-dependent**: it fails on some weekdays (verified on a Thursday, also on an unchanged `HEAD`). Do not read it as a regression.
 - **The baseline test and lint counts are not stable.** The source of truth is `.github/ci/known-failures.mjs`, which records the accepted failing test ID and the per-file `any` ceilings. Change it whenever the real output changes.
 - **The backend lifespan starts two independent threads:** `IntegrationSyncScheduler` (WebUntis, opt-in via `WEBUNTIS_SYNC_ENABLED`) and `ReminderScheduler` (`app/services/notification_scheduler.py`). `create_app()` also always builds `app.state.model_downloads` (`ModelDownloadManager`) and `app.state.speech` (`SpeechService`). Both exist even when no model or runtime is present.
 - **The frontend has real routes in addition to the dashboard anchors:** `/lernen`, `/faecher`, `/dokumente`, `/assistent`, `/settings`, and `/offline`.

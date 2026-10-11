@@ -6,6 +6,7 @@ import { endungFuerFormat, parseSpeechCapabilities, parseVoiceList, type SpeechC
 import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleRange, normalizeStudyAction, type ApiIdentifier, type CalendarEvent, type DashboardData, type DocumentAnswer, type DocumentRecord, type DocumentSearchResult, type Exam, type FileUploadResult, type Grade, type GradeImportPreview, type GradeImportResult, type GradeKind, type GradeSharing, type GradeSummary, type Greeting, type Homework, type ScheduleRange, type StudySessionRecord, type StudyTask, type StudyTaskState, type Subject, type SubjectOption } from "./types";
 import { collectSubjectNames, parseCalendarEventArray, parseCalendarEventRead, parseCalendarFeed, parseCalendarWriting, parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseExamArray, parseExamRead, parseExamTaskPlanResult, parseFileUploadResponse, parseGradeArray, parseGradeImportPreview, parseGradeImportResult, parseGradeRead, parseGradeSharing, parseGradeSummary, parseHomeworkArray, parseHomeworkRead, parseIntegrationArray, parseIntegrationAuthorize, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseLearningInsights, parseMarkReadResult, parseNotificationArray, parseNotificationSettings, parsePushSubscription, parsePushSubscriptionArray, parseReminderRun, parseRewardOverview, parseStudyDependencyArray, parseStudyDependencyRead, parseStudyPlanArray, parseStudyPlanRead, parseStudySeriesArray, parseStudySeriesRead, parseStudySessionRead, parseStudyTaskArray, parseStudyTaskRead, parseSubjectArray, parseSubjectRead, parseTopicProgressArray, parseTopicProgressRead, parseUserResponse, parseUserSession, parseVapidKey, parseWeeklyGoalRead } from "./schemas";
 import type { CalendarFeed, CalendarWriting, ExamTaskPlanResult, IntegrationAuthorize, IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult, LearningInsights, MaterialKind, RewardOverview, StudyPlan, StudyTaskDependency, StudyTaskOrder, StudyTaskSeries, StudyTaskSeriesInput, TopicProgress, WeeklyGoal } from "./types";
+import { getLocale, t, translateServerText } from "./i18n";
 
 const API_PREFIX = "/api/backend";
 
@@ -18,9 +19,9 @@ const API_PREFIX = "/api/backend";
  */
 const LEERE_FAEHIGKEITEN: SpeechCapabilitiesPayload = {
   text_mode_available: true,
-  text_mode_note: "Der Lernraum ist gerade nicht erreichbar. Alles hier laeuft ohne Modell.",
-  speech_to_text: { available: false, reason: "Der Lernraum ist gerade nicht erreichbar.", model_id: null, label: "", language: null, language_label: "" },
-  text_to_speech: { available: false, reason: "Der Lernraum ist gerade nicht erreichbar.", model_id: null, label: "", language: null, language_label: "" },
+  text_mode_note: t("Der Lernraum ist gerade nicht erreichbar. Alles hier laeuft ohne Modell."),
+  speech_to_text: { available: false, reason: t("Der Lernraum ist gerade nicht erreichbar."), model_id: null, label: "", language: null, language_label: "" },
+  text_to_speech: { available: false, reason: t("Der Lernraum ist gerade nicht erreichbar."), model_id: null, label: "", language: null, language_label: "" },
   input: { max_bytes: 0, max_seconds: 0, accepted_types: [], sample_rate: 16000, needs_transcoding: true, transcoding_note: "" },
   runtime: {
     transcriber_reachable: false,
@@ -54,14 +55,25 @@ function endpoint(path: string) {
   return `${API_PREFIX}${normalizedPath}`;
 }
 
+/**
+ * Die Meldung einer Fehlerantwort. Das Backend schreibt seine Meldungen auf
+ * Deutsch; feste Saetze stehen deshalb auch im Woerterbuch und kommen in der
+ * Oberflaechensprache an. Saetze mit eingesetzten Werten bleiben deutsch.
+ */
 function responseMessage(payload: unknown, fallback: string) {
   if (typeof payload === "object" && payload !== null && "detail" in payload && typeof payload.detail === "string") {
-    return payload.detail;
+    return translateServerText(payload.detail);
   }
   if (typeof payload === "object" && payload !== null && "message" in payload && typeof payload.message === "string") {
-    return payload.message;
+    return translateServerText(payload.message);
   }
   return fallback;
+}
+
+/** `Accept-Language` mit der Sprache der Oberflaeche, nicht der des Browsers: danach antwortet der Assistent. */
+function withLanguage(headers: Headers) {
+  headers.set("Accept-Language", getLocale());
+  return headers;
 }
 
 export function canUseDemoFallback(error: unknown) {
@@ -70,11 +82,11 @@ export function canUseDemoFallback(error: unknown) {
 
 export async function apiRequest(path: string, options: ApiRequestOptions = {}): Promise<unknown> {
   if (typeof window === "undefined") {
-    throw new ApiError("API-Anfragen sind nur im Browser verfügbar.", 0);
+    throw new ApiError(t("API-Anfragen sind nur im Browser verfügbar."), 0);
   }
 
   const { body, headers: suppliedHeaders, ...fetchOptions } = options;
-  const headers = new Headers(suppliedHeaders);
+  const headers = withLanguage(new Headers(suppliedHeaders));
   if (!headers.has("Accept")) {
     headers.set("Accept", "application/json");
   }
@@ -98,13 +110,13 @@ export async function apiRequest(path: string, options: ApiRequestOptions = {}):
       redirect: fetchOptions.redirect ?? "manual",
     });
   } catch {
-    throw new ApiError("Die Verbindung zum Lernraum konnte nicht hergestellt werden.", 0);
+    throw new ApiError(t("Die Verbindung zum Lernraum konnte nicht hergestellt werden."), 0);
   }
 
   const payload = response.status === 204 ? undefined : await response.json().catch(() => undefined);
 
   if (!response.ok) {
-    throw new ApiError(responseMessage(payload, `Die Anfrage ist fehlgeschlagen (${response.status}).`), response.status);
+    throw new ApiError(responseMessage(payload, t("Die Anfrage ist fehlgeschlagen ({status}).", { status: response.status })), response.status);
   }
 
   return payload;
@@ -128,7 +140,7 @@ export async function getSession() {
       return null;
     }
     if (canUseDemoFallback(error)) {
-      return { id: "demo-user", username: "Demo-Lernende", email: null };
+      return { id: "demo-user", username: t("Demo-Lernende"), email: null };
     }
     throw error;
   }
@@ -175,10 +187,10 @@ export async function refreshGreeting(): Promise<Greeting> {
 
 function studyTaskPath(taskId: ApiIdentifier, action: "start" | "stop" | "complete") {
   if (!String(taskId).trim()) {
-    throw new ApiError("Die Lernaufgabe ist ungültig.", 422);
+    throw new ApiError(t("Die Lernaufgabe ist ungültig."), 422);
   }
   if (isDemoTaskId(taskId)) {
-    throw new ApiError("Demo-Aufgaben können nicht als echte Lernsessions gestartet werden.", 422);
+    throw new ApiError(t("Demo-Aufgaben können nicht als echte Lernsessions gestartet werden."), 422);
   }
   return `/v1/study/tasks/${encodeURIComponent(String(taskId))}/${action}`;
 }
@@ -399,7 +411,7 @@ function resourcePath(collection: string, id: number, ...segments: string[]) {
 /** Wirft, statt eine kaputte ID als Anfrage zu schicken. */
 function assertId(id: number, label: string) {
   if (!Number.isInteger(id) || id <= 0) {
-    throw new ApiError(`${label} ist ungueltig.`, 422);
+    throw new ApiError(t("{label} ist ungültig.", { label }), 422);
   }
 }
 
@@ -499,12 +511,12 @@ export async function createSubject(input: SubjectWrite): Promise<Subject> {
 }
 
 export async function getSubject(subjectId: number): Promise<Subject> {
-  assertId(subjectId, "Das Fach");
+  assertId(subjectId, t("Das Fach"));
   return parseSubjectRead(await apiRequest(resourcePath("subjects", subjectId)));
 }
 
 export async function updateSubject(subjectId: number, changes: SubjectChanges): Promise<Subject> {
-  assertId(subjectId, "Das Fach");
+  assertId(subjectId, t("Das Fach"));
   const payload = await apiRequest(resourcePath("subjects", subjectId), {
     method: "PATCH",
     body: JSON.stringify(compact(changes)),
@@ -513,7 +525,7 @@ export async function updateSubject(subjectId: number, changes: SubjectChanges):
 }
 
 export async function deleteSubject(subjectId: number): Promise<void> {
-  assertId(subjectId, "Das Fach");
+  assertId(subjectId, t("Das Fach"));
   await apiRequest(resourcePath("subjects", subjectId), { method: "DELETE" });
 }
 
@@ -544,12 +556,12 @@ export async function createHomework(input: HomeworkWrite): Promise<Homework> {
 }
 
 export async function getHomeworkItem(homeworkId: number): Promise<Homework> {
-  assertId(homeworkId, "Die Hausaufgabe");
+  assertId(homeworkId, t("Die Hausaufgabe"));
   return parseHomeworkRead(await apiRequest(resourcePath("homework", homeworkId)));
 }
 
 export async function updateHomework(homeworkId: number, changes: HomeworkChanges): Promise<Homework> {
-  assertId(homeworkId, "Die Hausaufgabe");
+  assertId(homeworkId, t("Die Hausaufgabe"));
   const payload = await apiRequest(resourcePath("homework", homeworkId), {
     method: "PATCH",
     body: JSON.stringify(compact(changes)),
@@ -568,7 +580,7 @@ export async function updateHomework(homeworkId: number, changes: HomeworkChange
  * Wert benutzt.
  */
 export async function setHomeworkCompleted(homeworkId: number, completed: boolean): Promise<Homework> {
-  assertId(homeworkId, "Die Hausaufgabe");
+  assertId(homeworkId, t("Die Hausaufgabe"));
   const payload = await apiRequest(resourcePath("homework", homeworkId, "completed"), {
     method: "PATCH",
     body: JSON.stringify({ completed }),
@@ -577,7 +589,7 @@ export async function setHomeworkCompleted(homeworkId: number, completed: boolea
 }
 
 export async function deleteHomework(homeworkId: number): Promise<void> {
-  assertId(homeworkId, "Die Hausaufgabe");
+  assertId(homeworkId, t("Die Hausaufgabe"));
   await apiRequest(resourcePath("homework", homeworkId), { method: "DELETE" });
 }
 
@@ -607,12 +619,12 @@ export async function createExam(input: ExamWrite): Promise<Exam> {
 }
 
 export async function getExam(examId: number): Promise<Exam> {
-  assertId(examId, "Die Prüfung");
+  assertId(examId, t("Die Prüfung"));
   return parseExamRead(await apiRequest(resourcePath("exams", examId)));
 }
 
 export async function updateExam(examId: number, changes: ExamChanges): Promise<Exam> {
-  assertId(examId, "Die Prüfung");
+  assertId(examId, t("Die Prüfung"));
   const payload = await apiRequest(resourcePath("exams", examId), {
     method: "PATCH",
     body: JSON.stringify(compact(changes)),
@@ -621,7 +633,7 @@ export async function updateExam(examId: number, changes: ExamChanges): Promise<
 }
 
 export async function deleteExam(examId: number): Promise<void> {
-  assertId(examId, "Die Prüfung");
+  assertId(examId, t("Die Prüfung"));
   await apiRequest(resourcePath("exams", examId), { method: "DELETE" });
 }
 
@@ -658,12 +670,12 @@ export async function createCalendarEvent(input: CalendarEventWrite): Promise<Ca
 }
 
 export async function getCalendarEvent(eventId: number): Promise<CalendarEvent> {
-  assertId(eventId, "Der Kalendereintrag");
+  assertId(eventId, t("Der Kalendereintrag"));
   return parseCalendarEventRead(await apiRequest(resourcePath("calendar/events", eventId)));
 }
 
 export async function updateCalendarEvent(eventId: number, changes: CalendarEventChanges): Promise<CalendarEvent> {
-  assertId(eventId, "Der Kalendereintrag");
+  assertId(eventId, t("Der Kalendereintrag"));
   const payload = await apiRequest(resourcePath("calendar/events", eventId), {
     method: "PATCH",
     body: JSON.stringify(compact(changes)),
@@ -672,7 +684,7 @@ export async function updateCalendarEvent(eventId: number, changes: CalendarEven
 }
 
 export async function deleteCalendarEvent(eventId: number): Promise<void> {
-  assertId(eventId, "Der Kalendereintrag");
+  assertId(eventId, t("Der Kalendereintrag"));
   await apiRequest(resourcePath("calendar/events", eventId), { method: "DELETE" });
 }
 
@@ -729,12 +741,12 @@ export async function createStudyTask(input: StudyTaskWrite): Promise<StudyTask>
 }
 
 export async function getStudyTask(taskId: number): Promise<StudyTask> {
-  assertId(taskId, "Die Lernaufgabe");
+  assertId(taskId, t("Die Lernaufgabe"));
   return parseStudyTaskRead(await apiRequest(resourcePath("study/tasks", taskId)));
 }
 
 export async function updateStudyTask(taskId: number, changes: StudyTaskChanges): Promise<StudyTask> {
-  assertId(taskId, "Die Lernaufgabe");
+  assertId(taskId, t("Die Lernaufgabe"));
   const payload = await apiRequest(resourcePath("study/tasks", taskId), {
     method: "PATCH",
     body: JSON.stringify(compact(changes)),
@@ -743,13 +755,13 @@ export async function updateStudyTask(taskId: number, changes: StudyTaskChanges)
 }
 
 export async function deleteStudyTask(taskId: number): Promise<void> {
-  assertId(taskId, "Die Lernaufgabe");
+  assertId(taskId, t("Die Lernaufgabe"));
   await apiRequest(resourcePath("study/tasks", taskId), { method: "DELETE" });
 }
 
 /** `POST .../start` antwortet als einzige Aktion mit einer Session statt einer Aufgabe. */
 export async function startStudyTaskSession(taskId: number): Promise<StudySessionRecord> {
-  assertId(taskId, "Die Lernaufgabe");
+  assertId(taskId, t("Die Lernaufgabe"));
   const payload = await apiRequest(resourcePath("study/tasks", taskId, "start"), {
     method: "POST",
     body: JSON.stringify({}),
@@ -772,7 +784,7 @@ export async function createStudyPlan(input: { title: string; description?: stri
 }
 
 export async function renameStudyPlan(planId: number, title: string): Promise<StudyPlan> {
-  assertId(planId, "Der Lernplan");
+  assertId(planId, t("Der Lernplan"));
   const payload = await apiRequest(resourcePath("study/plans", planId), {
     method: "PATCH",
     body: JSON.stringify({ title }),
@@ -787,7 +799,7 @@ export async function renameStudyPlan(planId: number, title: string): Promise<St
  * Aufgabe könnte nie erfüllt werden, also wäre sie schlimmer als keine.
  */
 export async function deleteStudyPlan(planId: number): Promise<void> {
-  assertId(planId, "Der Lernplan");
+  assertId(planId, t("Der Lernplan"));
   await apiRequest(resourcePath("study/plans", planId), { method: "DELETE" });
 }
 
@@ -817,7 +829,7 @@ export async function updateStudySeries(
   seriesId: number,
   changes: Partial<Pick<StudyTaskSeriesInput, "title" | "description" | "duration_minutes" | "priority" | "until" | "occurrence_limit">>,
 ): Promise<StudyTaskSeries> {
-  assertId(seriesId, "Die Serie");
+  assertId(seriesId, t("Die Serie"));
   const payload = await apiRequest(resourcePath("study/series", seriesId), {
     method: "PATCH",
     body: JSON.stringify(compact(changes)),
@@ -827,12 +839,12 @@ export async function updateStudySeries(
 
 /** Beendet die Serie und storniert ihre offenen Aufgaben. Erledigte bleiben stehen. */
 export async function cancelStudySeries(seriesId: number): Promise<void> {
-  assertId(seriesId, "Die Serie");
+  assertId(seriesId, t("Die Serie"));
   await apiRequest(resourcePath("study/series", seriesId), { method: "DELETE" });
 }
 
 export async function getStudyDependencies(taskId: number): Promise<StudyTaskDependency[]> {
-  assertId(taskId, "Die Lernaufgabe");
+  assertId(taskId, t("Die Lernaufgabe"));
   return parseStudyDependencyArray(await apiRequest(resourcePath("study/tasks", taskId, "dependencies")));
 }
 
@@ -843,8 +855,8 @@ export async function getStudyDependencies(taskId: number): Promise<StudyTaskDep
  * zeigt dann die Meldung an, statt sie zu erfinden.
  */
 export async function addStudyDependency(taskId: number, dependsOnTaskId: number): Promise<StudyTaskDependency> {
-  assertId(taskId, "Die Lernaufgabe");
-  assertId(dependsOnTaskId, "Die Voraussetzung");
+  assertId(taskId, t("Die Lernaufgabe"));
+  assertId(dependsOnTaskId, t("Die Voraussetzung"));
   const payload = await apiRequest(resourcePath("study/tasks", taskId, "dependencies"), {
     method: "POST",
     body: JSON.stringify({ depends_on_task_id: dependsOnTaskId }),
@@ -853,8 +865,8 @@ export async function addStudyDependency(taskId: number, dependsOnTaskId: number
 }
 
 export async function removeStudyDependency(taskId: number, dependsOnTaskId: number): Promise<void> {
-  assertId(taskId, "Die Lernaufgabe");
-  assertId(dependsOnTaskId, "Die Voraussetzung");
+  assertId(taskId, t("Die Lernaufgabe"));
+  assertId(dependsOnTaskId, t("Die Voraussetzung"));
   await apiRequest(resourcePath("study/tasks", taskId, "dependencies", String(dependsOnTaskId)), { method: "DELETE" });
 }
 
@@ -876,7 +888,7 @@ export async function generateExamTasks(
     chain_dependencies?: boolean;
   },
 ): Promise<ExamTaskPlanResult> {
-  assertId(examId, "Die Klausur");
+  assertId(examId, t("Die Klausur"));
   const payload = await apiRequest(resourcePath("exams", examId, "tasks"), {
     method: "POST",
     body: JSON.stringify(compact(input)),
@@ -930,7 +942,7 @@ export async function getTopicProgress(subjectId?: number): Promise<TopicProgres
  * uebernimmt die Antwort, statt sie selbst zu berechnen.
  */
 export async function saveTopicProgress(topicId: number, input: TopicProgressWrite): Promise<TopicProgress> {
-  assertId(topicId, "Das Thema");
+  assertId(topicId, t("Das Thema"));
   const payload = await apiRequest(resourcePath("progress/topics", topicId), {
     method: "PUT",
     body: JSON.stringify(compact(input)),
@@ -1001,13 +1013,13 @@ export async function getGrades(filter: { subjectId?: number; limit?: number } =
 }
 
 export async function createGrade(input: GradeWrite): Promise<Grade> {
-  assertId(input.subject_id, "Das Fach");
+  assertId(input.subject_id, t("Das Fach"));
   const payload = await apiRequest("/v1/grades", { method: "POST", body: JSON.stringify(compact(input)) });
   return parseGradeRead(payload);
 }
 
 export async function updateGrade(gradeId: number, changes: GradeChanges): Promise<Grade> {
-  assertId(gradeId, "Die Note");
+  assertId(gradeId, t("Die Note"));
   const payload = await apiRequest(resourcePath("grades", gradeId), {
     method: "PATCH",
     body: JSON.stringify(compact(changes)),
@@ -1016,7 +1028,7 @@ export async function updateGrade(gradeId: number, changes: GradeChanges): Promi
 }
 
 export async function deleteGrade(gradeId: number): Promise<void> {
-  assertId(gradeId, "Die Note");
+  assertId(gradeId, t("Die Note"));
   await apiRequest(resourcePath("grades", gradeId), { method: "DELETE" });
 }
 
@@ -1059,7 +1071,7 @@ export async function previewGradeImport(input: {
   defaultWeight?: number;
   defaultDate?: string;
 }): Promise<GradeImportPreview> {
-  assertId(input.documentId, "Das Dokument");
+  assertId(input.documentId, t("Das Dokument"));
   return parseGradeImportPreview(
     await apiRequest(
       collectionPath("/v1/grades/import", {
@@ -1088,7 +1100,7 @@ export async function importGrades(input: {
   defaultWeight?: number;
   defaultDate?: string;
 }): Promise<GradeImportResult> {
-  assertId(input.documentId, "Das Dokument");
+  assertId(input.documentId, t("Das Dokument"));
   const payload = await apiRequest("/v1/grades/import", {
     method: "POST",
     body: JSON.stringify(
@@ -1160,7 +1172,7 @@ export async function createPushSubscription(subscription: { endpoint: string; p
 }
 
 export async function deletePushSubscription(subscriptionId: number) {
-  assertId(subscriptionId, "Das Endgerät");
+  assertId(subscriptionId, t("Das Endgerät"));
   await apiRequest(resourcePath("notifications/subscriptions", subscriptionId), { method: "DELETE" });
 }
 
@@ -1279,24 +1291,24 @@ export async function transcribeAudio(blob: Blob, mime: string): Promise<{ text:
  */
 export async function fetchSpeechAudio(text: string, voiceId?: string): Promise<Blob> {
   if (typeof window === "undefined") {
-    throw new ApiError("API-Anfragen sind nur im Browser verfügbar.", 0);
+    throw new ApiError(t("API-Anfragen sind nur im Browser verfügbar."), 0);
   }
   let response: Response;
   try {
     response = await fetch(endpoint("/v1/speech/speak"), {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "audio/wav" },
+      headers: withLanguage(new Headers({ "Content-Type": "application/json", Accept: "audio/wav" })),
       body: JSON.stringify(voiceId ? { text, voice_id: voiceId } : { text }),
       cache: "no-store",
       credentials: "include",
       redirect: "manual",
     });
   } catch {
-    throw new ApiError("Die Verbindung zum Lernraum konnte nicht hergestellt werden.", 0);
+    throw new ApiError(t("Die Verbindung zum Lernraum konnte nicht hergestellt werden."), 0);
   }
   if (!response.ok) {
     const payload = await response.json().catch(() => undefined);
-    throw new ApiError(responseMessage(payload, `Die Anfrage ist fehlgeschlagen (${response.status}).`), response.status);
+    throw new ApiError(responseMessage(payload, t("Die Anfrage ist fehlgeschlagen ({status}).", { status: response.status })), response.status);
   }
   return response.blob();
 }
@@ -1323,13 +1335,13 @@ export async function getAiRuntime(): Promise<AiRuntimePayload | null> {
 export async function downloadAccountExport(): Promise<{ blob: Blob; filename: string }> {
   let response: Response;
   try {
-    response = await fetch(endpoint("/v1/account/export"), { cache: "no-store", credentials: "include" });
+    response = await fetch(endpoint("/v1/account/export"), { cache: "no-store", credentials: "include", headers: withLanguage(new Headers()) });
   } catch {
-    throw new ApiError("Die Verbindung zum Lernraum konnte nicht hergestellt werden.", 0);
+    throw new ApiError(t("Die Verbindung zum Lernraum konnte nicht hergestellt werden."), 0);
   }
   if (!response.ok) {
     const payload = await response.json().catch(() => undefined);
-    throw new ApiError(responseMessage(payload, `Der Export ist fehlgeschlagen (${response.status}).`), response.status);
+    throw new ApiError(responseMessage(payload, t("Der Export ist fehlgeschlagen ({status}).", { status: response.status })), response.status);
   }
   const disposition = response.headers.get("content-disposition") ?? "";
   const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "lernraum-daten.zip";

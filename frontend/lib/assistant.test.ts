@@ -48,6 +48,14 @@ describe("bestaetigung", () => {
     expect(bestaetigung("Nee")).toBe("nein");
   });
 
+  it("versteht auch englische Zustimmung und Ablehnung", () => {
+    expect(bestaetigung("Yes, please.")).toBe("ja");
+    expect(bestaetigung("Sure, go ahead")).toBe("ja");
+    expect(bestaetigung("No thanks")).toBe("nein");
+    expect(bestaetigung("Don't add it")).toBe("nein");
+    expect(bestaetigung("Nothing else?")).toBeNull();
+  });
+
   it("laesst neue Fragen an das Modell durch", () => {
     expect(bestaetigung("Ja, und was ist eigentlich mit der Mathe-Hausaufgabe für morgen?")).toBeNull();
     expect(bestaetigung("Was steht morgen an?")).toBeNull();

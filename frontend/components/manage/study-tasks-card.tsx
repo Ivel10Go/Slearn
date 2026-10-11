@@ -28,12 +28,13 @@ import { useCollection } from "@/lib/use-collection";
 import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
 import { MAX_TASK_PRIORITY, type StudyPlan, type StudyTask, type StudyTaskDependency, type StudyTaskInput, type StudyTaskOrder, type StudyTaskState } from "@/lib/types";
+import { t } from "@/lib/i18n";
 
 const ZUSTANDS_LABEL: Record<StudyTaskState, string> = {
-  pending: "Offen",
-  in_progress: "In Arbeit",
-  completed: "Erledigt",
-  cancelled: "Abgesagt",
+  pending: t("Offen"),
+  in_progress: t("In Arbeit"),
+  completed: t("Erledigt"),
+  cancelled: t("Abgesagt"),
 };
 
 function zustandsVariante(zustand: StudyTaskState) {
@@ -91,9 +92,9 @@ function zahl(feld: string, min: number, max: number) {
  * eine Regel erweitert.
  */
 const ORDNUNG_LABEL: Record<StudyTaskOrder, string> = {
-  priority: "Nach Wichtigkeit",
-  due: "Nach Frist",
-  position: "Nach Reihenfolge",
+  priority: t("Nach Wichtigkeit"),
+  due: t("Nach Frist"),
+  position: t("Nach Reihenfolge"),
 };
 
 export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: StudyPlan[]; onChanged?: () => void; refreshKey?: number }) {
@@ -167,27 +168,27 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
   async function absenden(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!formular.titel.trim()) {
-      setFormularFehler("Gib der Lernaufgabe einen Titel.");
+      setFormularFehler(t("Gib der Lernaufgabe einen Titel."));
       return;
     }
     const dauer = zahl(formular.dauer, 1, 1440);
     if (dauer === null) {
-      setFormularFehler("Die Dauer muss zwischen 1 und 1440 Minuten liegen.");
+      setFormularFehler(t("Die Dauer muss zwischen 1 und 1440 Minuten liegen."));
       return;
     }
     const prioritaet = zahl(formular.prioritaet, 0, MAX_TASK_PRIORITY);
     if (prioritaet === null) {
-      setFormularFehler(`Die Priorität muss zwischen 0 und ${MAX_TASK_PRIORITY} liegen.`);
+      setFormularFehler(t("Die Priorität muss zwischen 0 und {max} liegen.", { max: MAX_TASK_PRIORITY }));
       return;
     }
     const geplant = formular.geplant.trim() ? toUtcIso(formular.geplant) : null;
     if (formular.geplant.trim() && !geplant) {
-      setFormularFehler("Der geplante Zeitpunkt lässt sich nicht lesen. Bitte erneut wählen.");
+      setFormularFehler(t("Der geplante Zeitpunkt lässt sich nicht lesen. Bitte erneut wählen."));
       return;
     }
     const faellig = formular.faellig.trim() ? toUtcIso(formular.faellig) : null;
     if (formular.faellig.trim() && !faellig) {
-      setFormularFehler("Die Frist lässt sich nicht lesen. Bitte erneut wählen.");
+      setFormularFehler(t("Die Frist lässt sich nicht lesen. Bitte erneut wählen."));
       return;
     }
 
@@ -215,7 +216,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
     }
 
     if (!formular.plan) {
-      setFormularFehler("Wähle den Lernplan, zu dem die Aufgabe gehört.");
+      setFormularFehler(t("Wähle den Lernplan, zu dem die Aufgabe gehört."));
       return;
     }
     const ergebnis = await sammlung.create({ ...gemeinsam, study_plan_id: Number(formular.plan) });
@@ -229,19 +230,19 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
     <Card className="border-border/80 bg-card/90">
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
-          <CardTitle>Lernaufgaben</CardTitle>
-          <CardDescription className="mt-1">Aufgaben mit Priorität, Frist und Voraussetzungen.</CardDescription>
+          <CardTitle>{t("Lernaufgaben")}</CardTitle>
+          <CardDescription className="mt-1">{t("Aufgaben mit Priorität, Frist und Voraussetzungen.")}</CardDescription>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="info">
-            {sammlung.items.filter((aufgabe) => aufgabe.status === "pending" || aufgabe.status === "in_progress").length} offen
+            {sammlung.items.filter((aufgabe) => aufgabe.status === "pending" || aufgabe.status === "in_progress").length} {t("offen")}
           </Badge>
-          <Button type="button" size="icon" variant="ghost" onClick={() => void sammlung.reload()} aria-label="Lernaufgaben neu laden" disabled={sammlung.status === "loading"}>
+          <Button type="button" size="icon" variant="ghost" onClick={() => void sammlung.reload()} aria-label={t("Lernaufgaben neu laden")} disabled={sammlung.status === "loading"}>
             <RefreshCw className={cn(sammlung.status === "loading" && "animate-spin")} aria-hidden="true" />
           </Button>
           <Button type="button" size="sm" onClick={() => (formularOffen && bearbeitet === null ? schliessen() : oeffnen())} aria-expanded={formularOffen && bearbeitet === null} disabled={plans.length === 0}>
             {formularOffen && bearbeitet === null ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
-            {formularOffen && bearbeitet === null ? "Schließen" : "Neu"}
+            {formularOffen && bearbeitet === null ? t("Schließen") : t("Neu")}
           </Button>
         </div>
       </CardHeader>
@@ -250,7 +251,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
         <SectionBanner error={sammlung.error} actionError={sammlung.actionError} onRetry={() => void sammlung.reload()} />
 
         <label className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-          Sortieren
+          {t("Sortieren")}
           <Select
             value={ordnung}
             onChange={(event) => {
@@ -260,7 +261,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
               void sammlung.reload();
             }}
             className="h-9 w-48"
-            aria-label="Aufgaben sortieren"
+            aria-label={t("Aufgaben sortieren")}
           >
             {(Object.keys(ORDNUNG_LABEL) as StudyTaskOrder[]).map((wert) => (
               <option key={wert} value={wert}>
@@ -272,33 +273,33 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
 
         {plans.length === 0 ? (
           <p className="border border-dashed border-border bg-muted/30 px-4 py-3 text-xs leading-5 text-muted-foreground">
-            Jede Lernaufgabe gehört zu einem Lernplan. Lege oben zuerst einen Plan an.
+            {t("Jede Lernaufgabe gehört zu einem Lernplan. Lege oben zuerst einen Plan an.")}
           </p>
         ) : null}
 
         {formularOffen && plans.length > 0 ? (
           <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-semibold">{bearbeitet === null ? "Neue Lernaufgabe" : "Lernaufgabe bearbeiten"}</p>
-              <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label="Formular schließen">
+              <p className="text-sm font-semibold">{bearbeitet === null ? t("Neue Lernaufgabe") : t("Lernaufgabe bearbeiten")}</p>
+              <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label={t("Formular schließen")}>
                 <X aria-hidden="true" />
               </Button>
             </div>
 
-            <Field id="aufgabe-titel" label="Titel" required>
+            <Field id="aufgabe-titel" label={t("Titel")} required>
               {(props) => (
                 <Input
                   {...props}
                   value={formular.titel}
                   onChange={(event) => setFormular((current) => ({ ...current, titel: event.target.value }))}
                   disabled={istSpeichern}
-                  placeholder="Zum Beispiel: Ableitungen üben"
+                  placeholder={t("Zum Beispiel: Ableitungen üben")}
                 />
               )}
             </Field>
 
             {bearbeitet === null ? (
-              <Field id="aufgabe-plan" label="Lernplan" required>
+              <Field id="aufgabe-plan" label={t("Lernplan")} required>
                 {(props) => (
                   <Select
                     {...props}
@@ -317,7 +318,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
             ) : null}
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field id="aufgabe-dauer" label="Dauer in Minuten" required>
+              <Field id="aufgabe-dauer" label={t("Dauer in Minuten")} required>
                 {(props) => (
                   <Input
                     {...props}
@@ -332,7 +333,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
                 )}
               </Field>
 
-              <Field id="aufgabe-prioritaet" label={`Priorität (0–${MAX_TASK_PRIORITY})`} required hint="Höher bedeutet wichtiger.">
+              <Field id="aufgabe-prioritaet" label={t("Priorität (0–{max})", { max: MAX_TASK_PRIORITY })} required hint={t("Höher bedeutet wichtiger.")}>
                 {(props) => (
                   <Input
                     {...props}
@@ -348,7 +349,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field id="aufgabe-geplant" label="Geplant für" hint="Optional. Wann du sie angehst.">
+              <Field id="aufgabe-geplant" label={t("Geplant für")} hint={t("Optional. Wann du sie angehst.")}>
                 {(props) => (
                   <Input
                     {...props}
@@ -360,7 +361,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
                 )}
               </Field>
 
-              <Field id="aufgabe-faellig" label="Fällig bis" hint="Optional. Bestimmt die Reihenfolge nach Frist.">
+              <Field id="aufgabe-faellig" label={t("Fällig bis")} hint={t("Optional. Bestimmt die Reihenfolge nach Frist.")}>
                 {(props) => (
                   <Input
                     {...props}
@@ -374,7 +375,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
             </div>
 
             {bearbeitet !== null ? (
-              <Field id="aufgabe-zustand" label="Zustand" hint="Abgesagte Aufgaben bleiben erhalten, zählen aber nicht als offen.">
+              <Field id="aufgabe-zustand" label={t("Zustand")} hint={t("Abgesagte Aufgaben bleiben erhalten, zählen aber nicht als offen.")}>
                 {(props) => (
                   <Select
                     {...props}
@@ -392,14 +393,14 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
               </Field>
             ) : null}
 
-            <Field id="aufgabe-beschreibung" label="Notiz" hint="Optional.">
+            <Field id="aufgabe-beschreibung" label={t("Notiz")} hint={t("Optional.")}>
               {(props) => (
                 <Textarea
                   {...props}
                   value={formular.beschreibung}
                   onChange={(event) => setFormular((current) => ({ ...current, beschreibung: event.target.value }))}
                   disabled={istSpeichern}
-                  placeholder="Aufgaben 12 und 14, danach Karteikarten"
+                  placeholder={t("Aufgaben 12 und 14, danach Karteikarten")}
                 />
               )}
             </Field>
@@ -409,25 +410,25 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
             <div className="flex flex-wrap items-center gap-2">
               <Button type="submit" disabled={istSpeichern}>
                 {istSpeichern ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
-                {istSpeichern ? "Wird gespeichert …" : bearbeitet === null ? "Lernaufgabe anlegen" : "Änderungen speichern"}
+                {istSpeichern ? t("Wird gespeichert …") : bearbeitet === null ? t("Lernaufgabe anlegen") : t("Änderungen speichern")}
               </Button>
               <Button type="button" variant="ghost" onClick={schliessen} disabled={istSpeichern}>
-                Abbrechen
+                {t("Abbrechen")}
               </Button>
             </div>
           </form>
         ) : null}
 
         {sammlung.status === "loading" && sammlung.items.length === 0 ? (
-          <div className="space-y-3" aria-busy="true" aria-label="Lernaufgaben werden geladen">
+          <div className="space-y-3" aria-busy="true" aria-label={t("Lernaufgaben werden geladen")}>
             <Skeleton className="h-24 w-full" />
             <Skeleton className="h-24 w-full" />
           </div>
         ) : sammlung.items.length === 0 ? (
           <EmptyState
             icon={BookOpen}
-            title="Keine Lernaufgaben"
-            description="Lege deine ersten Fokusblöcke an. Einen ganzen Plan aus den Themen einer Prüfung erzeugt die Kachel „Prüfungen“ auf dem Dashboard."
+            title={t("Keine Lernaufgaben")}
+            description={t("Lege deine ersten Fokusblöcke an. Einen ganzen Plan aus den Themen einer Prüfung erzeugt die Kachel „Prüfungen“ auf dem Dashboard.")}
           />
         ) : (
           <ul className="space-y-2.5">
@@ -504,7 +505,7 @@ function AufgabenZeile({
           <div className="flex flex-wrap items-center gap-2">
             <p className={cn("truncate text-sm font-semibold", erledigt && "text-muted-foreground line-through")}>{aufgabe.title}</p>
             <Badge variant={zustandsVariante(aufgabe.status)}>{ZUSTANDS_LABEL[aufgabe.status]}</Badge>
-            {aufgabe.priority > 0 ? <Badge variant="warning">Priorität {aufgabe.priority}</Badge> : null}
+            {aufgabe.priority > 0 ? <Badge variant="warning">{t("Priorität {n}", { n: aufgabe.priority })}</Badge> : null}
             {/*
               Der Fachschnitt steht neben der Prioritaet, weil er einer der
               Gruende dafuer sein kann. Eine Prioritaet ohne Herkunft ist eine
@@ -518,7 +519,7 @@ function AufgabenZeile({
                   aufgabe.subject_passed === false && "underline underline-offset-4",
                 )}
               >
-                Schnitt {notenText(aufgabe.subject_average)} · {bestandenLabel(aufgabe.subject_passed === true)}
+                {t("Schnitt {note}", { note: notenText(aufgabe.subject_average) })} · {bestandenLabel(aufgabe.subject_passed === true)}
               </span>
             ) : null}
           </div>
@@ -535,22 +536,23 @@ function AufgabenZeile({
             {aufgabe.scheduled_for ? (
               <>
                 <span className="text-border"> · </span>
-                geplant {formatDateTime(aufgabe.scheduled_for)}
+                {t("geplant {datum}", { datum: formatDateTime(aufgabe.scheduled_for) })}
               </>
             ) : null}
             {aufgabe.due_date ? (
               <>
                 <span className="text-border"> · </span>
                 <span className={cn(ueberfaellig && "text-destructive")}>
-                  {ueberfaellig ? "überfällig " : "fällig "}
-                  {formatDateTime(aufgabe.due_date)}
+                  {ueberfaellig
+                    ? t("überfällig {datum}", { datum: formatDateTime(aufgabe.due_date) })
+                    : t("fällig {datum}", { datum: formatDateTime(aufgabe.due_date) })}
                 </span>
               </>
             ) : null}
             {aufgabe.completed_at ? (
               <>
                 <span className="text-border"> · </span>
-                erledigt {formatDateTime(aufgabe.completed_at)}
+                {t("erledigt {datum}", { datum: formatDateTime(aufgabe.completed_at) })}
               </>
             ) : null}
           </p>
@@ -559,7 +561,7 @@ function AufgabenZeile({
             <p className="mt-2 flex items-start gap-1.5 text-xs font-semibold text-muted-foreground">
               <Link2 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>
-                Blockiert durch {blockiert.map((voraussetzung) => voraussetzung.title).join(", ")}
+                {t("Blockiert durch {liste}", { liste: blockiert.map((voraussetzung) => voraussetzung.title).join(", ") })}
               </span>
             </p>
           ) : null}
@@ -582,7 +584,7 @@ function AufgabenZeile({
         }}
       >
         <summary className="cursor-pointer list-none text-xs font-medium text-muted-foreground hover:text-foreground">
-          Voraussetzungen verwalten
+          {t("Voraussetzungen verwalten")}
         </summary>
         <div className="mt-3">
           <AbhaengigkeitsBereich
@@ -631,7 +633,7 @@ function useAbhaengigkeiten(aufgabeId: number, onGeaendert: () => void) {
     try {
       setVoraussetzungen(await getStudyDependencies(aufgabeId));
     } catch (ladeFehler) {
-      setFehler(ladeFehler instanceof Error ? ladeFehler.message : "Die Voraussetzungen konnten nicht geladen werden.");
+      setFehler(ladeFehler instanceof Error ? ladeFehler.message : t("Die Voraussetzungen konnten nicht geladen werden."));
     } finally {
       setLaeuft(false);
     }
@@ -650,7 +652,7 @@ function useAbhaengigkeiten(aufgabeId: number, onGeaendert: () => void) {
       } catch (hinzuFehler) {
         // Ein Zyklus kommt vom Backend als 422 mit eigener Meldung. Die wird
         // durchgereicht statt hier erfunden - sie kennt den Grund.
-        setFehler(hinzuFehler instanceof Error ? hinzuFehler.message : "Die Voraussetzung konnte nicht gesetzt werden.");
+        setFehler(hinzuFehler instanceof Error ? hinzuFehler.message : t("Die Voraussetzung konnte nicht gesetzt werden."));
       } finally {
         setLaeuft(false);
       }
@@ -667,7 +669,7 @@ function useAbhaengigkeiten(aufgabeId: number, onGeaendert: () => void) {
         setVoraussetzungen((current) => current.filter((eintrag) => eintrag.depends_on_task_id !== dependsOnTaskId));
         onGeaendert();
       } catch (entfernFehler) {
-        setFehler(entfernFehler instanceof Error ? entfernFehler.message : "Die Voraussetzung konnte nicht entfernt werden.");
+        setFehler(entfernFehler instanceof Error ? entfernFehler.message : t("Die Voraussetzung konnte nicht entfernt werden."));
       } finally {
         setLaeuft(false);
       }
@@ -708,12 +710,12 @@ function AbhaengigkeitsBereich({
 
   return (
     <div className="space-y-2.5">
-      <p className="text-xs font-medium text-muted-foreground">Voraussetzungen</p>
+      <p className="text-xs font-medium text-muted-foreground">{t("Voraussetzungen")}</p>
 
       {laeuft && voraussetzungen.length === 0 ? (
         <Skeleton className="h-8 w-full" />
       ) : voraussetzungen.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Diese Aufgabe kann ohne Vorbedingung gestartet werden.</p>
+        <p className="text-xs text-muted-foreground">{t("Diese Aufgabe kann ohne Vorbedingung gestartet werden.")}</p>
       ) : (
         <ul className="space-y-1.5">
           {voraussetzungen.map((voraussetzung) => {
@@ -724,7 +726,7 @@ function AbhaengigkeitsBereich({
                 <span className={cn("min-w-0 flex-1 truncate font-semibold", erfuellt && "text-muted-foreground line-through")}>
                   {titelVon(voraussetzung.depends_on_task_id)}
                 </span>
-                <Badge variant={erfuellt ? "success" : "secondary"}>{erfuellt ? "Erledigt" : "Offen"}</Badge>
+                <Badge variant={erfuellt ? "success" : "secondary"}>{erfuellt ? t("Erledigt") : t("Offen")}</Badge>
                 <Button
                   type="button"
                   size="icon"
@@ -745,10 +747,10 @@ function AbhaengigkeitsBereich({
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-[12rem] flex-1 space-y-1.5">
             <label htmlFor={`voraussetzung-${aufgabe.id}`} className="block text-xs font-semibold">
-              Neue Voraussetzung
+              {t("Neue Voraussetzung")}
             </label>
             <Select id={`voraussetzung-${aufgabe.id}`} value={auswahl} onChange={(event) => setAuswahl(event.target.value)} disabled={laeuft}>
-              <option value="">Bitte wählen</option>
+              <option value="">{t("Bitte wählen")}</option>
               {kandidaten.map((kandidat) => (
                 <option key={kandidat.id} value={kandidat.id}>
                   {kandidat.title}
@@ -767,12 +769,12 @@ function AbhaengigkeitsBereich({
             }}
           >
             {laeuft ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Link2 aria-hidden="true" />}
-            Hinzufügen
+            {t("Hinzufügen")}
           </Button>
         </div>
       ) : alle.length > 1 ? (
         <p className="text-xs leading-5 text-muted-foreground">
-          Keine weitere Aufgabe in diesem Plan, die als Voraussetzung taugt. Das Backend lässt Abhängigkeiten nur innerhalb eines Plans zu.
+          {t("Keine weitere Aufgabe in diesem Plan, die als Voraussetzung taugt. Das Backend lässt Abhängigkeiten nur innerhalb eines Plans zu.")}
         </p>
       ) : null}
 

@@ -14,11 +14,12 @@ import { RowActions, SectionBanner } from "@/components/manage/row-actions";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { StudyPlan } from "@/lib/types";
+import { t } from "@/lib/i18n";
 
 const STATUS_LABEL: Record<StudyPlan["status"], string> = {
-  active: "Aktiv",
-  paused: "Pausiert",
-  finished: "Abgeschlossen",
+  active: t("Aktiv"),
+  paused: t("Pausiert"),
+  finished: t("Abgeschlossen"),
 };
 
 /** `renameStudyPlan` aendert nur den Titel - mehr gibt es am Plan nicht zu aendern. */
@@ -52,7 +53,7 @@ export function StudyPlansCard({ plans, status, error, actionError, pending, onR
   async function absenden(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!formular.titel.trim()) {
-      setFormularFehler("Gib dem Lernplan einen Titel.");
+      setFormularFehler(t("Gib dem Lernplan einen Titel."));
       return;
     }
     setFormularFehler(null);
@@ -67,17 +68,17 @@ export function StudyPlansCard({ plans, status, error, actionError, pending, onR
     <Card className="border-border/80 bg-card/90">
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
-          <CardTitle>Lernpläne</CardTitle>
-          <CardDescription className="mt-1">Jeder Plan sammelt Aufgaben zu einem Thema. Ohne Plan gibt es keine Aufgaben.</CardDescription>
+          <CardTitle>{t("Lernpläne")}</CardTitle>
+          <CardDescription className="mt-1">{t("Jeder Plan sammelt Aufgaben zu einem Thema. Ohne Plan gibt es keine Aufgaben.")}</CardDescription>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="secondary">{plans.length} Pläne</Badge>
-          <Button type="button" size="icon" variant="ghost" onClick={onReload} aria-label="Lernpläne neu laden" disabled={status === "loading"}>
+          <Badge variant="secondary">{plans.length} {t("Pläne")}</Badge>
+          <Button type="button" size="icon" variant="ghost" onClick={onReload} aria-label={t("Lernpläne neu laden")} disabled={status === "loading"}>
             <RefreshCw className={cn(status === "loading" && "animate-spin")} aria-hidden="true" />
           </Button>
           <Button type="button" size="sm" onClick={() => setFormularOffen((offen) => !offen)} aria-expanded={formularOffen}>
             {formularOffen ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}
-            {formularOffen ? "Schließen" : "Neu"}
+            {formularOffen ? t("Schließen") : t("Neu")}
           </Button>
         </div>
       </CardHeader>
@@ -87,18 +88,18 @@ export function StudyPlansCard({ plans, status, error, actionError, pending, onR
 
         {formularOffen ? (
           <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
-            <Field id="plan-titel" label="Titel" required>
+            <Field id="plan-titel" label={t("Titel")} required>
               {(props) => (
                 <Input
                   {...props}
                   value={formular.titel}
                   onChange={(event) => setFormular((current) => ({ ...current, titel: event.target.value }))}
                   disabled={istSpeichern}
-                  placeholder="Zum Beispiel: Abi-Vorbereitung Mathematik"
+                  placeholder={t("Zum Beispiel: Abi-Vorbereitung Mathematik")}
                 />
               )}
             </Field>
-            <Field id="plan-beschreibung" label="Beschreibung" hint="Optional.">
+            <Field id="plan-beschreibung" label={t("Beschreibung")} hint={t("Optional.")}>
               {(props) => (
                 <Textarea
                   {...props}
@@ -112,24 +113,24 @@ export function StudyPlansCard({ plans, status, error, actionError, pending, onR
             <div className="flex flex-wrap items-center gap-2">
               <Button type="submit" disabled={istSpeichern}>
                 {istSpeichern ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
-                {istSpeichern ? "Wird gespeichert …" : "Lernplan anlegen"}
+                {istSpeichern ? t("Wird gespeichert …") : t("Lernplan anlegen")}
               </Button>
               <Button type="button" variant="ghost" onClick={() => setFormularOffen(false)} disabled={istSpeichern}>
-                Abbrechen
+                {t("Abbrechen")}
               </Button>
             </div>
           </form>
         ) : null}
 
         {status === "loading" && plans.length === 0 ? (
-          <div className="space-y-3" aria-busy="true" aria-label="Lernpläne werden geladen">
+          <div className="space-y-3" aria-busy="true" aria-label={t("Lernpläne werden geladen")}>
             <Skeleton className="h-16 w-full" />
           </div>
         ) : plans.length === 0 ? (
           <EmptyState
             icon={CheckCircle2}
-            title="Noch kein Lernplan"
-            description="Lege einen Lernplan an – darin liegen danach alle Lernaufgaben, Serien und Prüfungsvorbereitungen."
+            title={t("Noch kein Lernplan")}
+            description={t("Lege einen Lernplan an – darin liegen danach alle Lernaufgaben, Serien und Prüfungsvorbereitungen.")}
           />
         ) : (
           <ul className="space-y-2.5">
@@ -170,7 +171,7 @@ function PlanZeile({ plan, busy, onRename, onDelete }: { plan: StudyPlan; busy: 
         {umbenennen ? (
           <form onSubmit={speichern} className="flex flex-wrap items-center gap-2">
             <label htmlFor={`plan-umbenennen-${plan.id}`} className="sr-only">
-              Neuer Titel für {plan.title}
+              {t("Neuer Titel für {titel}", { titel: plan.title })}
             </label>
             <Input
               id={`plan-umbenennen-${plan.id}`}
@@ -180,7 +181,7 @@ function PlanZeile({ plan, busy, onRename, onDelete }: { plan: StudyPlan; busy: 
               className="h-9 min-w-0 flex-1"
             />
             <Button type="submit" size="sm" disabled={busy}>
-              Speichern
+              {t("Speichern")}
             </Button>
             <Button
               type="button"
@@ -191,7 +192,7 @@ function PlanZeile({ plan, busy, onRename, onDelete }: { plan: StudyPlan; busy: 
                 setUmbenennen(false);
               }}
             >
-              Abbrechen
+              {t("Abbrechen")}
             </Button>
           </form>
         ) : (
@@ -202,11 +203,11 @@ function PlanZeile({ plan, busy, onRename, onDelete }: { plan: StudyPlan; busy: 
             </div>
             {plan.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{plan.description}</p> : null}
             <p className="mt-1.5 text-xs font-semibold text-muted-foreground">
-              {plan.open_task_count} von {plan.task_count} Aufgaben offen
+              {t("{offen} von {gesamt} Aufgaben offen", { offen: plan.open_task_count, gesamt: plan.task_count })}
               {plan.starts_on ? (
                 <>
                   <span className="text-border"> · </span>
-                  ab {formatDate(plan.starts_on, { day: "2-digit", month: "short", year: "numeric" })}
+                  {t("ab {datum}", { datum: formatDate(plan.starts_on, { day: "2-digit", month: "short", year: "numeric" }) })}
                 </>
               ) : null}
             </p>

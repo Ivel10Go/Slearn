@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, getScheduleRange } from "./api";
 import type { DashboardLesson } from "./types";
+import { t } from "./i18n";
 
 type ScheduleStatus = "loading" | "ready" | "error";
 
@@ -21,7 +22,7 @@ function errorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;
   }
-  return "Der Stundenplan konnte nicht geladen werden.";
+  return t("Der Stundenplan konnte nicht geladen werden.");
 }
 
 /**

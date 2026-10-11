@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
+import { getLocale } from "@/lib/i18n";
 import { useSession } from "@/lib/use-session";
 
 /**
@@ -29,10 +30,119 @@ function Abschnitt({ titel, children }: { titel: string; children: ReactNode }) 
   );
 }
 
+/**
+ * Die Erklaerung gibt es auf Deutsch und Englisch als ganze Texte, nicht als
+ * Satzschluessel: ein Rechtstext liest sich nur am Stueck, und die beiden
+ * Fassungen muessen nebeneinander vergleichbar bleiben. Wer eine Verbindung
+ * ergaenzt, ergaenzt sie in beiden.
+ */
 export default function DatenschutzPage() {
   const user = useSession();
+  return <AppShell user={user}>{getLocale() === "en" ? <PrivacyEnglish /> : <DatenschutzDeutsch />}</AppShell>;
+}
+
+function PrivacyEnglish() {
   return (
-    <AppShell user={user}>
+    <article className="max-w-3xl space-y-6">
+      <header>
+        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Privacy</h1>
+        <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">Last updated: 7 October 2026</p>
+      </header>
+
+      <Abschnitt titel="In short">
+        <p>
+          Lernraum stores your data where it runs: on your computer in the desktop app, or on the server of your school or
+          family in server mode. There is no account with us, no advertising, no tracking and no analytics services. Data only
+          leaves the computer when you set up a connection or start a download.
+        </p>
+      </Abschnitt>
+
+      <Abschnitt titel="Controller">
+        <p>
+          The controller within the meaning of the GDPR is whoever operates Lernraum. With the desktop app that is you - the
+          publishers of the app receive none of your data. In server mode it is the party running the server.
+        </p>
+        <p>{KONTAKT ? `Contact: ${KONTAKT}` : "The operator has not provided a contact address."}</p>
+      </Abschnitt>
+
+      <Abschnitt titel="What is stored">
+        <p>
+          Whatever you enter or import: name and time zone, timetable, subjects, homework, exams, grades, appointments, study
+          plans and study time, uploaded documents, notes taken by the assistant, points and settings. Conversations with the
+          assistant stay only in the browser or the app on this device.
+        </p>
+        <p>
+          Credentials for connections (WebUntis, AI service, calendars) are stored encrypted and are only decrypted for the
+          connection they belong to.
+        </p>
+        <p>
+          Training examples for a personal model are only created if you explicitly switch this on under “AI &amp; models”
+          (default: off). Training runs on your own computer.
+        </p>
+      </Abschnitt>
+
+      <Abschnitt titel="When data leaves the computer">
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            <strong className="font-medium text-foreground">WebUntis</strong> - only with a configured connection: signing in
+            and fetching the timetable from the school portal.
+          </li>
+          <li>
+            <strong className="font-medium text-foreground">Online AI service</strong> - only with a configured connection: your
+            question, matching excerpts from your documents and appointments go to the provider you chose. Grades only with a
+            separate permission (default: off). Local models run without the internet.
+          </li>
+          <li>
+            <strong className="font-medium text-foreground">Calendars</strong> (Google, Apple/iCloud, iCalendar) - only with a
+            configured connection. Writing to an external calendar only after your separate consent.
+          </li>
+          <li>
+            <strong className="font-medium text-foreground">Downloads</strong> - models and voices from Hugging Face, runtimes and
+            app updates from GitHub. No learning data is transferred, only the usual details of any web request (IP address,
+            time).
+          </li>
+          <li>
+            <strong className="font-medium text-foreground">Push notifications</strong> - only if you switch them on: they are
+            delivered by the browser vendor. The message itself is end-to-end encrypted.
+          </li>
+        </ul>
+      </Abschnitt>
+
+      <Abschnitt titel="Legal basis">
+        <p>
+          Processing serves the use of the app you set up yourself (Art. 6(1)(b) GDPR) and your consent to the individual
+          connections and permissions (Art. 6(1)(a) GDPR), which you can withdraw at any time in the settings. Under the age of
+          16, connections to online services require parental consent (Art. 8 GDPR).
+        </p>
+      </Abschnitt>
+
+      <Abschnitt titel="Your rights">
+        <p>
+          Under{" "}
+          <Link href="/settings?tab=allgemein" className="underline underline-offset-2 hover:text-foreground">
+            Settings → Account &amp; appearance → Your data
+          </Link>{" "}
+          you can download all stored data as a file (access and portability, Art. 15 and 20) or delete your account with all
+          entries, documents, training data and adapters (Art. 17). Individual entries can be changed or deleted at any time
+          where they appear (Art. 16). You also have the right to lodge a complaint with a data protection supervisory
+          authority.
+        </p>
+      </Abschnitt>
+
+      <Abschnitt titel="Retention">
+        <p>
+          Data is kept until you delete it or your account. When you uninstall the desktop app the data folder is kept so that a
+          reinstall loses nothing; you can find it under Settings → “Data on this computer”.
+        </p>
+      </Abschnitt>
+
+      <p className="text-xs text-muted-foreground">If the German and English versions differ, the German version applies.</p>
+    </article>
+  );
+}
+
+function DatenschutzDeutsch() {
+  return (
       <article className="max-w-3xl space-y-6">
         <header>
           <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Datenschutz</h1>
@@ -128,6 +238,5 @@ export default function DatenschutzPage() {
           </p>
         </Abschnitt>
       </article>
-    </AppShell>
   );
 }

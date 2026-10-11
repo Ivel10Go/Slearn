@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { t, tn } from "@/lib/i18n";
 
 /*
  * Der Backup-Stand kommt aus `GET /api/v1/backups/status`, das liest die
@@ -77,7 +78,7 @@ function parseBackupStatus(payload: unknown): BackupStatus | null {
     return null;
   }
   const rawBackup = asRecord(root.backup);
-  const message = asText(root.message) ?? "Der Worker hat nichts zum Backup gemeldet.";
+  const message = asText(root.message) ?? t("Der Worker hat nichts zum Backup gemeldet.");
   if (!rawBackup) {
     return { available: asBoolean(root.available) ?? false, message, backup: null };
   }
@@ -110,16 +111,16 @@ function formatBytes(bytes: number | null) {
     return `${bytes} Byte`;
   }
   if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1).replace(".", ",")} KiB`;
+    return `${formatNumber(bytes / 1024, 1)} KiB`;
   }
-  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MiB`;
+  return `${formatNumber(bytes / (1024 * 1024), 1)} MiB`;
 }
 
 function describeError(cause: unknown) {
   if (cause instanceof Error && cause.message) {
     return cause.message;
   }
-  return "Der Backup-Status konnte nicht geladen werden.";
+  return t("Der Backup-Status konnte nicht geladen werden.");
 }
 
 export function BackupStatusCard() {
@@ -137,7 +138,7 @@ export function BackupStatusCard() {
         return;
       }
       setStatus(payload);
-      setError(payload ? null : "Die Antwort des Lernraums war nicht lesbar.");
+      setError(payload ? null : t("Die Antwort des Lernraums war nicht lesbar."));
     } catch (cause) {
       if (currentRequest !== requestId.current) {
         return;
@@ -170,14 +171,14 @@ export function BackupStatusCard() {
     <Card className="border-border/80 bg-card/90">
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div>
-          <CardTitle>Sicherung</CardTitle>
+          <CardTitle>{t("Sicherung")}</CardTitle>
           <CardDescription className="mt-1">
-            Der Worker legt regelmäßig einen Dump der Datenbank ab. Ein Backup sichert nicht die hochgeladenen Dateien.
+            {t("Der Worker legt regelmäßig einen Dump der Datenbank ab. Ein Backup sichert nicht die hochgeladenen Dateien.")}
           </CardDescription>
         </div>
         <Button type="button" size="sm" variant="outline" onClick={() => void load()} disabled={isLoading}>
           <RefreshCw className={cn(isLoading && "animate-spin")} aria-hidden="true" />
-          Aktualisieren
+          {t("Aktualisieren")}
         </Button>
       </CardHeader>
 
@@ -211,20 +212,20 @@ export function BackupStatusCard() {
               {running ? (
                 <Badge variant="success">
                   <CheckCircle2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-                  Läuft
+                  {t("Läuft")}
                 </Badge>
               ) : (
-                <Badge variant="outline">Nicht aktiv</Badge>
+                <Badge variant="outline">{t("Nicht aktiv")}</Badge>
               )}
-              {backup.directoryWritable === false ? <Badge variant="warning">Ablage nicht beschreibbar</Badge> : null}
+              {backup.directoryWritable === false ? <Badge variant="warning">{t("Ablage nicht beschreibbar")}</Badge> : null}
             </div>
 
             <dl className="grid gap-2 sm:grid-cols-2">
-              <Detail label="Zeitplan" value={backup.schedule ? `${backup.schedule}${backup.timezone ? ` (${backup.timezone})` : ""}` : UNKNOWN} />
-              <Detail label="Aufbewahrung" value={backup.retentionDays === null ? UNKNOWN : `${backup.retentionDays} Tage`} />
-              <Detail label="Letzte Sicherung" value={formatDateTime(backup.lastSuccessfulAt)} />
+              <Detail label={t("Zeitplan")} value={backup.schedule ? `${backup.schedule}${backup.timezone ? ` (${backup.timezone})` : ""}` : UNKNOWN} />
+              <Detail label={t("Aufbewahrung")} value={backup.retentionDays === null ? UNKNOWN : tn(backup.retentionDays, "{n} Tag", "{n} Tage")} />
+              <Detail label={t("Letzte Sicherung")} value={formatDateTime(backup.lastSuccessfulAt)} />
               <Detail
-                label="Nächster Termin"
+                label={t("Nächster Termin")}
                 value={
                   <span className="inline-flex items-center gap-1.5">
                     <Clock3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
@@ -232,32 +233,31 @@ export function BackupStatusCard() {
                   </span>
                 }
               />
-              <Detail label="Letzte Datei" value={backup.lastFile ?? UNKNOWN} />
-              <Detail label="Größe" value={formatBytes(backup.lastSizeBytes)} />
+              <Detail label={t("Letzte Datei")} value={backup.lastFile ?? UNKNOWN} />
+              <Detail label={t("Größe")} value={formatBytes(backup.lastSizeBytes)} />
               <Detail
-                label="Sicherungen auf dem Datenträger"
-                value={backup.keptFiles === null ? UNKNOWN : `${backup.keptFiles} Dateien`}
+                label={t("Sicherungen auf dem Datenträger")}
+                value={backup.keptFiles === null ? UNKNOWN : tn(backup.keptFiles, "{n} Datei", "{n} Dateien")}
               />
-              <Detail label="Werkzeug" value={backup.pgDump ?? UNKNOWN} />
+              <Detail label={t("Werkzeug")} value={backup.pgDump ?? UNKNOWN} />
             </dl>
 
             {backup.directoryWritable === false ? (
               <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-200">
-                Der Worker kann den Sicherungsordner nicht beschreiben. Im Container muss der Backup-Pfad read/write
-                eingebunden sein, sonst schlägt jeder Lauf fehl.
+                {t("Der Worker kann den Sicherungsordner nicht beschreiben. Im Container muss der Backup-Pfad read/write eingebunden sein, sonst schlägt jeder Lauf fehl.")}
               </p>
             ) : null}
 
             {backup.lastError ? (
               <p className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-xs font-medium text-destructive">
-                Letzter Lauf fehlgeschlagen: {backup.lastError}
+                {t("Letzter Lauf fehlgeschlagen: {fehler}", { fehler: backup.lastError })}
               </p>
             ) : null}
           </>
         ) : null}
 
         {!error && !backup && !isLoading && !status ? (
-          <p className="text-sm text-muted-foreground">Es liegen keine Angaben zum Backup vor.</p>
+          <p className="text-sm text-muted-foreground">{t("Es liegen keine Angaben zum Backup vor.")}</p>
         ) : null}
       </CardContent>
     </Card>

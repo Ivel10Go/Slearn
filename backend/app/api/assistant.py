@@ -24,7 +24,7 @@ from typing import Literal, cast
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.api.deps import AppSettings, CurrentUser, DatabaseSession, TrainerSetupDep, TrainingJobs
+from app.api.deps import AppSettings, CurrentUser, DatabaseSession, RequestLanguage, TrainerSetupDep, TrainingJobs
 from app.api.helpers import owned_or_404
 from app.db.assistant import MEMORY_SOURCE_MANUAL, AssistantMemory
 from app.schemas.assistant import (
@@ -94,6 +94,7 @@ def chat(
     current_user: CurrentUser,
     db: DatabaseSession,
     settings: AppSettings,
+    language: RequestLanguage,
 ) -> AssistantChatResponse:
     try:
         result = assistant_service.chat(
@@ -107,6 +108,7 @@ def chat(
             grade_context=grades_service.grade_detail_lines(db, current_user.id),
             grades_shared_online=grades_service.grades_sharing_enabled(db, current_user.id),
             record_training=training_service.training_enabled(db, current_user.id),
+            language=language,
         )
     except assistant_service.AssistantActionError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc

@@ -19,6 +19,7 @@ import { getInitials } from "@/lib/format";
 import { isNavigationHrefActive } from "@/lib/navigation";
 import type { UserResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 interface AppShellProps {
   children: ReactNode;
@@ -49,27 +50,27 @@ interface NavItem {
 const navigationGroups: { label: string | null; items: NavItem[] }[] = [
   {
     label: null,
-    items: [{ label: "Übersicht", mobile: "Start", href: "/", icon: Home }],
+    items: [{ label: t("Übersicht"), mobile: t("Start"), href: "/", icon: Home }],
   },
   {
-    label: "Bibliothek",
+    label: t("Bibliothek"),
     items: [
-      { label: "Lernplan", mobile: "Lernen", href: "/lernen", icon: ListChecks },
-      { label: "Fächer", mobile: "Fächer", href: "/faecher", icon: BookOpen },
-      { label: "Dokumente", mobile: "Dokumente", href: "/dokumente", icon: FileText },
-      { label: "Fortschritt", mobile: "Fortschritt", href: "/fortschritt", icon: TrendingUp },
+      { label: t("Lernplan"), mobile: t("Lernen"), href: "/lernen", icon: ListChecks },
+      { label: t("Fächer"), mobile: t("Fächer"), href: "/faecher", icon: BookOpen },
+      { label: t("Dokumente"), mobile: t("Dokumente"), href: "/dokumente", icon: FileText },
+      { label: t("Fortschritt"), mobile: t("Fortschritt"), href: "/fortschritt", icon: TrendingUp },
     ],
   },
   {
-    label: "Werkzeuge",
+    label: t("Werkzeuge"),
     items: [
-      { label: "Assistent", mobile: "Assistent", href: "/assistent", icon: MessageSquareText },
-      { label: "KI & Modelle", mobile: "KI", href: "/ki", icon: Bot },
+      { label: t("Assistent"), mobile: t("Assistent"), href: "/assistent", icon: MessageSquareText },
+      { label: t("KI & Modelle"), mobile: t("KI"), href: "/ki", icon: Bot },
     ],
   },
 ];
 
-const settingsItem: NavItem = { label: "Einstellungen", mobile: "Mehr", href: "/settings", icon: Settings };
+const settingsItem: NavItem = { label: t("Einstellungen"), mobile: t("Mehr"), href: "/settings", icon: Settings };
 const mobileNavigation = [...navigationGroups.flatMap((group) => group.items), settingsItem];
 
 /**
@@ -127,7 +128,7 @@ export function AppShell({ children, user }: AppShellProps) {
         href="#main-content"
         className="sr-only z-50 focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:rounded-md focus:border focus:border-border focus:bg-card focus:px-3 focus:py-2 focus:text-[13px] focus:font-medium"
       >
-        Zum Inhalt springen
+        {t("Zum Inhalt springen")}
       </a>
 
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[232px] flex-col border-r border-border bg-sidebar lg:flex">
@@ -136,13 +137,13 @@ export function AppShell({ children, user }: AppShellProps) {
           man zieht das Fenster daran.
         */}
         <div className="app-drag flex h-12 shrink-0 items-center px-4">
-          <Link href="/" className="app-no-drag flex items-center gap-2 rounded-md px-1 py-1" aria-label="Lernraum Startseite">
+          <Link href="/" className="app-no-drag flex items-center gap-2 rounded-md px-1 py-1" aria-label={t("Lernraum Startseite")}>
             <BrandMark />
-            <span className="text-[13px] font-semibold tracking-tight">Lernraum</span>
+            <span className="text-[13px] font-semibold tracking-tight">{t("Lernraum")}</span>
           </Link>
         </div>
 
-        <nav className="flex-1 space-y-4 overflow-y-auto px-2.5 pb-4 pt-2" aria-label="Hauptnavigation">
+        <nav className="flex-1 space-y-4 overflow-y-auto px-2.5 pb-4 pt-2" aria-label={t("Hauptnavigation")}>
           {navigationGroups.map((group) => (
             <div key={group.label ?? "start"}>
               {group.label ? <p className="mb-1 px-2.5 text-[11px] font-medium text-muted-foreground/80">{group.label}</p> : null}
@@ -171,16 +172,16 @@ export function AppShell({ children, user }: AppShellProps) {
         {/* `env(safe-area-inset-top)`: mit viewportFit "cover" liegt der Header
             sonst unter der Notch. */}
         <header className="sticky top-0 z-30 flex h-[calc(3rem+env(safe-area-inset-top))] items-center justify-between border-b border-border bg-background px-4 pt-[env(safe-area-inset-top)] sm:px-6 lg:hidden">
-          <Link href="/" className="flex items-center gap-2" aria-label="Lernraum Startseite">
+          <Link href="/" className="flex items-center gap-2" aria-label={t("Lernraum Startseite")}>
             <BrandMark />
-            <span className="text-[13px] font-semibold tracking-tight">Lernraum</span>
+            <span className="text-[13px] font-semibold tracking-tight">{t("Lernraum")}</span>
           </Link>
           <div className="flex items-center gap-1">
             <ThemeToggle />
             <Link
               href="/settings"
               className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-              aria-label="Einstellungen"
+              aria-label={t("Einstellungen")}
             >
               <Settings className="h-4 w-4" aria-hidden="true" />
             </Link>
@@ -205,7 +206,7 @@ export function AppShell({ children, user }: AppShellProps) {
       */}
       <nav
         className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background px-2 pb-[max(0.375rem,env(safe-area-inset-bottom))] pt-1.5 lg:hidden"
-        aria-label="Mobile Navigation"
+        aria-label={t("Mobile Navigation")}
       >
         <div className="mx-auto flex max-w-lg snap-x gap-0.5 overflow-x-auto">
           {mobileNavigation.map((item) => {
