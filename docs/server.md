@@ -1,6 +1,6 @@
 # Server-Betrieb (Docker Compose)
 
-Betrieb als Docker-Compose-Stack: Einrichtung, Worker, Speicher, Backups, HTTPS, Secret-Rotation und Fehlersuche. Der Kurzeinstieg steht im [README](../README.md).
+Betrieb als Docker-Compose-Stack: Einrichtung, Worker, Speicher, Backups, HTTPS, Secret-Rotation und Fehlersuche. Der Kurzeinstieg steht im [README](../README.de.md).
 
 ## Architektur
 
