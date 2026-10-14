@@ -132,7 +132,7 @@ Deutsch und Englisch. Der **deutsche Text ist der Schlüssel** (gettext-Stil): `
 - **Meldungen und Daten des Backends bleiben deutsch.** Feste Sätze (Fehler-`detail`, Katalogbeschreibungen, Stufennamen, Wochentage) übersetzt das Frontend mit `translateServerText()` über dasselbe Wörterbuch; Sätze mit eingesetzten Werten bleiben deutsch. Wer im Backend einen solchen Satz ändert, muss den englischen Eintrag nachziehen – sonst erscheint er einfach deutsch.
 - **Das Bestätigungswort zum Kontolöschen** tippt man übersetzt (`DELETE`), ans Backend geht immer `LÖSCHEN`.
 - **Desktop-Hülle:** Menü, Infobereich, Dialoge und Startbildschirm in `desktop/lib/texts.js`. Die Seite meldet ihre Sprache über `lernraum:set-language` (Bridge `setLanguage`), bis dahin gilt die Systemsprache.
-- Die Datenschutzseite gibt es als zwei ganze Texte (`app/datenschutz/page.tsx`); bei Änderungen beide pflegen. Die Landingpage ist nur deutsch.
+- Die Datenschutzseite gibt es als zwei ganze Texte (`app/datenschutz/page.tsx`); bei Änderungen beide pflegen. Die Landingpage hat ihre eigene Zweisprachigkeit (`landing/lib/content.ts`, siehe „Landingpage“).
 
 ## Landingpage (`landing/`)
 
@@ -140,6 +140,7 @@ Deutsch und Englisch. Der **deutsche Text ist der Schlüssel** (gettext-Stil): `
 - **Kopien statt Import:** `components/faultier.tsx` und die Tokens in `app/globals.css` stammen aus `frontend/`. Das Dunkelschema hängt hier an `prefers-color-scheme`, nicht an `.dark`.
 - **Warteliste:** Regeln in `lib/waitlist.ts` (ohne I/O, getestet), Speicher in `lib/waitlist-store.ts` (Supabase per REST, sonst JSONL-Datei). Doppelte Adressen und das Honigtopf-Feld bekommen dieselbe Erfolgsantwort – nicht „verbessern“, sonst verrät das Formular, wer eingetragen ist. Die Mengenbegrenzung zählt jede Anfrage, auch ungültige; lokal teilen sich alle Anfragen ohne `X-Forwarded-For` einen Schlüssel.
 - **GitHub Pages** (`.github/workflows/landing-pages.yml`): statischer Export ohne `app/api`; die Warteliste läuft dort über die Supabase Edge Function `landing/supabase/functions/waitlist`, deren `waitlist.ts` eine getestete Kopie von `lib/waitlist.ts` ist. Details in `docs/landing.md`.
+- **Zweisprachig** (`/` deutsch, `/en/` englisch): Texte in `landing/lib/content.ts`, je Sprache ein Objekt, zwei Wurzel-Layouts wegen `<html lang>`. Neue Texte in **beide** Objekte, sonst fällt `lib/content.test.ts`. Keine Umleitung nach Browsersprache, nur nach gemerkter Wahl. Details in `docs/landing.md`, „Sprachen“.
 - **Aussagen auf der Seite nur aus dem Code.** Preise, Systemanforderungen und Raspberry-Pi-Betrieb sind bewusst nicht behauptet.
 - `npm install` im leeren Ordner brach mit `Cannot read properties of null (reading 'edgesOut')` ab; mit dem Lockfile aus `frontend/` als Startpunkt lief es durch.
 

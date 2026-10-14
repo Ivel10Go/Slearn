@@ -6,7 +6,10 @@ Die Landingpage liegt in `landing/`. Sie ist eine eigene, kleine Next.js-App mit
 
 | Pfad | Inhalt |
 | --- | --- |
-| `app/page.tsx` | Die ganze Seite: Hero, Funktionen, Assistent, Datenschutz, Desktop/Server, Warteliste, Fragen |
+| `app/(de)/`, `app/en/` | Je ein Wurzel-Layout und eine Seite pro Sprache (`/` deutsch, `/en/` englisch) |
+| `components/landing-page.tsx` | Die ganze Seite: Hero, Funktionen, Assistent, Datenschutz, Desktop/Server, Warteliste, Fragen |
+| `lib/content.ts` | Alle Texte, je Sprache ein ganzes Objekt (`LandingContent`) |
+| `components/language-hint.tsx`, `lib/locale.ts` | Sprachwahl merken, Hinweis auf die andere Sprache |
 | `components/app-preview.tsx`, `assistant-preview.tsx` | Nachbau von Dashboard und Assistent in HTML statt Screenshots (scharf, Dunkelmodus, keine Bilddatei) |
 | `components/faultier.tsx` | Kopie des Maskottchens aus `frontend/components/assistant/faultier.tsx` |
 | `components/waitlist-form.tsx` | Formular (kompakt im Hero, vollständig im Abschnitt „Warteliste“) |
@@ -16,6 +19,17 @@ Die Landingpage liegt in `landing/`. Sie ist eine eigene, kleine Next.js-App mit
 | `supabase/waitlist.sql` | Tabelle für Supabase |
 
 Design: dieselben Graustufen-Tokens und Regeln wie die App (siehe „Frontend-UI-Konventionen“ in `AGENTS.md`). Das Farbschema folgt dem System (`prefers-color-scheme`), einen Umschalter gibt es nicht. Die CSP ist so streng wie in der App: keine fremden Skripte, Schriften oder Bilder.
+
+## Sprachen
+
+Deutsch unter `/`, Englisch unter `/en/`. Alle Texte stehen in `lib/content.ts`, je Sprache ein ganzes Objekt – kein Schlüssel-Wörterbuch wie in der App, weil die Seite fast nur aus Fließtext besteht. `lib/content.test.ts` prüft, dass beide Sprachen dieselbe Gestalt haben (gleich lange Listen, kein leerer Text) und dass die deutschen Formularmeldungen wörtlich denen von `parseWaitlistInput()` entsprechen.
+
+- **Zwei Wurzel-Layouts** (`app/(de)/layout.tsx`, `app/en/layout.tsx`, gemeinsam `components/root-document.tsx`), damit `<html lang>`, Titel, `hreflang`-Alternativen und `og:locale` je Sprache stimmen – ohne Server lässt sich `lang` nicht je Anfrage setzen.
+- **Sprachlinks sind schlichte `<a>` mit `homeHref()`**, nicht `next/link`: zwischen zwei Wurzel-Layouts lädt Next ohnehin neu, und das Vorladen fragte im Export eine nicht vorhandene Datei der Routengruppe an.
+- **Keine automatische Umleitung nach Browsersprache.** Gemerkt wird nur eine *Wahl* (`localStorage` `lernraum.sprache`, gesetzt beim Klick auf einen Link mit `data-sprache`); wer sich die andere Sprache gemerkt hat, wird weitergeleitet. Ohne Wahl zeigt `LanguageHint` nur einen Hinweis, wenn der Browser die andere Sprache bevorzugt – sonst sähen Suchmaschinen mit englischem Browser die deutsche Seite nie.
+- **Formularmeldungen kommen aus den Texten der Seite**, nicht aus der Antwort: Route und Edge Function antworten weiter deutsch, `lib/waitlist-messages.ts` wählt die Meldung nur nach `field` und Status. Dadurch musste die Edge Function nicht geändert werden.
+- Die Sprungmarken sind je Sprache verschieden (`#funktionen` / `#features`, siehe `ids`), damit bestehende deutsche Links gültig bleiben.
+- Eine weitere Sprache: Objekt in `lib/content.ts` ergänzen, `Locale`/`LOCALES` erweitern, `app/<sprache>/layout.tsx` + `page.tsx` anlegen; `otherLocale()` und der Umschalter gehen heute von genau zwei Sprachen aus.
 
 ## Befehle
 
