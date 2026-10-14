@@ -33,7 +33,7 @@ Lernraum ("learning space") brings timetable, homework, exams, appointments, stu
 | 📄 **Documents** | Upload notes, worksheets and solutions as text, PDF or photos. Scans are transcribed by a local vision model and sorted by type, subject, topic and date. |
 | 🦥 **Study assistant** | A chat that knows your schedule, tasks, documents and learning profile. It suggests entries ("exam next Thursday"), quizzes you, and remembers facts you tell it. |
 | 🎙️ **Voice** | Push-to-talk, read-aloud answers, and a hands-free conversation mode (whisper.cpp + Piper, offline). |
-| 🔧 **Personal fine-tuning** | Optional, opt-in LoRA training on your own conversations so the assistant adapts to your style. Runs on NVIDIA GPUs or Apple Silicon. |
+| 🔧 **Personal fine-tuning** | Optional, opt-in LoRA training on your own conversations so the assistant adapts to your style. Runs on NVIDIA GPUs with 6 GB or more; Apple Silicon is planned. |
 | 🌍 **Bilingual** | German and English throughout: UI, assistant, greeting, voice. |
 
 A full tour of every feature (in German) is in **[docs/funktionen.md](docs/funktionen.md)**.

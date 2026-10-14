@@ -226,7 +226,7 @@ Optional und nur mit ausdrücklicher Freigabe: Der Assistent passt sich dem eige
 
 - **Trainingsbeispiele:** Mit der Freigabe „Aus Gesprächen lernen“ wird jede echte Modellantwort samt Signalen gespeichert – eingetragene oder verworfene Vorschläge, gelöschte Notizen, Daumen. Daraus wird gerechnet, ob ein Beispiel gut, korrigiert oder schlecht war.
 - **Material:** Mit eigener Freigabe lernt das Modell auch den Aufbau der eigenen Aufschriebe und das Beantworten von Fragen aus dem Material.
-- **Training** läuft als eigener Prozess (QLoRA, 4 Bit) auf NVIDIA-GPUs ab 6 GB oder Apple Silicon ab 16 GB. Es lässt sich pausieren und fortsetzen; optional startet es automatisch, wenn der Rechner am Netz und unbenutzt ist.
+- **Training** läuft als eigener Prozess (QLoRA, 4 Bit) auf NVIDIA-GPUs ab 6 GB; Apple Silicon (MLX) folgt. Es lässt sich pausieren und fortsetzen; optional startet es automatisch, wenn der Rechner am Netz und unbenutzt ist.
 - **Aktiviert** wird ein neuer Adapter nur, wenn er auf Prüfbeispielen nicht schlechter ist als ohne. Versionen lassen sich zurückrollen.
 - **Fakten** werden nie nur ins Modell trainiert, sie bleiben im Prompt. Trainiert wird das Verhalten (Datumsangaben, Ton, Aufbau).
 
