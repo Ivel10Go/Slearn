@@ -1,4 +1,4 @@
-import { parseDashboardApiResponse, parseGreetingResponse, parseScheduleRangeResponse, parseStudyActionResponse, parseStudySession, parseStudyTask } from "./schemas";
+import { parseDashboardApiResponse, parseGreetingResponse, parseScheduleRangeResponse, parseStudyActionResponse, parseStudySession, parseStudyTask, type DashboardApiResponse } from "./schemas";
 import { normalizeSource, type AiSource, type AnswerSource } from "./ai-runtime";
 import { t } from "./i18n";
 
@@ -7,14 +7,8 @@ export type StudyTaskStatus = "todo" | "in_progress" | "completed";
 export type StudySessionState = "active" | "stopped" | "completed";
 export type LessonState = "completed" | "current" | "upcoming";
 
-// Use any for dashboard response and related types since schemas return passthrough objects
-export type DashboardApiResponse = any;
-export type ApiLesson = any;
-export type ApiExam = any;
-export type ApiHomework = any;
-export type ApiStudyTask = any;
-export type ApiCalendarEvent = any;
-export type ApiDashboardSummary = any;
+// Die Rohform kommt aus dem Zod-Schema in lib/schemas.ts, nicht aus einer zweiten Beschreibung hier.
+export type { DashboardApiResponse };
 
 export interface UserResponse {
   id: ApiIdentifier;
@@ -1001,14 +995,14 @@ function normalizeStatus(value: string | null | undefined, progress: number, ses
   return "todo";
 }
 
-function normalizeTopics(value: Array<string | { name?: string }> | null | undefined) {
+function normalizeTopics(value: Array<string | { name?: string | null }> | null | undefined) {
   if (!Array.isArray(value)) return [];
   return value
     .map((topic) => (typeof topic === "string" ? text(topic, "Thema") : text(topic.name, "Thema")))
     .filter(Boolean);
 }
 
-function examProgress(progress: number | null | undefined, topics: Array<string | { confidence?: number }> | null | undefined) {
+function examProgress(progress: number | null | undefined, topics: Array<string | { confidence?: number | null }> | null | undefined) {
   if (typeof progress === "number" && Number.isFinite(progress)) {
     return clampProgress(progress);
   }
@@ -1021,7 +1015,7 @@ function examProgress(progress: number | null | undefined, topics: Array<string 
 }
 
 export function normalizeStudySession(payload: unknown, fallbackTaskId: ApiIdentifier): StudySession | null {
-  const parsed: any = parseStudySession(payload);
+  const parsed = parseStudySession(payload);
   const startedAt = parsed.started_at ?? parsed.start ?? parsed.start_time;
   if (!startedAt) return null;
   const endedAt = parsed.completed_at ?? parsed.ended_at ?? parsed.end_time ?? null;
@@ -1055,7 +1049,7 @@ function normalizeBlockers(value: unknown) {
 }
 
 export function normalizeStudyTask(task: unknown): DashboardStudyTask {
-  const parsed: any = parseStudyTask(task);
+  const parsed = parseStudyTask(task);
   const rawSession = parsed.session ?? parsed.study_session ?? parsed.active_session;
   const session = rawSession ? normalizeStudySession(rawSession, parsed.id) : parsed.started_at ?? parsed.session_started_at
     ? normalizeStudySession({ started_at: parsed.started_at ?? parsed.session_started_at, ended_at: parsed.completed_at }, parsed.id)
@@ -1083,9 +1077,10 @@ export function normalizeStudyTask(task: unknown): DashboardStudyTask {
 }
 
 export function normalizeStudyAction(payload: unknown, fallbackTaskId: ApiIdentifier): StudyActionResult {
-  const parsed: any = parseStudyActionResponse(payload);
-  const source = typeof parsed === "object" && parsed !== null && "data" in parsed ? parsed.data : parsed;
-  if (typeof source !== "object" || source === null) throw new Error(t("Die Lernaktionsantwort ist ungültig."));
+  const parsed = parseStudyActionResponse(payload);
+  const raw = "data" in parsed ? parsed.data : parsed;
+  if (typeof raw !== "object" || raw === null) throw new Error(t("Die Lernaktionsantwort ist ungültig."));
+  const source = raw as Record<string, unknown>;
   const taskPayload = "task" in source ? source.task : "title" in source ? source : null;
   const task = typeof taskPayload === "object" && taskPayload !== null ? normalizeStudyTask(taskPayload) : null;
   const sessionPayload = "session" in source ? source.session : "study_session" in source ? source.study_session : "active_session" in source ? source.active_session : source.started_at || source.start || source.start_time ? source : task?.session;
@@ -1150,9 +1145,9 @@ export function normalizeGreeting(payload: unknown): Greeting {
 
 
 export function normalizeDashboard(payload: unknown): DashboardData {
-  const parsed: any = parseDashboardApiResponse(payload);
-  const lessons = (parsed.lessons ?? []).map((lesson: unknown) => normalizeLesson(lesson));
-  const upcomingExams = (parsed.upcoming_exams ?? []).map((exam: any) => ({
+  const parsed = parseDashboardApiResponse(payload);
+  const lessons = (parsed.lessons ?? []).map((lesson) => normalizeLesson(lesson));
+  const upcomingExams = (parsed.upcoming_exams ?? []).map((exam) => ({
     id: String(exam.id),
     subject: text(exam.subject ?? exam.subject_name, t("Allgemein")),
     title: text(exam.title, t("Prüfung")),
@@ -1161,16 +1156,16 @@ export function normalizeDashboard(payload: unknown): DashboardData {
     topics: normalizeTopics(exam.topics),
     progress: examProgress(exam.progress, exam.topics),
   }));
-  const homework = (parsed.homework ?? []).map((item: any) => ({
+  const homework = (parsed.homework ?? []).map((item) => ({
     id: String(item.id),
     subject: text(item.subject ?? item.subject_name, "Allgemein"),
     title: text(item.title, "Hausaufgabe"),
     description: text(item.description, ""),
     dueDate: item.due_date,
-    completed: item.completed,
+    completed: item.completed === true,
   }));
-  const studyTasks = (parsed.study_tasks ?? []).map((task: any) => normalizeStudyTask(task));
-  const calendarEvents = (parsed.calendar_events ?? []).map((event: any) => ({
+  const studyTasks = (parsed.study_tasks ?? []).map((task) => normalizeStudyTask(task));
+  const calendarEvents = (parsed.calendar_events ?? []).map((event) => ({
     id: String(event.id),
     title: text(event.title, "Kalendereintrag"),
     description: text(event.description, ""),

@@ -1296,55 +1296,222 @@ export function collectSubjectNames(payload: unknown): Array<{ id: number; name:
     .sort((a, b) => a.name.localeCompare(b.name, "de"));
 }
 
-// Minimal passthrough schemas for other data structures
-export const dashboardApiResponseSchema = z.object({}).passthrough();
-export type DashboardApiResponse = z.infer<typeof dashboardApiResponseSchema>;
-export function parseDashboardApiResponse(payload: unknown): any {
+/*
+ * Dashboard, Stundenplan, Lernaufgaben und Konto.
+ *
+ * Diese Schemas waren lange `z.object({}).passthrough()`-Stubs, die nichts
+ * prueften; `lib/types.ts` musste deshalb mit `any` arbeiten. Sie sind bewusst
+ * *nachsichtig* bei fehlenden Feldern und Altnamen (`subject` neben
+ * `subject_name`, `teacher` neben `teacher_name`), weil die Demo-Daten und
+ * aeltere Backends diese Formen liefern und `lib/types.ts` sie normalisiert.
+ * Streng sind sie dort, wo die Oberflaeche sonst still Unsinn zeigt: ein
+ * vorhandenes Feld muss den richtigen Typ haben, und ein Zeitpunkt, den die
+ * Oberflaeche zum Rechnen braucht, muss lesbar sein.
+ */
+
+const apiId = z.union([z.string(), z.number()]);
+const optionalNumber = z.number().nullable().optional();
+const optionalFlag = z.boolean().nullable().optional();
+/** Ein ISO-Zeitpunkt, den `Date` lesen kann. "kein-datum" faellt hier, nicht erst im Render. */
+const timestamp = z.string().refine((value) => Number.isFinite(Date.parse(value)), { message: "Kein lesbarer Zeitpunkt." });
+
+export const dashboardLessonSchema = z.looseObject({
+  id: apiId,
+  subject: optionalText,
+  subject_name: optionalText,
+  subject_short_name: optionalText,
+  subject_color: optionalText,
+  color: optionalText,
+  title: optionalText,
+  teacher: optionalText,
+  teacher_name: optionalText,
+  room: optionalText,
+  room_name: optionalText,
+  start_time: timestamp,
+  end_time: timestamp.nullable().optional(),
+  is_current: optionalFlag,
+  is_cancelled: optionalFlag,
+});
+
+const dashboardTopicSchema = z.union([
+  z.string(),
+  z.looseObject({ name: optionalText, confidence: optionalNumber }),
+]);
+
+export const dashboardExamSchema = z.looseObject({
+  id: apiId,
+  subject: optionalText,
+  subject_name: optionalText,
+  title: optionalText,
+  date: timestamp,
+  description: optionalText,
+  topics: z.array(dashboardTopicSchema).nullable().optional(),
+  progress: optionalNumber,
+});
+
+export const dashboardHomeworkSchema = z.looseObject({
+  id: apiId,
+  subject: optionalText,
+  subject_name: optionalText,
+  title: optionalText,
+  description: optionalText,
+  due_date: timestamp,
+  completed: optionalFlag,
+});
+
+export const dashboardCalendarEventSchema = z.looseObject({
+  id: apiId,
+  title: optionalText,
+  description: optionalText,
+  start_time: timestamp,
+  end_time: timestamp.nullable().optional(),
+  all_day: optionalFlag,
+});
+
+export const dashboardSummarySchema = z.looseObject({
+  completed_lessons: optionalNumber,
+  lessons_completed: optionalNumber,
+  total_lessons: optionalNumber,
+  lessons_total: optionalNumber,
+  tasks_completed: optionalNumber,
+  completed_tasks: optionalNumber,
+  tasks_total: optionalNumber,
+  total_tasks: optionalNumber,
+  open_homework: optionalNumber,
+  homework_pending: optionalNumber,
+  pending_homework: optionalNumber,
+  upcoming_exams: optionalNumber,
+  exams_upcoming: optionalNumber,
+  day_progress_percent: optionalNumber,
+  day_progress: optionalNumber,
+  progress: optionalNumber,
+  planned_minutes: optionalNumber,
+});
+
+export const dashboardApiResponseSchema = z.looseObject({
+  generated_at: optionalText,
+  timezone: optionalText,
+  summary: dashboardSummarySchema.nullable().optional(),
+  lessons: z.array(dashboardLessonSchema).optional(),
+  upcoming_exams: z.array(dashboardExamSchema).optional(),
+  homework: z.array(dashboardHomeworkSchema).optional(),
+  // Jede Aufgabe laeuft einzeln durch `parseStudyTask` in `normalizeStudyTask`.
+  study_tasks: z.array(z.unknown()).optional(),
+  calendar_events: z.array(dashboardCalendarEventSchema).optional(),
+});
+export type DashboardApiResponse = z.input<typeof dashboardApiResponseSchema>;
+export type ParsedDashboard = z.output<typeof dashboardApiResponseSchema>;
+export function parseDashboardApiResponse(payload: unknown): ParsedDashboard {
   return dashboardApiResponseSchema.parse(payload);
 }
 
-export const scheduleRangeResponseSchema = z.object({}).passthrough();
-export type ScheduleRangeResponse = z.infer<typeof scheduleRangeResponseSchema>;
-// Bewusst kein `any` wie bei den Nachbarn: der Aufrufer normalisiert über `record()` in lib/types.ts.
+export const scheduleRangeResponseSchema = z.looseObject({
+  range_start: optionalText,
+  range_end: optionalText,
+  // Bewusst nachsichtig: eine kaputte Liste ergibt einen leeren Wochenplan, keinen Fehler (format.test.ts).
+  lessons: z.unknown().optional(),
+});
+export type ScheduleRangeResponse = z.input<typeof scheduleRangeResponseSchema>;
+// Der Aufrufer normalisiert ueber `record()` in lib/types.ts.
 export function parseScheduleRangeResponse(payload: unknown): unknown {
   return scheduleRangeResponseSchema.parse(payload);
 }
 
-export const greetingResponseSchema = z.object({}).passthrough();
+export const greetingResponseSchema = z.looseObject({
+  text: optionalText,
+  source: optionalText,
+  model: optionalText,
+  generated_on: optionalText,
+});
 export type GreetingResponse = z.infer<typeof greetingResponseSchema>;
-// Bewusst kein `any`: der Aufrufer normalisiert über `record()` in lib/types.ts.
+// Der Aufrufer normalisiert ueber `record()` in lib/types.ts.
 export function parseGreetingResponse(payload: unknown): unknown {
   return greetingResponseSchema.parse(payload);
 }
 
-export const studySessionSchema = z.object({}).passthrough();
+/** Eine Lernsession. Die Altnamen (`start`, `end_time`, ...) kommen aus frueheren Backends. */
+export const studySessionSchema = z.looseObject({
+  id: apiId.nullable().optional(),
+  task_id: apiId.nullable().optional(),
+  started_at: optionalText,
+  start: optionalText,
+  start_time: optionalText,
+  completed_at: optionalText,
+  ended_at: optionalText,
+  end_time: optionalText,
+  status: optionalText,
+  duration_minutes: optionalNumber,
+});
 export type StudySession = z.infer<typeof studySessionSchema>;
-export function parseStudySession(payload: unknown): any {
+export function parseStudySession(payload: unknown): StudySession {
   return studySessionSchema.parse(payload);
 }
 
-export const studyTaskSchema = z.object({}).passthrough();
+export const studyTaskSchema = z.looseObject({
+  id: apiId,
+  subject: optionalText,
+  subject_name: optionalText,
+  title: optionalText,
+  topic: optionalText,
+  topic_name: optionalText,
+  duration_minutes: optionalNumber,
+  status: optionalText,
+  progress: optionalNumber,
+  scheduled_for: optionalText,
+  // Ein unlesbares Datum wird in `normalizeStudyTask` zu `null`, nicht zum Fehler.
+  due_date: optionalText,
+  priority: optionalNumber,
+  blocked_by: z.array(z.unknown()).nullable().optional(),
+  is_series: optionalFlag,
+  series_id: apiId.nullable().optional(),
+  started_at: optionalText,
+  session_started_at: optionalText,
+  completed_at: optionalText,
+  session: z.unknown().optional(),
+  study_session: z.unknown().optional(),
+  active_session: z.unknown().optional(),
+});
 export type StudyTaskPayload = z.infer<typeof studyTaskSchema>;
-export function parseStudyTask(payload: unknown): any {
+export function parseStudyTask(payload: unknown): StudyTaskPayload {
   return studyTaskSchema.parse(payload);
 }
 
-export const studyActionResponseSchema = z.object({}).passthrough();
-export function parseStudyActionResponse(payload: unknown): any {
+/** Start/Stopp/Erledigt antworten mit einer Session, einer Aufgabe oder `{data: ...}`. */
+export const studyActionResponseSchema = z.record(z.string(), z.unknown());
+export function parseStudyActionResponse(payload: unknown): Record<string, unknown> {
   return studyActionResponseSchema.parse(payload);
 }
 
-export const loginResponseSchema = z.object({}).passthrough();
-export function parseLoginResponse(payload: unknown): any {
-  return loginResponseSchema.parse(payload);
-}
-
-export const userResponseSchema = z.object({}).passthrough();
-export function parseUserResponse(payload: unknown): any {
+export const userResponseSchema = z.looseObject({
+  id: apiId,
+  username: z.string(),
+  email: optionalText,
+  created_at: optionalText,
+  is_active: z.boolean().optional(),
+  is_admin: z.boolean().optional(),
+  timezone: z.string().optional(),
+  last_login_at: optionalText,
+});
+export type UserResponsePayload = z.infer<typeof userResponseSchema>;
+export function parseUserResponse(payload: unknown): UserResponsePayload {
   return userResponseSchema.parse(payload);
 }
 
-export const userSessionSchema = z.object({}).passthrough();
-export function parseUserSession(payload: unknown): any {
+/** `POST /v1/auth/login` antwortet mit `{user}`, nicht mit dem Benutzer selbst. */
+export const loginResponseSchema = z.object({ user: userResponseSchema });
+export function parseLoginResponse(payload: unknown) {
+  return loginResponseSchema.parse(payload);
+}
+
+/**
+ * `GET /v1/auth/me` liefert heute den Benutzer direkt. Die Huellen
+ * `{authenticated, user}` und `null` stammen aus frueheren Fassungen und werden
+ * in `getSession()` weiter verstanden.
+ */
+export const userSessionSchema = z.union([
+  z.null(),
+  z.looseObject({ authenticated: z.boolean().optional(), user: z.unknown().optional() }),
+]);
+export function parseUserSession(payload: unknown) {
   return userSessionSchema.parse(payload);
 }

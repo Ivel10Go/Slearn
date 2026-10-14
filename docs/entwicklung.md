@@ -97,7 +97,7 @@ Drei Details, die den Unterschied zwischen einem grünen und einem grünen Pipel
 
 #### Die bekannten Abweichungen
 
-`npm test` und `npm run lint` sind bei HEAD rot: ein fehlschlagender Test in `lib/types.test.ts` und 22 `@typescript-eslint/no-explicit-any` in `lib/schemas.ts` und `lib/types.ts`. Ursache ist in `lib/types.ts:8` dokumentiert -- die Zod-Schemas sind `z.object({}).passthrough()`-Stubs, die nichts validieren.
+`npm test` und `npm run lint` sind seit Oktober 2026 bei HEAD grün; die Liste der akzeptierten Abweichungen ist leer. Vorher waren beide rot (ein Test in `lib/types.test.ts`, 22 `@typescript-eslint/no-explicit-any`), weil Dashboard-, Lern- und Kontoschemas in `lib/schemas.ts` `z.object({}).passthrough()`-Stubs waren. Der Prüfer bleibt trotzdem im Weg, weil er abgestürzte Werkzeuge erkennt.
 
 Die Pipeline macht daraus **kein** `continue-on-error`. Stattdessen laufen beide Werkzeuge mit einem JSON-Reporter zusätzlich zur normalen Ausgabe, und `.github/ci/check-known-failures.mjs` entscheidet über den Exit-Code des Schritts:
 
@@ -108,13 +108,13 @@ node ../.github/ci/check-known-failures.mjs frontend-test "$RUNNER_TEMP/vitest.j
 
 `|| true` bezieht sich nur auf den Exit-Code des Werkzeugs, nicht auf den Schritt. Das Skript schlägt fehl bei jedem Fehler außerhalb der Liste in `.github/ci/known-failures.mjs`, und die Liste ist enger als "Frontend-Lint auslassen":
 
-- Für den Test ist genau ein Testname erlaubt, gebildet aus Datei, `describe` und `it`.
-- Für den Lint sind genau zwei Paare aus Datei und Regel erlaubt, zusätzlich mit einer Obergrenze von 7 beziehungsweise 15 Fundstellen. Ein 23. `any` in `lib/types.ts` lässt den Job rot werden.
+- Ein Testname wird gebildet aus Datei, `describe` und `it`; heute ist keiner erlaubt.
+- Ein Lint-Eintrag ist ein Paar aus Datei und Regel mit einer Obergrenze an Fundstellen; heute gibt es keinen.
 - Fehlt ein Eintrag in der Liste, wird jeder Fund in dieser Datei und Regel zum Fehler.
 - Ein fehlender, leerer oder unlesbarer Report ist ein harter Fehler. Genau diesen Fall würde ein pauschales `continue-on-error` verschlucken: ein Tool, das vor dem Schreiben des Reports stirbt, sieht sonst wie "nichts gefunden" aus.
 - Ein Eintrag, der nicht mehr fehlschlägt, lässt den Build durch und erzeugt eine Warnung. Die Ausnahme soll nicht still veralten, denn eine Liste, die zu groß ist, ist wieder ein Freibrief.
 
-Die Baseline ändert sich nur zusammen mit dem Code, der sie begründet. Wird `lib/types.ts` zu echten Schemas ausgebaut, ist das ein Handgriff: den Eintrag aus `known-failures.mjs` entfernen. Danach laufen `npm test` und `npm run lint` wieder ohne Skript und ohne `|| true`.
+Die Baseline ändert sich nur zusammen mit dem Code, der sie begründet. Muss je wieder eine Abweichung akzeptiert werden, gehört sie so eng wie möglich in `known-failures.mjs` – nicht in ein `continue-on-error`.
 
 #### ARM64-Buildcheck
 
