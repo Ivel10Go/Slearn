@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="logo/faultier-logo-A1.svg" alt="Lernraum sloth logo" width="120" />
+<img src="desktop/assets/icon.png" alt="Lernraum sloth logo" width="128" />
 
 # Lernraum
 
