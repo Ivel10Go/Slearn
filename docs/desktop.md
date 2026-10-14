@@ -2,7 +2,7 @@
 
 Aufbau, Datenablage und Bau der Installer der Desktop-App für Windows und macOS.
 
-Für Verbraucherinnen und Verbraucher gibt es Lernraum als Desktop-App, ohne Docker, Server und Anmeldung: Installer starten, Namen eingeben, fertig. Die App ist dieselbe Oberfläche wie im Browser; sie bringt Backend und Oberfläche selbst mit.
+Für Verbraucherinnen und Verbraucher gibt es Slearn als Desktop-App, ohne Docker, Server und Anmeldung: Installer starten, Namen eingeben, fertig. Die App ist dieselbe Oberfläche wie im Browser; sie bringt Backend und Oberfläche selbst mit.
 
 ```text
 Electron-Fenster ──http://127.0.0.1:47821──▶ Next-Standalone-Server (Electrons eigenes Node)
@@ -17,7 +17,7 @@ Electron-Fenster ──http://127.0.0.1:47821──▶ Next-Standalone-Server (E
 | Backups | Datenordner bei geschlossener App kopieren | `pg_dump`-Runner im Worker |
 | Schlüssel | beim ersten Start erzeugt, `secrets.json` im Benutzerordner | `.env` |
 
-**Wo die Daten liegen:** Windows `%APPDATA%\Lernraum\`, macOS `~/Library/Application Support/Lernraum/`. Darin `data/` (Datenbank, Dokumente, Modelle), `logs/` und `secrets.json`. Ohne `secrets.json` sind gespeicherte Zugangsdaten (WebUntis, KI-Dienst) nicht mehr lesbar – beim Sichern immer den ganzen Ordner kopieren. Eine Deinstallation lässt die Daten liegen. In der App: *Einstellungen → Daten auf diesem Rechner* bzw. Menü *Hilfe → Datenordner öffnen*.
+**Wo die Daten liegen:** Windows `%APPDATA%\Slearn\`, macOS `~/Library/Application Support/Slearn/`. Darin `data/` (Datenbank, Dokumente, Modelle), `logs/` und `secrets.json`. Ohne `secrets.json` sind gespeicherte Zugangsdaten (WebUntis, KI-Dienst) nicht mehr lesbar – beim Sichern immer den ganzen Ordner kopieren. Eine Deinstallation lässt die Daten liegen. In der App: *Einstellungen → Daten auf diesem Rechner* bzw. Menü *Hilfe → Datenordner öffnen*.
 
 ## Installer bauen
 
@@ -26,13 +26,13 @@ Jeder Installer entsteht auf seinem eigenen System (PyInstaller kompiliert nicht
 ```powershell
 cd frontend; npm.cmd ci; cd ..\desktop
 npm.cmd ci
-npm.cmd run dist          # Windows: desktop\dist\Lernraum-Setup-<version>.exe
+npm.cmd run dist          # Windows: desktop\dist\Slearn-Setup-<version>.exe
 ```
 
 ```bash
 cd frontend && npm ci && cd ../desktop
 npm ci
-npm run dist              # macOS: desktop/dist/Lernraum-<version>-<arch>.dmg (Architektur des bauenden Macs)
+npm run dist              # macOS: desktop/dist/Slearn-<version>-<arch>.dmg (Architektur des bauenden Macs)
 ```
 
 `npm run dist` friert das Backend in einem eigenen venv ein (`desktop/.venv-backend`, nur `backend/requirements.txt`), baut die Oberfläche mit `next build --webpack` als Standalone-Server und packt beides mit electron-builder. `npm run smoke:backend` startet das eingefrorene Backend gegen eine leere Datenbank und prüft Migrationen, Ersteinrichtung und Dashboard. Der Workflow `.github/workflows/desktop.yml` baut alle drei Installer (Windows x64, macOS arm64, macOS x64) bei einem `v*`-Tag oder per Hand.
@@ -49,7 +49,7 @@ npm run dist              # macOS: desktop/dist/Lernraum-<version>-<arch>.dmg (A
 
 Ohne Signatur zeigt Windows beim ersten Start einen SmartScreen-Hinweis (*Weitere Informationen → Trotzdem ausführen*), macOS verlangt einmal *Rechtsklick → Öffnen*, und der Mac-Updater kann nicht installieren.
 
-**Veröffentlichen:** Ein Tag `v<version>` muss zu `desktop/package.json` passen, sonst bricht der Workflow ab (der Updater vergleicht genau diese Version). Bei einem Tag lädt electron-builder die Installer und die Update-Metadaten (`latest.yml`, `latest-mac.yml`) in ein **Release-Entwurf** (`releaseType: draft` in `electron-builder.yml`). Erst wenn der Entwurf auf GitHub veröffentlicht ist, sehen ihn `releases/latest` und die automatischen Updates.
+**Veröffentlichen:** Ein Tag `v<version>` muss zu `desktop/package.json` passen, sonst bricht der Workflow ab (der Updater vergleicht genau diese Version). Die drei Installer-Jobs bauen nur (`--publish never`); danach sammelt der Job `release` alle Installer und die Update-Metadaten (`latest.yml`, `latest-mac.yml`) in **einen Release-Entwurf**. Die beiden `latest-mac.yml` der Mac-Builds kennen je nur ihre Architektur und werden von `.github/ci/merge-latest-mac.mjs` zusammengeführt – bei v1.1.0, als jeder Job selbst veröffentlichte, entstanden zwei Entwürfe, und die x64-Datei überschrieb die arm64-Datei. Erst wenn der Entwurf auf GitHub veröffentlicht ist, sehen ihn `releases/latest` und die automatischen Updates.
 
 **Automatische Updates** (`desktop/lib/updates.js`, electron-updater): 30 s nach dem Start und danach alle sechs Stunden, Download im Hintergrund, Installation beim nächsten Neustart. Vor der ersten Migration der neuen Version sichert die App die Datenbank. Abschaltbar mit `LERNRAUM_DISABLE_UPDATES`.
 
@@ -65,7 +65,7 @@ npm.cmd start                # startet Python-Backend direkt aus backend/ (LERNR
 
 ## Persönliches Training (LoRA, nur NVIDIA)
 
-Das Training läuft in einem eigenen Python mit torch/CUDA, das die App **nicht** mitliefert (mehrere GB). Einrichten wie in [Konfiguration](konfiguration.md#lora-training-optional-nur-nvidia), dann im Benutzerordner der App (`%APPDATA%\Lernraum`) eine `trainer.json` anlegen:
+Das Training läuft in einem eigenen Python mit torch/CUDA, das die App **nicht** mitliefert (mehrere GB). Einrichten wie in [Konfiguration](konfiguration.md#lora-training-optional-nur-nvidia), dann im Benutzerordner der App (`%APPDATA%\Slearn`) eine `trainer.json` anlegen:
 
 ```json
 {

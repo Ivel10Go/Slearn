@@ -21,14 +21,14 @@ export function localeMetadata(locale: Locale): Metadata {
     metadataBase: new URL(`${siteUrl}/`),
     title: meta.title,
     description: meta.description,
-    applicationName: "Lernraum",
+    applicationName: "Slearn",
     icons: { icon: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/icon.svg` },
     alternates: {
       canonical: url(locale),
       languages: { ...Object.fromEntries(LOCALES.map((target) => [target, url(target)])), "x-default": url("de") },
     },
     openGraph: {
-      title: "Lernraum",
+      title: "Slearn",
       description: meta.description,
       type: "website",
       url: url(locale),

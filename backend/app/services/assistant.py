@@ -181,7 +181,7 @@ class AssistantRoute:
     """Eine waehlbare KI-Verbindung, fuer das Auswahlfeld der Oberflaeche.
 
     Entweder eine eingetragene Verbindung (``integration_id``) oder ein im
-    Lernraum geladenes Modell (``local_model_id``), das eingebaut laeuft.
+    Slearn geladenes Modell (``local_model_id``), das eingebaut laeuft.
     """
 
     integration_id: int | None

@@ -68,7 +68,7 @@ Export der Liste aus der Datei: `jq -r '.email' landing/.data/waitlist.jsonl`.
 
 ## GitHub Pages
 
-Der Workflow `.github/workflows/landing-pages.yml` baut die Seite bei jedem Push auf `main`, der `landing/` berührt (oder von Hand), als statischen Export und veröffentlicht sie unter `https://ivel10go.github.io/School-assistant/`.
+Der Workflow `.github/workflows/landing-pages.yml` baut die Seite bei jedem Push auf `main`, der `landing/` berührt (oder von Hand), als statischen Export und veröffentlicht sie unter `https://ivel10go.github.io/Slearn/`.
 
 - **Statischer Export:** `STATIC_EXPORT=true` setzt `output: "export"`, `BASE_PATH` den Repo-Pfad (liefert `actions/configure-pages`). Route-Handler kann ein Export nicht bauen, deshalb löscht der Workflow `app/api` vor dem Bau. Antwort-Header gibt es auf Pages nicht: die CSP steht dann als `<meta>` im Layout (ohne `frame-ancestors`, das in `<meta>` nicht gilt).
 - **Warteliste über die Edge Function** `supabase/functions/waitlist` (gleiche Regeln, gleiche Antworten wie die Route). `waitlist.ts` darin ist eine Kopie von `lib/waitlist.ts`; `lib/function-copy.test.ts` fällt, wenn sie abweicht – nach Änderungen an den Regeln `cp lib/waitlist.ts supabase/functions/waitlist/waitlist.ts`.
@@ -81,10 +81,10 @@ Einmalig einrichten:
 3. Im GitHub-Repo die Actions-Variable `WAITLIST_URL` = `https://<projekt>.supabase.co/functions/v1/waitlist` anlegen. Ohne sie zeigt das Formular auf Pages nur einen Fehler.
 4. Settings → Pages → Source: **GitHub Actions**.
 
-Lokal prüfen (bash; `MSYS_NO_PATHCONV=1` nur unter Git Bash, sonst wird `/School-assistant` zu einem Windows-Pfad):
+Lokal prüfen (bash; `MSYS_NO_PATHCONV=1` nur unter Git Bash, sonst wird `/Slearn` zu einem Windows-Pfad):
 
 ```bash
 mv app/api /tmp/landing-api
-MSYS_NO_PATHCONV=1 STATIC_EXPORT=true BASE_PATH=/School-assistant npx next build --webpack
+MSYS_NO_PATHCONV=1 STATIC_EXPORT=true BASE_PATH=/Slearn npx next build --webpack
 mv /tmp/landing-api app/api
 ```

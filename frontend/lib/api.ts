@@ -19,9 +19,9 @@ const API_PREFIX = "/api/backend";
  */
 const LEERE_FAEHIGKEITEN: SpeechCapabilitiesPayload = {
   text_mode_available: true,
-  text_mode_note: t("Der Lernraum ist gerade nicht erreichbar. Alles hier laeuft ohne Modell."),
-  speech_to_text: { available: false, reason: t("Der Lernraum ist gerade nicht erreichbar."), model_id: null, label: "", language: null, language_label: "" },
-  text_to_speech: { available: false, reason: t("Der Lernraum ist gerade nicht erreichbar."), model_id: null, label: "", language: null, language_label: "" },
+  text_mode_note: t("Slearn ist gerade nicht erreichbar. Alles hier laeuft ohne Modell."),
+  speech_to_text: { available: false, reason: t("Slearn ist gerade nicht erreichbar."), model_id: null, label: "", language: null, language_label: "" },
+  text_to_speech: { available: false, reason: t("Slearn ist gerade nicht erreichbar."), model_id: null, label: "", language: null, language_label: "" },
   input: { max_bytes: 0, max_seconds: 0, accepted_types: [], sample_rate: 16000, needs_transcoding: true, transcoding_note: "" },
   runtime: {
     transcriber_reachable: false,
@@ -110,7 +110,7 @@ export async function apiRequest(path: string, options: ApiRequestOptions = {}):
       redirect: fetchOptions.redirect ?? "manual",
     });
   } catch {
-    throw new ApiError(t("Die Verbindung zum Lernraum konnte nicht hergestellt werden."), 0);
+    throw new ApiError(t("Die Verbindung zu Slearn konnte nicht hergestellt werden."), 0);
   }
 
   const payload = response.status === 204 ? undefined : await response.json().catch(() => undefined);
@@ -283,7 +283,7 @@ export async function authorizeIntegration(integrationId: number): Promise<Integ
   return parseIntegrationAuthorize(payload);
 }
 
-/** Ob der Lernraum Termine in verbundene Kalender schreiben darf. Standard ist aus. */
+/** Ob Slearn Termine in verbundene Kalender schreiben darf. Standard ist aus. */
 export async function getCalendarWriting(): Promise<CalendarWriting> {
   return parseCalendarWriting(await apiRequest("/v1/calendar/writing"));
 }
@@ -453,7 +453,7 @@ export interface SetupInput {
 }
 
 /**
- * Ob dieser Lernraum noch eingerichtet werden muss.
+ * Ob dieser Slearn noch eingerichtet werden muss.
  *
  * Die Einrichtung gibt es nur ohne Anmeldung (Desktop-App). Ein Server mit
  * Anmeldung antwortet mit 404, und ein nicht erreichbares Backend wirft - in
@@ -1304,7 +1304,7 @@ export async function fetchSpeechAudio(text: string, voiceId?: string): Promise<
       redirect: "manual",
     });
   } catch {
-    throw new ApiError(t("Die Verbindung zum Lernraum konnte nicht hergestellt werden."), 0);
+    throw new ApiError(t("Die Verbindung zu Slearn konnte nicht hergestellt werden."), 0);
   }
   if (!response.ok) {
     const payload = await response.json().catch(() => undefined);
@@ -1337,7 +1337,7 @@ export async function downloadAccountExport(): Promise<{ blob: Blob; filename: s
   try {
     response = await fetch(endpoint("/v1/account/export"), { cache: "no-store", credentials: "include", headers: withLanguage(new Headers()) });
   } catch {
-    throw new ApiError(t("Die Verbindung zum Lernraum konnte nicht hergestellt werden."), 0);
+    throw new ApiError(t("Die Verbindung zu Slearn konnte nicht hergestellt werden."), 0);
   }
   if (!response.ok) {
     const payload = await response.json().catch(() => undefined);

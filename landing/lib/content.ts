@@ -117,7 +117,7 @@ export interface LandingContent {
 const de: LandingContent = {
   locale: "de",
   meta: {
-    title: "Lernraum – der Schulalltag an einem Ort",
+    title: "Slearn – der Schulalltag an einem Ort",
     description:
       "Stundenplan, Hausaufgaben, Prüfungen, Lernpläne und Noten an einem Ort – mit einem Lern-Assistenten, der auf deinem Rechner läuft. Jetzt auf die Warteliste.",
     ogLocale: "de_DE",
@@ -131,7 +131,7 @@ const de: LandingContent = {
     faq: "fragen",
   },
   header: {
-    homeLabel: "Lernraum – zum Seitenanfang",
+    homeLabel: "Slearn – zum Seitenanfang",
     navLabel: "Seitenbereiche",
     nav: [
       { section: "features", label: "Funktionen" },
@@ -152,11 +152,11 @@ const de: LandingContent = {
     badge: "Bald für Windows und macOS",
     title: "Der Schulalltag an einem Ort.",
     lead: "Stundenplan, Hausaufgaben, Prüfungen, Lernpläne und Noten – dazu ein Lern-Assistent, der deine Unterlagen kennt und auf deinem eigenen Rechner läuft.",
-    mascot: "Das Lernraum-Faultier",
+    mascot: "Das Slearn-Faultier",
   },
   features: {
     title: "Alles, was die Schule verlangt. Nichts, was ablenkt.",
-    text: "Lernraum ersetzt das Hausaufgabenheft, den Lernplan auf Papier und die Notizen-App. Jede Funktion hat einen Grund und tut genau das.",
+    text: "Slearn ersetzt das Hausaufgabenheft, den Lernplan auf Papier und die Notizen-App. Jede Funktion hat einen Grund und tut genau das.",
     items: [
       {
         title: "Stundenplan",
@@ -195,7 +195,7 @@ const de: LandingContent = {
       },
       {
         title: "Unterrichtsmaterial",
-        text: "Lade Aufschriebe, Arbeitsblätter und Lösungen hoch, auch als Foto. Lernraum liest sie, erkennt Fach, Thema und Datum und findet sie nach Bedeutung wieder.",
+        text: "Lade Aufschriebe, Arbeitsblätter und Lösungen hoch, auch als Foto. Slearn liest sie, erkennt Fach, Thema und Datum und findet sie nach Bedeutung wieder.",
         points: ["Texterkennung für Fotos und Scans", "Suche nach Bedeutung, nicht nur Wörtern", "Korrekturen bleiben erhalten"],
       },
       {
@@ -245,7 +245,7 @@ const de: LandingContent = {
   },
   privacy: {
     title: "Gebaut für Schülerdaten.",
-    text: "Noten, Stundenplan und Aufschriebe sind persönlich. Deshalb ist der Normalfall in Lernraum: alles bleibt auf deinem Gerät.",
+    text: "Noten, Stundenplan und Aufschriebe sind persönlich. Deshalb ist der Normalfall in Slearn: alles bleibt auf deinem Gerät.",
     items: [
       {
         title: "Lokal zuerst",
@@ -281,7 +281,7 @@ const de: LandingContent = {
   },
   waitlist: {
     title: "Sei dabei, wenn es losgeht.",
-    text: "Die ersten Installer verschicken wir in kleinen Runden an die Warteliste. Sag uns, wofür du Lernraum nutzen willst – das entscheidet, welche Plattform zuerst fertig wird.",
+    text: "Die ersten Installer verschicken wir in kleinen Runden an die Warteliste. Sag uns, wofür du Slearn nutzen willst – das entscheidet, welche Plattform zuerst fertig wird.",
     facts: [
       { label: "Plattformen", value: "Windows, macOS" },
       { label: "Konto", value: "Nicht nötig" },
@@ -294,14 +294,14 @@ const de: LandingContent = {
     text: "Was du vor dem Eintragen wissen solltest.",
     items: [
       {
-        question: "Was kostet Lernraum?",
+        question: "Was kostet Slearn?",
         answer:
           "Die Preise geben wir zum Start bekannt – die Warteliste erfährt es zuerst. Einen Online-KI-Dienst brauchst du nicht; bindest du einen an, gelten dessen Preise.",
       },
       {
         question: "Brauche ich eine Internetverbindung?",
         answer:
-          "Nur für den Stundenplan-Abruf, Kalender und das einmalige Herunterladen der Modelle. Danach funktioniert Lernraum inklusive Assistent offline.",
+          "Nur für den Stundenplan-Abruf, Kalender und das einmalige Herunterladen der Modelle. Danach funktioniert Slearn inklusive Assistent offline.",
       },
       {
         question: "Welcher Rechner reicht?",
@@ -311,27 +311,27 @@ const de: LandingContent = {
       {
         question: "Muss meine Schule WebUntis nutzen?",
         answer:
-          "Nein. Du kannst den Stundenplan auch selbst eintragen oder als PDF oder Foto hochladen; Lernraum schlägt dann einen Plan vor, den du vor dem Übernehmen prüfst. WebUntis ist nur der bequemste Weg.",
+          "Nein. Du kannst den Stundenplan auch selbst eintragen oder als PDF oder Foto hochladen; Slearn schlägt dann einen Plan vor, den du vor dem Übernehmen prüfst. WebUntis ist nur der bequemste Weg.",
       },
       {
-        question: "Gibt es Lernraum auch auf Englisch?",
+        question: "Gibt es Slearn auch auf Englisch?",
         answer:
           "Ja. Die App lässt sich zwischen Deutsch und Englisch umschalten, und der Assistent antwortet in der eingestellten Sprache.",
       },
       {
         question: "Was passiert mit meiner E-Mail-Adresse?",
         answer:
-          "Wir benutzen sie genau einmal: um dir zu schreiben, wenn Lernraum verfügbar ist. Sie wird nicht weitergegeben. Eine kurze Antwort auf die Mail genügt, und wir löschen sie.",
+          "Wir benutzen sie genau einmal: um dir zu schreiben, wenn Slearn verfügbar ist. Sie wird nicht weitergegeben. Eine kurze Antwort auf die Mail genügt, und wir löschen sie.",
       },
       {
-        question: "Kann ich Lernraum selbst hosten?",
+        question: "Kann ich Slearn selbst hosten?",
         answer:
           "Ja. Die Server-Variante läuft mit Docker Compose auf einem eigenen Rechner oder Heimserver, mit PostgreSQL und Anmeldung für mehrere Personen.",
       },
     ],
   },
   footer: {
-    tagline: "Lernraum · Der Schulalltag an einem Ort.",
+    tagline: "Slearn · Der Schulalltag an einem Ort.",
     navLabel: "Fußzeile",
     links: [
       { section: "features", label: "Funktionen" },
@@ -340,7 +340,7 @@ const de: LandingContent = {
     ],
   },
   appPreview: {
-    label: "Vorschau des Lernraum-Dashboards",
+    label: "Vorschau des Slearn-Dashboards",
     nav: [
       { group: "Heute", items: ["Übersicht", "Stundenplan", "Hausaufgaben", "Prüfungen", "Kalender"] },
       { group: "Bibliothek", items: ["Lernen", "Fächer", "Dokumente", "Fortschritt"] },
@@ -395,10 +395,10 @@ const de: LandingContent = {
     roleLabel: "Ich bin",
     choose: "Bitte wählen",
     roles: { schueler: "Schüler:in", eltern: "Elternteil", lehrkraft: "Lehrkraft", andere: "Etwas anderes" },
-    platformLegend: "Wo möchtest du Lernraum nutzen?",
+    platformLegend: "Wo möchtest du Slearn nutzen?",
     platforms: { windows: "Windows", macos: "macOS", server: "Eigener Server" },
     consent:
-      "Ihr dürft mir eine E-Mail schicken, sobald Lernraum verfügbar ist. Keine Werbung, Abmeldung jederzeit. Unter 16? Dann frag bitte vorher deine Eltern.",
+      "Ihr dürft mir eine E-Mail schicken, sobald Slearn verfügbar ist. Keine Werbung, Abmeldung jederzeit. Unter 16? Dann frag bitte vorher deine Eltern.",
     submit: "Auf die Warteliste",
     sending: "Wird eingetragen …",
     doneTitle: "Eingetragen.",
@@ -412,7 +412,7 @@ const de: LandingContent = {
       platform: "Bitte wähle eine der angebotenen Plattformen.",
       consent: "Bitte bestätige, dass wir dir zum Start eine E-Mail schicken dürfen.",
       unreadable: "Die Anfrage war leer oder unlesbar.",
-      forbidden: "Diese Anfrage kommt nicht von der Lernraum-Seite.",
+      forbidden: "Diese Anfrage kommt nicht von der Slearn-Seite.",
       tooLarge: "Die Anfrage ist zu groß.",
       rateLimited: "Zu viele Versuche. Bitte versuche es in ein paar Minuten noch einmal.",
       unavailable: "Die Warteliste ist gerade nicht erreichbar. Bitte versuche es später noch einmal.",
@@ -425,7 +425,7 @@ const de: LandingContent = {
 const en: LandingContent = {
   locale: "en",
   meta: {
-    title: "Lernraum – your school day in one place",
+    title: "Slearn – your school day in one place",
     description:
       "Timetable, homework, exams, study plans and grades in one place – with a study assistant that runs on your own computer. Join the waitlist.",
     ogLocale: "en_GB",
@@ -439,7 +439,7 @@ const en: LandingContent = {
     faq: "faq",
   },
   header: {
-    homeLabel: "Lernraum – back to top",
+    homeLabel: "Slearn – back to top",
     navLabel: "Page sections",
     nav: [
       { section: "features", label: "Features" },
@@ -460,11 +460,11 @@ const en: LandingContent = {
     badge: "Coming soon for Windows and macOS",
     title: "Your school day in one place.",
     lead: "Timetable, homework, exams, study plans and grades – plus a study assistant that knows your notes and runs on your own computer.",
-    mascot: "The Lernraum sloth",
+    mascot: "Slearn sloth",
   },
   features: {
     title: "Everything school asks of you. Nothing that distracts.",
-    text: "Lernraum replaces your homework diary, the study plan on paper and your notes app. Every feature has a reason and does exactly that.",
+    text: "Slearn replaces your homework diary, the study plan on paper and your notes app. Every feature has a reason and does exactly that.",
     items: [
       {
         title: "Timetable",
@@ -503,7 +503,7 @@ const en: LandingContent = {
       },
       {
         title: "Class materials",
-        text: "Upload notes, worksheets and solutions, photos included. Lernraum reads them, recognises subject, topic and date, and finds them again by meaning.",
+        text: "Upload notes, worksheets and solutions, photos included. Slearn reads them, recognises subject, topic and date, and finds them again by meaning.",
         points: ["Text recognition for photos and scans", "Search by meaning, not just words", "Your corrections are kept"],
       },
       {
@@ -553,7 +553,7 @@ const en: LandingContent = {
   },
   privacy: {
     title: "Built for student data.",
-    text: "Grades, timetables and class notes are personal. That's why the default in Lernraum is: everything stays on your device.",
+    text: "Grades, timetables and class notes are personal. That's why the default in Slearn is: everything stays on your device.",
     items: [
       {
         title: "Local first",
@@ -589,7 +589,7 @@ const en: LandingContent = {
   },
   waitlist: {
     title: "Be there when it starts.",
-    text: "We'll send the first installers to the waitlist in small batches. Tell us what you want to use Lernraum for – that decides which platform is ready first.",
+    text: "We'll send the first installers to the waitlist in small batches. Tell us what you want to use Slearn for – that decides which platform is ready first.",
     facts: [
       { label: "Platforms", value: "Windows, macOS" },
       { label: "Account", value: "Not needed" },
@@ -602,14 +602,14 @@ const en: LandingContent = {
     text: "What you should know before signing up.",
     items: [
       {
-        question: "How much does Lernraum cost?",
+        question: "How much does Slearn cost?",
         answer:
           "We'll announce pricing at launch – the waitlist hears first. You don't need an online AI service; if you connect one, its own pricing applies.",
       },
       {
         question: "Do I need an internet connection?",
         answer:
-          "Only for fetching the timetable, calendars and the one-time model download. After that, Lernraum works offline, assistant included.",
+          "Only for fetching the timetable, calendars and the one-time model download. After that, Slearn works offline, assistant included.",
       },
       {
         question: "What kind of computer do I need?",
@@ -619,27 +619,27 @@ const en: LandingContent = {
       {
         question: "Does my school have to use WebUntis?",
         answer:
-          "No. You can enter your timetable yourself or upload it as a PDF or photo; Lernraum then suggests a plan that you check before accepting it. WebUntis is just the most convenient way.",
+          "No. You can enter your timetable yourself or upload it as a PDF or photo; Slearn then suggests a plan that you check before accepting it. WebUntis is just the most convenient way.",
       },
       {
-        question: "Is Lernraum available in English?",
+        question: "Is Slearn available in English?",
         answer:
           "Yes. The app can be switched between German and English, and the assistant replies in the language you choose.",
       },
       {
         question: "What happens to my email address?",
         answer:
-          "We use it exactly once: to write to you when Lernraum is available. It is never passed on. A short reply to that email is enough and we'll delete it.",
+          "We use it exactly once: to write to you when Slearn is available. It is never passed on. A short reply to that email is enough and we'll delete it.",
       },
       {
-        question: "Can I host Lernraum myself?",
+        question: "Can I host Slearn myself?",
         answer:
           "Yes. The server edition runs with Docker Compose on your own computer or home server, with PostgreSQL and sign-in for several people.",
       },
     ],
   },
   footer: {
-    tagline: "Lernraum · Your school day in one place.",
+    tagline: "Slearn · Your school day in one place.",
     navLabel: "Footer",
     links: [
       { section: "features", label: "Features" },
@@ -648,7 +648,7 @@ const en: LandingContent = {
     ],
   },
   appPreview: {
-    label: "Preview of the Lernraum dashboard",
+    label: "Preview of Slearn dashboard",
     nav: [
       { group: "Today", items: ["Overview", "Timetable", "Homework", "Exams", "Calendar"] },
       { group: "Library", items: ["Study", "Subjects", "Documents", "Progress"] },
@@ -703,10 +703,10 @@ const en: LandingContent = {
     roleLabel: "I am",
     choose: "Please choose",
     roles: { schueler: "A student", eltern: "A parent", lehrkraft: "A teacher", andere: "Something else" },
-    platformLegend: "Where would you like to use Lernraum?",
+    platformLegend: "Where would you like to use Slearn?",
     platforms: { windows: "Windows", macos: "macOS", server: "Own server" },
     consent:
-      "You may email me once Lernraum is available. No advertising, unsubscribe at any time. Under 16? Please ask your parents first.",
+      "You may email me once Slearn is available. No advertising, unsubscribe at any time. Under 16? Please ask your parents first.",
     submit: "Join the waitlist",
     sending: "Signing you up …",
     doneTitle: "You're on the list.",
@@ -720,7 +720,7 @@ const en: LandingContent = {
       platform: "Please choose one of the platforms offered.",
       consent: "Please confirm that we may email you at launch.",
       unreadable: "The request was empty or unreadable.",
-      forbidden: "This request didn't come from the Lernraum page.",
+      forbidden: "This request didn't come from Slearn page.",
       tooLarge: "The request is too large.",
       rateLimited: "Too many attempts. Please try again in a few minutes.",
       unavailable: "The waitlist is unavailable right now. Please try again later.",

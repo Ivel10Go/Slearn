@@ -103,7 +103,7 @@ export function TrainingCard() {
       <CardHeader className="space-y-1">
         <CardTitle>{t("Persönliches Training")}</CardTitle>
         <CardDescription>
-          {t("Mit deiner Freigabe hebt der Lernraum Antworten des Assistenten auf – zusammen mit dem, was du daraus gemacht hast: eingetragen, verworfen, Notiz gelöscht, Daumen. Auf einem Rechner mit passender Grafikkarte entsteht daraus eine Ergänzung zum Modell, die nur auf dich abgestimmt ist. Beispiele und Training bleiben auf diesem Rechner.")}
+          {t("Mit deiner Freigabe hebt Slearn Antworten des Assistenten auf – zusammen mit dem, was du daraus gemacht hast: eingetragen, verworfen, Notiz gelöscht, Daumen. Auf einem Rechner mit passender Grafikkarte entsteht daraus eine Ergänzung zum Modell, die nur auf dich abgestimmt ist. Beispiele und Training bleiben auf diesem Rechner.")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

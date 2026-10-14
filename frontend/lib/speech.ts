@@ -38,7 +38,7 @@ import { t } from "./i18n";
  * einen vollstaendigen Zustand, wenn gar nichts geladen ist.
  */
 
-/** Die Aufnahmeformate in der Reihenfolge der Praeferenz des Lernraums. */
+/** Die Aufnahmeformate in der Reihenfolge der Praeferenz von Slearn. */
 export const AUFNAHME_FORMATE: readonly string[] = [
   "audio/webm;codecs=opus",
   "audio/webm",
@@ -128,7 +128,7 @@ export function istTextfeld(ziel: unknown): boolean {
   return knoten.isContentEditable === true;
 }
 
-/** Die Tastenkombination des Lernraums, in beiden Schreibweisen. */
+/** Die Tastenkombination von Slearn, in beiden Schreibweisen. */
 export const KUERZEL_BEZEICHNUNG = "Strg + Umschalt + L";
 export const KUERZEL_BEZEICHNUNG_MAC = "Befehl + Umschalt + L";
 export const KUERZEL_TASTE = "l";
@@ -428,7 +428,7 @@ export interface SpeechCapabilitiesPayload {
    * machen waere genau die Art Zusage, die der Sprachauswahl zugrunde liegt.
    */
   default_voice_id: string | null;
-  /** Die Empfehlung des Lernraums, unabhaengig davon, was geladen ist. */
+  /** Die Empfehlung von Slearn, unabhaengig davon, was geladen ist. */
   recommended_voice_id: string | null;
   installed_voice_ids: string[];
 }

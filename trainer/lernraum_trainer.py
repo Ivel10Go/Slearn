@@ -551,7 +551,7 @@ def train(job: Job) -> int:  # noqa: C901 - ein Ablauf, bewusst an einem Stueck 
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Lernraum LoRA-Trainer")
+    parser = argparse.ArgumentParser(description="Slearn LoRA-Trainer")
     parser.add_argument("--job", required=True, type=Path)
     args = parser.parse_args(argv)
     directory: Path = args.job.resolve()

@@ -75,7 +75,7 @@ export function DesktopCard() {
       <CardHeader>
         <CardTitle>{t("Desktop-App")}</CardTitle>
         <CardDescription>
-          {t("Datenbank, Dokumente und Modelle liegen in einem Ordner. Zum Sichern Lernraum beenden und den Ordner kopieren.")}
+          {t("Datenbank, Dokumente und Modelle liegen in einem Ordner. Zum Sichern Slearn beenden und den Ordner kopieren.")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

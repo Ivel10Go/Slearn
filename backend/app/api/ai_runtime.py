@@ -70,7 +70,7 @@ def read_ai_runtime(_user: CurrentUser, settings: AppSettings) -> AiRuntimeRead:
         container_host=CONTAINER_HOST,
         container_loopback_hosts=list(container_loopback_hosts()),
         container_trap_hint=(
-            "Läuft der Lernraum in Docker, zeigen localhost und 127.0.0.1 auf den Container, "
+            "Läuft Slearn in Docker, zeigen localhost und 127.0.0.1 auf den Container, "
             f"nicht auf deinen Rechner. Einen lokalen Server erreichst du dann über {CONTAINER_HOST}."
         ),
         stages=list(_STAGES),

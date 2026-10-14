@@ -41,7 +41,7 @@ export default function SettingsPage() {
    *
    * `POST /auth/logout` loescht nur das Session-Cookie. Die Seiten von hier
    * laden ihre Daten ueber `GET /v1/...`, das ohne Cookie mit 401 endet -
-   * ohne den Wechsel wuerde also eine Fehlermeldung statt des Lernraums
+   * ohne den Wechsel wuerde also eine Fehlermeldung statt von Slearn
    * stehen bleiben. `router.replace` statt `push`, damit die Zuruecktaste
    * nicht auf eine abgelaufene Seite fuehrt.
    */

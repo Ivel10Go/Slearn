@@ -1,4 +1,4 @@
-"""Der Kalender des Lernraums als abonnierbare iCalendar-Quelle.
+"""Der Kalender von Slearn als abonnierbare iCalendar-Quelle.
 
 Der Gegenlauf zu den Importen: Termine, die in der App entstehen, verlassen sie
 wieder als ICS-Datei, die sich in Google Kalender, Apple Kalender, Outlook oder
@@ -27,7 +27,7 @@ Punkt:
 
 **Deshalb wird hier ausdrücklich kein Sitzungs-Cookie benutzt.** Eine
 Sitzung im Aufruf bedeutet, dass jeder, der die Adresse sieht, den vollen
-Lernraum hat - Termine, Noten, Lernprotokoll. Ein Abo-Schlüssel bedeutet nur
+Slearn hat - Termine, Noten, Lernprotokoll. Ein Abo-Schlüssel bedeutet nur
 einen Kalender.
 
 Wie die Zeiten hinausgehen
@@ -62,7 +62,7 @@ from app.services.ical import ICalEvent, build_calendar
 #: einer URL, die jeder Kalender im Verlauf mitschreibt, ist eine Einladung.
 FEED_TOKEN_BYTES: Final = 32
 FEED_TOKEN_KEY: Final = "calendar_feed_token"
-DEFAULT_CALENDAR_NAME: Final = "Lernraum"
+DEFAULT_CALENDAR_NAME: Final = "Slearn"
 DEFAULT_FEED_WEEKS: Final = 12
 MAX_FEED_WEEKS: Final = 52
 

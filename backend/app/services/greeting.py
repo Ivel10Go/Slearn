@@ -42,7 +42,7 @@ _MAX_SENTENCE_LENGTH: Final = 220
 _MARKUP: Final = " \t*#`>•-–—"
 
 _SYSTEM_PROMPT: Final = (
-    "Du bist ein Lernraum-Assistent für Schülerinnen und Schüler. "
+    "Du bist ein Slearn-Assistent für Schülerinnen und Schüler. "
     "Du schreibst EINE freundliche, deutschsprachige Begrüßung für das Dashboard. "
     "Regeln: höchstens 25 Wörter, ein bis zwei Sätze, kein Emoji, keine Aufzählung, "
     "kein Markdown, keine Anführungszeichen. "

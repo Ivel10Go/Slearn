@@ -400,7 +400,7 @@ def speak_text(_user: CurrentUser, speech: Speech, payload: SpeakRequest, langua
             # Adresse direkt in ein `<audio src>` setzt, bekommt dann den
             # deklarierten Typ und keine geratene. Gegen den Next-Proxy hilft es
             # allerdings nichts - `getForwardResponseHeaders` in `lib/proxy.ts`
-            # wirft den Header weg. Die Wiedergabe im Lernraum laeuft ohnehin ueber
+            # wirft den Header weg. Die Wiedergabe in Slearn laeuft ohnehin ueber
             # ein `Blob` aus `fetch`, und da ist der Header gegenstandslos.
             "X-Content-Type-Options": "nosniff",
         },

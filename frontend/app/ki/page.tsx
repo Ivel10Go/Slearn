@@ -36,7 +36,7 @@ function springen(id: string) {
 
 /**
  * Alles, was mit KI zu tun hat, auf einer Seite: die Verbindung zu einem
- * KI-Server, die Modelle, die der Lernraum selbst laedt, und die Stimmen fuer
+ * KI-Server, die Modelle, die Slearn selbst laedt, und die Stimmen fuer
  * die Sprachausgabe.
  *
  * Vorher lag das in den Einstellungen - die Verbindung in der Integrationsliste,
@@ -97,7 +97,7 @@ function KiBereich() {
             title={t("KI-Dienst")}
             description={t("Ein Server wie Ollama oder LM Studio auf deinem Rechner, oder ein Online-Dienst mit OpenAI-kompatibler Schnittstelle.")}
             emptyTitle={t("Kein KI-Dienst verbunden")}
-            emptyDescription={t("Ohne Dienst antwortet der Lernraum aus deinen Daten und Dokumenten. Unter „Hinzufügen“ stehen Vorschläge für bekannte lokale Server.")}
+            emptyDescription={t("Ohne Dienst antwortet Slearn aus deinen Daten und Dokumenten. Unter „Hinzufügen“ stehen Vorschläge für bekannte lokale Server.")}
             integrations={verbindungen}
             catalog={katalog}
             runtime={ki.runtime}

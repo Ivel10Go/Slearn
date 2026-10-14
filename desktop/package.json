@@ -1,11 +1,11 @@
 {
   "name": "lernraum-desktop",
-  "productName": "Lernraum",
-  "version": "1.1.0",
-  "description": "Lernraum als Desktop-App für Windows und macOS",
+  "productName": "Slearn",
+  "version": "1.1.1",
+  "description": "Slearn als Desktop-App für Windows und macOS",
   "private": true,
   "main": "main.js",
-  "author": "Lernraum",
+  "author": "Slearn",
   "license": "AGPL-3.0-or-later",
   "engines": {
     "node": ">=22.0.0"

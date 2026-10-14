@@ -137,9 +137,9 @@ export function AppShell({ children, user }: AppShellProps) {
           man zieht das Fenster daran.
         */}
         <div className="app-drag flex h-12 shrink-0 items-center px-4">
-          <Link href="/" className="app-no-drag flex items-center gap-2 rounded-md px-1 py-1" aria-label={t("Lernraum Startseite")}>
+          <Link href="/" className="app-no-drag flex items-center gap-2 rounded-md px-1 py-1" aria-label={t("Slearn Startseite")}>
             <BrandMark />
-            <span className="text-[13px] font-semibold tracking-tight">{t("Lernraum")}</span>
+            <span className="text-[13px] font-semibold tracking-tight">{t("Slearn")}</span>
           </Link>
         </div>
 
@@ -172,9 +172,9 @@ export function AppShell({ children, user }: AppShellProps) {
         {/* `env(safe-area-inset-top)`: mit viewportFit "cover" liegt der Header
             sonst unter der Notch. */}
         <header className="sticky top-0 z-30 flex h-[calc(3rem+env(safe-area-inset-top))] items-center justify-between border-b border-border bg-background px-4 pt-[env(safe-area-inset-top)] sm:px-6 lg:hidden">
-          <Link href="/" className="flex items-center gap-2" aria-label={t("Lernraum Startseite")}>
+          <Link href="/" className="flex items-center gap-2" aria-label={t("Slearn Startseite")}>
             <BrandMark />
-            <span className="text-[13px] font-semibold tracking-tight">{t("Lernraum")}</span>
+            <span className="text-[13px] font-semibold tracking-tight">{t("Slearn")}</span>
           </Link>
           <div className="flex items-center gap-1">
             <ThemeToggle />

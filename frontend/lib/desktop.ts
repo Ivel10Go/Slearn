@@ -57,7 +57,7 @@ export function describeUpdateStatus(status: DesktopUpdateStatus | null): string
     case "downloaded":
       return t("Version {n} ist bereit und wird beim nächsten Neustart installiert.", { n: status.version ?? "" }).replace("  ", " ");
     case "current":
-      return t("Lernraum ist aktuell.");
+      return t("Slearn ist aktuell.");
     case "error":
       return status.message ?? t("Die Suche nach Updates ist fehlgeschlagen.");
     default:

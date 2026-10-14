@@ -78,12 +78,12 @@ class SpeechCapabilitiesRead(UTCResponseModel):
     """``GET /api/v1/speech/capabilities``.
 
     ``text_mode_available`` steht konstant auf ``true``. Das ist eine Zusage des
-    Endpunkts, keine Beobachtung: es gibt keinen Zustand, in dem der Lernraum
+    Endpunkts, keine Beobachtung: es gibt keinen Zustand, in dem Slearn
     nichts kann.
 
     ``default_voice_id`` ist die Stimme, die **jetzt** gesprochen wuerde - also
     ``None``, solange keine geladen ist. ``recommended_voice_id`` ist etwas
-    anderes: die Empfehlung des Lernraums, unabhaengig vom Zustand. Ohne beide
+    anderes: die Empfehlung von Slearn, unabhaengig vom Zustand. Ohne beide
     wuerde die Auswahl entweder verschwinden, sobald nichts geladen ist, oder
     eine Empfehlung als Tatsache ausgeben.
     """

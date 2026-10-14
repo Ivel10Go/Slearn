@@ -1,10 +1,10 @@
-# Lernraum
+# Slearn
 
 [English](README.md) · **Deutsch**
 
-Lernraum ordnet den Schulalltag an einem Ort: Stundenplan, Hausaufgaben, Prüfungen, Termine, Lernpläne, Noten und Lernzeit. Auf Wunsch holt er den Stundenplan aus WebUntis und beantwortet Fragen zu deinen eigenen Unterlagen, mit einem KI-Dienst oder ganz ohne.
+Slearn ordnet den Schulalltag an einem Ort: Stundenplan, Hausaufgaben, Prüfungen, Termine, Lernpläne, Noten und Lernzeit. Auf Wunsch holt er den Stundenplan aus WebUntis und beantwortet Fragen zu deinen eigenen Unterlagen, mit einem KI-Dienst oder ganz ohne.
 
-Es gibt Lernraum in zwei Formen:
+Es gibt Slearn in zwei Formen:
 
 | | Desktop-App | Server |
 | --- | --- | --- |
@@ -15,7 +15,7 @@ Es gibt Lernraum in zwei Formen:
 
 ## Desktop-App
 
-**Installieren:** Den Installer für dein System von der [Release-Seite](https://github.com/Ivel10Go/School-assistant/releases/latest) herunterladen (`Lernraum-Setup-<version>.exe` für Windows, `Lernraum-<version>-<arch>.dmg` für macOS, `arm64` für Apple Silicon, `x64` für Intel) und starten. Beim ersten Start fragt Lernraum nur nach deinem Namen.
+**Installieren:** Den Installer für dein System von der [Release-Seite](https://github.com/Ivel10Go/Slearn/releases/latest) herunterladen (`Slearn-Setup-<version>.exe` für Windows, `Slearn-<version>-<arch>.dmg` für macOS, `arm64` für Apple Silicon, `x64` für Intel) und starten. Beim ersten Start fragt Slearn nur nach deinem Namen.
 
 **Updates** lädt die App selbst über GitHub-Releases: Sie sieht beim Start und danach alle sechs Stunden nach, lädt eine neue Version im Hintergrund und installiert sie beim nächsten Neustart. Vorher sichert sie die Datenbank.
 
@@ -24,7 +24,7 @@ Ob ein Installer signiert ist, hängt davon ab, ob für den Release ein Zertifik
 - **Windows:** Beim ersten Start *Weitere Informationen → Trotzdem ausführen* wählen.
 - **macOS:** Die App einmal mit *Rechtsklick → Öffnen* starten. Automatische Updates funktionieren unter macOS nur bei einer signierten App; sonst die neue Version von der Release-Seite installieren.
 
-**Deine Daten** liegen unter `%APPDATA%\Lernraum` (Windows) bzw. `~/Library/Application Support/Lernraum` (macOS). In der App findest du den Ordner unter *Einstellungen → Daten auf diesem Rechner*. Zum Sichern Lernraum beenden und den ganzen Ordner kopieren. Eine Deinstallation lässt die Daten liegen.
+**Deine Daten** liegen unter `%APPDATA%\Slearn` (Windows) bzw. `~/Library/Application Support/Slearn` (macOS). In der App findest du den Ordner unter *Einstellungen → Daten auf diesem Rechner*. Zum Sichern Slearn beenden und den ganzen Ordner kopieren. Eine Deinstallation lässt die Daten liegen.
 
 **Installer selbst bauen** (Node 22 und Python 3.12; jedes System baut seinen eigenen Installer):
 
@@ -48,7 +48,7 @@ In `.env` diese Werte ausfüllen: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRE
 docker compose up -d --build
 ```
 
-Danach läuft Lernraum unter <http://localhost:3000>. Anmelden kannst du dich mit `ADMIN_USERNAME` (Standard `admin`) und `ADMIN_PASSWORD`.
+Danach läuft Slearn unter <http://localhost:3000>. Anmelden kannst du dich mit `ADMIN_USERNAME` (Standard `admin`) und `ADMIN_PASSWORD`.
 
 Betrieb, Backups, HTTPS und Fehlersuche: [docs/server.md](docs/server.md). Alle Variablen: [docs/konfiguration.md](docs/konfiguration.md).
 
@@ -72,4 +72,4 @@ Was die App alles kann: [docs/funktionen.md](docs/funktionen.md). Mehr dazu: [do
 
 ## Lizenz
 
-Lernraum ist freie Software unter der [GNU Affero General Public License v3.0 oder neuer](LICENSE). Du darfst es nutzen, untersuchen, verändern und weitergeben. Wer eine veränderte Version weitergibt oder als Netzdienst anbietet, muss den Quelltext unter derselben Lizenz offenlegen.
+Slearn ist freie Software unter der [GNU Affero General Public License v3.0 oder neuer](LICENSE). Du darfst es nutzen, untersuchen, verändern und weitergeben. Wer eine veränderte Version weitergibt oder als Netzdienst anbietet, muss den Quelltext unter derselben Lizenz offenlegen.

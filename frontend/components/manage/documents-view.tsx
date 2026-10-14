@@ -183,7 +183,7 @@ export function DocumentsView() {
                 </div>
                 <FormError message={uploadHinweis ?? upload.error} />
                 <p className="text-xs leading-5 text-muted-foreground">
-                  {tSplit("Text, PDF und Fotos (JPG, PNG, WebP). Fotos und Scans – auch handschriftliche Aufschriebe – schreibt das Bildmodell im Hintergrund ab; die Art (Aufschrieb, Arbeitsblatt, Lösung) erkennt der Lernraum selbst, und du kannst sie korrigieren. Ein ganzer Ordner lässt sich unter {link} über eine Dokumentverbindung indexieren.")[0]}<span className="font-semibold">{t("Einstellungen")}</span>{tSplit("Text, PDF und Fotos (JPG, PNG, WebP). Fotos und Scans – auch handschriftliche Aufschriebe – schreibt das Bildmodell im Hintergrund ab; die Art (Aufschrieb, Arbeitsblatt, Lösung) erkennt der Lernraum selbst, und du kannst sie korrigieren. Ein ganzer Ordner lässt sich unter {link} über eine Dokumentverbindung indexieren.")[1]}
+                  {tSplit("Text, PDF und Fotos (JPG, PNG, WebP). Fotos und Scans – auch handschriftliche Aufschriebe – schreibt das Bildmodell im Hintergrund ab; die Art (Aufschrieb, Arbeitsblatt, Lösung) erkennt Slearn selbst, und du kannst sie korrigieren. Ein ganzer Ordner lässt sich unter {link} über eine Dokumentverbindung indexieren.")[0]}<span className="font-semibold">{t("Einstellungen")}</span>{tSplit("Text, PDF und Fotos (JPG, PNG, WebP). Fotos und Scans – auch handschriftliche Aufschriebe – schreibt das Bildmodell im Hintergrund ab; die Art (Aufschrieb, Arbeitsblatt, Lösung) erkennt Slearn selbst, und du kannst sie korrigieren. Ein ganzer Ordner lässt sich unter {link} über eine Dokumentverbindung indexieren.")[1]}
                 </p>
               </form>
 

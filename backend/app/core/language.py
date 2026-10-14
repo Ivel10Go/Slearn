@@ -1,7 +1,7 @@
 """Die Sprache einer Anfrage.
 
 Die Oberflaeche schickt ihre Sprache als ``Accept-Language`` (``lib/api.ts``),
-nicht die des Browsers: wer den Lernraum auf Englisch stellt, bekommt englische
+nicht die des Browsers: wer Slearn auf Englisch stellt, bekommt englische
 Antworten, auch in einem deutschen Browser. Gespeichert wird die Sprache nicht -
 sie gilt fuer die Anfrage, in der sie steht.
 
@@ -34,7 +34,7 @@ def parse_accept_language(header: str | None) -> Language:
 
     Gewichte (``;q=``) werden nicht ausgewertet: die Oberflaeche schickt genau
     eine Sprache, und ein Browser-Kopf ohne Oberflaeche davor faellt fuer einen
-    deutschen Lernraum ohnehin auf Deutsch zurueck.
+    deutsches Slearn ohnehin auf Deutsch zurueck.
     """
     if not header:
         return DEFAULT_LANGUAGE

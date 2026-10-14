@@ -234,7 +234,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("WHISPER_SERVER_TIMEOUT_SECONDS", "whisper_server_timeout_seconds"),
     )
     # Leer lassen heisst: die Sprache aus der Aufnahme selbst schaetzen lassen
-    # und keine Sprachangabe mitschicken. Das ist fuer einen deutschen Lernraum
+    # und keine Sprachangabe mitschicken. Das ist fuer ein deutsches Slearn
     # fast immer richtig und haelt den Aufruf portabel.
     whisper_language: str | None = Field(
         default=None,

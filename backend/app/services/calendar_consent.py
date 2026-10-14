@@ -46,8 +46,8 @@ WRITING_PREFERENCE_KEY: Final[str] = "share_calendar_for_writing"
 #: Wozu die Freigabe benutzt wird. Steht in der Antwort, damit die Oberfläche
 #: auflisten kann, **was** freigegeben wird, statt nur einen Schalter zu zeigen.
 WRITING_USES: Final[tuple[str, ...]] = (
-    "Termine aus dem Lernraum in deinen verbundenen Google-Kalender schreiben",
-    "Termine aus dem Lernraum in deinen verbundenen Apple-Kalender schreiben",
+    "Termine aus Slearn in deinen verbundenen Google-Kalender schreiben",
+    "Termine aus Slearn in deinen verbundenen Apple-Kalender schreiben",
     "In der App gelöschte Termine auch dort löschen",
 )
 

@@ -53,7 +53,7 @@ def watch_parent() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Lernraum-Backend fuer die Desktop-App")
+    parser = argparse.ArgumentParser(description="Slearn-Backend fuer die Desktop-App")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--watch-parent", action="store_true", help="beenden, sobald stdin geschlossen wird")

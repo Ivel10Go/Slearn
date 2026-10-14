@@ -197,7 +197,7 @@ PIPER_VOICES: Final[dict[str, PiperVoice]] = {
         sample_rate=22050,
         description=(
             "Männliche deutsche Stimme in mittlerer Qualität, 22.050 Hz. "
-            "Die Voreinstellung des Lernraums: verständlich und nicht zu langsam."
+            "Die Voreinstellung von Slearn: verständlich und nicht zu langsam."
         ),
         license="CC0 (Stimmdaten)",
         dataset_url="https://github.com/thorstenMueller/Thorsten-Voice",

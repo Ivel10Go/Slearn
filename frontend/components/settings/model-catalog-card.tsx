@@ -220,7 +220,7 @@ export function ModelCatalogCard() {
       }
       const geparst = parseModelCatalog(antwort);
       setKatalog(geparst);
-      setFehler(geparst ? null : t("Die Antwort des Lernraums war nicht lesbar."));
+      setFehler(geparst ? null : t("Die Antwort von Slearn war nicht lesbar."));
     } catch (ursache) {
       if (aktuelleAnfrage !== anfrageId.current) {
         return;

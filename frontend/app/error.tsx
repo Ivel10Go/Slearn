@@ -31,7 +31,7 @@ export default function RouteError({ error, reset }: { error: Error & { digest?:
           </span>
           <h1 className="text-xl font-semibold tracking-tight">{t("Hier ist etwas schiefgelaufen")}</h1>
           <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-            {t("Dein Lernraum konnte diese Seite gerade nicht anzeigen. Deine Daten sind davon nicht betroffen.")}
+            {t("Dein Slearn konnte diese Seite gerade nicht anzeigen. Deine Daten sind davon nicht betroffen.")}
           </p>
           {error.digest ? <p className="mt-3 text-xs text-muted-foreground">{t("Fehlercode:")}{" "}{error.digest}</p> : null}
           <div className="mt-7 flex flex-col gap-2 sm:flex-row">

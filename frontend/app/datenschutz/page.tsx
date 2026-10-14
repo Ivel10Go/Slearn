@@ -51,7 +51,7 @@ function PrivacyEnglish() {
 
       <Abschnitt titel="In short">
         <p>
-          Lernraum stores your data where it runs: on your computer in the desktop app, or on the server of your school or
+          Slearn stores your data where it runs: on your computer in the desktop app, or on the server of your school or
           family in server mode. There is no account with us, no advertising, no tracking and no analytics services. Data only
           leaves the computer when you set up a connection or start a download.
         </p>
@@ -59,7 +59,7 @@ function PrivacyEnglish() {
 
       <Abschnitt titel="Controller">
         <p>
-          The controller within the meaning of the GDPR is whoever operates Lernraum. With the desktop app that is you - the
+          The controller within the meaning of the GDPR is whoever operates Slearn. With the desktop app that is you - the
           publishers of the app receive none of your data. In server mode it is the party running the server.
         </p>
         <p>{KONTAKT ? `Contact: ${KONTAKT}` : "The operator has not provided a contact address."}</p>
@@ -151,7 +151,7 @@ function DatenschutzDeutsch() {
 
         <Abschnitt titel="Kurz gesagt">
           <p>
-            Der Lernraum speichert deine Daten dort, wo er läuft: in der Desktop-App auf deinem Rechner, im Server-Betrieb auf
+            Slearn speichert deine Daten dort, wo er läuft: in der Desktop-App auf deinem Rechner, im Server-Betrieb auf
             dem Server deiner Schule oder Familie. Es gibt kein Konto bei uns, keine Werbung, kein Tracking und keine
             Analyse-Dienste. Daten verlassen den Rechner nur, wenn du eine Verbindung einrichtest oder einen Download startest.
           </p>
@@ -159,7 +159,7 @@ function DatenschutzDeutsch() {
 
         <Abschnitt titel="Verantwortlich">
           <p>
-            Verantwortlich im Sinne der DSGVO ist, wer den Lernraum betreibt. Bei der Desktop-App bist das du selbst - die
+            Verantwortlich im Sinne der DSGVO ist, wer Slearn betreibt. Bei der Desktop-App bist das du selbst - die
             Herausgeber der App erhalten keine deiner Daten. Im Server-Betrieb ist es die Stelle, die den Server betreibt.
           </p>
           <p>{KONTAKT ? `Kontakt: ${KONTAKT}` : "Der Betreiber hat keine Kontaktadresse hinterlegt."}</p>

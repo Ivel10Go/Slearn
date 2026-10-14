@@ -112,7 +112,7 @@ function DashboardSkeleton() {
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="mx-auto flex max-w-md flex-col items-center py-20 text-center" role="alert">
-      <h2 className="text-base font-semibold">{t("Der Lernraum ist gerade nicht erreichbar")}</h2>
+      <h2 className="text-base font-semibold">{t("Slearn ist gerade nicht erreichbar")}</h2>
       <p className="mt-1.5 text-[13px] leading-5 text-muted-foreground">{message}</p>
       <Button type="button" variant="outline" className="mt-5" onClick={onRetry}>
         <RefreshCw aria-hidden="true" />

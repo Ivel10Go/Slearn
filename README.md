@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="desktop/assets/icon.png" alt="Lernraum sloth logo" width="128" />
+<img src="desktop/assets/icon.png" alt="Slearn sloth logo" width="128" />
 
-# Lernraum
+# Slearn
 
 **Your whole school life in one calm place — with an AI study buddy that can run entirely on your own computer.**
 
@@ -18,7 +18,7 @@
 
 ---
 
-Lernraum ("learning space") brings timetable, homework, exams, appointments, study plans, grades and study time together. It can pull your timetable from WebUntis, plan your week around your lessons, and answer questions about your own notes and worksheets — with an online AI provider, a model on your own machine, or no AI at all.
+Slearn ("learning space") brings timetable, homework, exams, appointments, study plans, grades and study time together. It can pull your timetable from WebUntis, plan your week around your lessons, and answer questions about your own notes and worksheets — with an online AI provider, a model on your own machine, or no AI at all.
 
 ## Highlights
 
@@ -59,16 +59,16 @@ A full tour of every feature (in German) is in **[docs/funktionen.md](docs/funkt
 
 ### Desktop app
 
-Download the installer for your system from the [latest release](https://github.com/Ivel10Go/School-assistant/releases/latest):
+Download the installer for your system from the [latest release](https://github.com/Ivel10Go/Slearn/releases/latest):
 
-- **Windows:** `Lernraum-Setup-<version>.exe`
-- **macOS:** `Lernraum-<version>-arm64.dmg` (Apple Silicon) or `-x64.dmg` (Intel)
+- **Windows:** `Slearn-Setup-<version>.exe`
+- **macOS:** `Slearn-<version>-arm64.dmg` (Apple Silicon) or `-x64.dmg` (Intel)
 
-On first launch Lernraum only asks for your name. The app updates itself from GitHub Releases and backs up the database before each update.
+On first launch Slearn only asks for your name. The app updates itself from GitHub Releases and backs up the database before each update.
 
 > **Unsigned builds:** on Windows choose *More info → Run anyway*; on macOS open the app once with *right-click → Open*.
 
-Your data lives in `%APPDATA%\Lernraum` (Windows) or `~/Library/Application Support/Lernraum` (macOS). To back it up, quit Lernraum and copy that folder.
+Your data lives in `%APPDATA%\Slearn` (Windows) or `~/Library/Application Support/Slearn` (macOS). To back it up, quit Slearn and copy that folder.
 
 ### Server with Docker
 
@@ -134,4 +134,4 @@ The detailed docs, code comments and test names are in German.
 
 ## License
 
-Lernraum is free software under the [GNU Affero General Public License v3.0 or later](LICENSE). You may use, study, change and share it. If you distribute a modified version or offer it as a network service, you must publish your source code under the same license.
+Slearn is free software under the [GNU Affero General Public License v3.0 or later](LICENSE). You may use, study, change and share it. If you distribute a modified version or offer it as a network service, you must publish your source code under the same license.

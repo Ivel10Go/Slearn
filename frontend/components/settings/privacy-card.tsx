@@ -83,7 +83,7 @@ export function PrivacyCard() {
       <CardHeader>
         <CardTitle>{t("Deine Daten")}</CardTitle>
         <CardDescription>
-          {t("Alles, was du im Lernraum gespeichert hast, als Datei herunterladen oder endgültig löschen. Mehr dazu in der")}{" "}
+          {t("Alles, was du in Slearn gespeichert hast, als Datei herunterladen oder endgültig löschen. Mehr dazu in der")}{" "}
           <Link href="/datenschutz" className="underline underline-offset-2 hover:text-foreground">
             {t("Datenschutzerklärung")}
           </Link>

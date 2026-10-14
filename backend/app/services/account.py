@@ -58,7 +58,7 @@ REDACTED_MARK: Final = "[nicht enthalten]"
 
 EXPORT_FORMAT: Final = "lernraum-export-1"
 
-README_TEXT: Final = """Lernraum - Datenauskunft
+README_TEXT: Final = """Slearn - Datenauskunft
 ========================
 
 daten.json enthaelt alle Eintraege deines Kontos, je Tabelle eine Liste.
@@ -69,7 +69,7 @@ Nicht enthalten sind Geheimnisse und abgeleitete Werte:
   Push-Schluessel des Browsers und das Kalender-Abo-Token,
 - Embeddings (Zahlenreihen fuer die Suche, aus den Texten berechnet).
 
-Der Ordner dokumente/ enthaelt die Dateien, die du in den Lernraum hochgeladen
+Der Ordner dokumente/ enthaelt die Dateien, die du in Slearn hochgeladen
 hast. Dateien aus einem verbundenen Ordner liegen weiter dort und sind hier
 nicht doppelt enthalten.
 
@@ -148,7 +148,7 @@ def _inside(path: Path, root: Path) -> bool:
 
 
 def managed_documents(db: Session, user_id: int, storage: Path) -> list[tuple[Document, Path]]:
-    """Dokumente, deren Datei der Lernraum selbst verwaltet (Ablage unter ``DOCUMENT_STORAGE_PATH``).
+    """Dokumente, deren Datei Slearn selbst verwaltet (Ablage unter ``DOCUMENT_STORAGE_PATH``).
 
     Dateien eines verbundenen Ordners gehoeren dem Nutzer, nicht der App - sie
     werden weder exportiert (sie liegen ja schon dort) noch geloescht.

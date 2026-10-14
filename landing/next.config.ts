@@ -6,7 +6,7 @@ const isProduction = process.env.NODE_ENV === "production";
 // weder die Route `/api/waitlist` (der Pages-Workflow entfernt `app/api` vor dem
 // Bau) noch Antwort-Header – die CSP steht stattdessen als <meta> im Layout,
 // und die Warteliste geht an die Edge Function (`NEXT_PUBLIC_WAITLIST_URL`).
-// `BASE_PATH` ist der Repo-Pfad, z. B. `/School-assistant`.
+// `BASE_PATH` ist der Repo-Pfad, z. B. `/Slearn`.
 const staticExport = process.env.STATIC_EXPORT === "true";
 const basePath = process.env.BASE_PATH?.replace(/\/+$/, "") || undefined;
 const waitlistUrl = process.env.NEXT_PUBLIC_WAITLIST_URL?.trim();
