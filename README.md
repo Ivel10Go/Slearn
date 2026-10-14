@@ -12,6 +12,7 @@
 ![Platforms](https://img.shields.io/badge/desktop-Windows%20%7C%20macOS-111111)
 ![Server](https://img.shields.io/badge/server-Docker%20Compose-111111)
 ![Local AI](https://img.shields.io/badge/AI-local%20first-111111)
+![License](https://img.shields.io/badge/license-AGPL--3.0-111111)
 
 </div>
 
@@ -130,3 +131,7 @@ On Windows PowerShell use `npm.cmd` instead of `npm`.
 | [AGENTS.md](AGENTS.md) | pitfalls per area, for contributors |
 
 The detailed docs, code comments and test names are in German.
+
+## License
+
+Lernraum is free software under the [GNU Affero General Public License v3.0 or later](LICENSE). You may use, study, change and share it. If you distribute a modified version or offer it as a network service, you must publish your source code under the same license.
