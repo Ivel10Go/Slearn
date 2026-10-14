@@ -1,11 +1,12 @@
 [build-system]
-requires = ["setuptools>=75"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "school-assistant-backend"
 version = "1.1.0"
 description = "Backend service for the school assistant"
+license = "AGPL-3.0-or-later"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi==0.136.3",

@@ -69,3 +69,7 @@ cd desktop  && npm run check
 ```
 
 Was die App alles kann: [docs/funktionen.md](docs/funktionen.md). Mehr dazu: [docs/entwicklung.md](docs/entwicklung.md) für Tests, Builds und CI, [docs/api.md](docs/api.md) für die API-Referenz und [AGENTS.md](AGENTS.md) für die Stolperfallen je Bereich.
+
+## Lizenz
+
+Lernraum ist freie Software unter der [GNU Affero General Public License v3.0 oder neuer](LICENSE). Du darfst es nutzen, untersuchen, verändern und weitergeben. Wer eine veränderte Version weitergibt oder als Netzdienst anbietet, muss den Quelltext unter derselben Lizenz offenlegen.
