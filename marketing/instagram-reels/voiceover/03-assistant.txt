@@ -1,0 +1,7 @@
+Take a photo of your notes.
+Lernraum reads them, and recognises the subject, the topic and the date.
+Now ask: what did we write about derivatives?
+The assistant answers from your notes. Not from somewhere on the internet.
+Want to practise? Let it quiz you.
+And if your notes don't cover something, it tells you, instead of making it up.
+Lernraum. Join the waitlist.
