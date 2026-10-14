@@ -3,7 +3,7 @@
 Alle nennenswerten Änderungen an Lernraum stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die Versionen folgen [Semantic Versioning](https://semver.org/lang/de/).
 
-## [1.1.0] – unveröffentlicht
+## [1.1.0] – 2026-10-14
 
 Erste öffentliche Version.
 
@@ -26,5 +26,12 @@ Erste öffentliche Version.
 - **Desktop-App** für Windows und macOS: ohne Docker und ohne Anmeldung, mit automatischen Updates, Infobereich und Autostart.
 - **Datenschutz:** Datenschutzseite, Export aller eigenen Daten und Löschen des Kontos.
 - **Server-Betrieb:** Docker-Compose-Stack mit PostgreSQL, planmäßigen Backups mit Aufbewahrungsfrist und Backup-Status in den Einstellungen.
+- **Zweisprachig:** Oberfläche, Assistent, Sprachausgabe und Landingpage auf Deutsch und Englisch.
+
+### Bekannte Einschränkungen
+
+- Die Installer sind **nicht signiert**: Windows SmartScreen warnt beim ersten Start, unter macOS die App einmal per *Rechtsklick → Öffnen* starten; automatische Updates unter macOS erst mit signierter App.
+- Persönliches Training nur auf NVIDIA-Grafikkarten ab 6 GB; Apple Silicon (MLX) folgt.
+- Google und Apple Kalender sind bisher nur gegen nachgebildete Antworten getestet.
 
 [1.1.0]: https://github.com/Ivel10Go/School-assistant/releases

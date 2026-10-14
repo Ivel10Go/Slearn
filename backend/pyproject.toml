@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "school-assistant-backend"
-version = "1.0.0"
+version = "1.1.0"
 description = "Backend service for the school assistant"
 requires-python = ">=3.12"
 dependencies = [

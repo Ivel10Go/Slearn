@@ -1,5 +1,5 @@
 import { addDays, toDate, toIsoDate } from "./format";
-import type { DashboardApiResponse } from "./types";
+import type { DashboardApiResponse, ScheduleRangeResponse } from "./schemas";
 
 export function isDemoFallbackEnabled() {
   return process.env.NEXT_PUBLIC_ENABLE_DEMO_FALLBACK === "true";
@@ -74,7 +74,7 @@ function startOfDemoDay(value: Date) {
 }
 
 /** Baut einen beliebigen Zeitraum, damit der Wochenplan auch offline etwas zeigt. */
-export function getDemoScheduleRange(startIso: string, endIso: string): DashboardApiResponse {
+export function getDemoScheduleRange(startIso: string, endIso: string): ScheduleRangeResponse {
   const start = toDate(startIso);
   const end = toDate(endIso);
   if (!start || !end || end.getTime() < start.getTime()) {
