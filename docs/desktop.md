@@ -49,7 +49,7 @@ npm run dist              # macOS: desktop/dist/Lernraum-<version>-<arch>.dmg (A
 
 Ohne Signatur zeigt Windows beim ersten Start einen SmartScreen-Hinweis (*Weitere Informationen → Trotzdem ausführen*), macOS verlangt einmal *Rechtsklick → Öffnen*, und der Mac-Updater kann nicht installieren.
 
-**Veröffentlichen:** Ein Tag `v<version>` muss zu `desktop/package.json` passen, sonst bricht der Workflow ab (der Updater vergleicht genau diese Version). Bei einem Tag lädt electron-builder die Installer und die Update-Metadaten (`latest.yml`, `latest-mac.yml`) in ein **Release-Entwurf** (`releaseType: draft` in `electron-builder.yml`). Erst wenn der Entwurf auf GitHub veröffentlicht ist, sehen ihn `releases/latest` und die automatischen Updates.
+**Veröffentlichen:** Ein Tag `v<version>` muss zu `desktop/package.json` passen, sonst bricht der Workflow ab (der Updater vergleicht genau diese Version). Die drei Installer-Jobs bauen nur (`--publish never`); danach sammelt der Job `release` alle Installer und die Update-Metadaten (`latest.yml`, `latest-mac.yml`) in **einen Release-Entwurf**. Die beiden `latest-mac.yml` der Mac-Builds kennen je nur ihre Architektur und werden von `.github/ci/merge-latest-mac.mjs` zusammengeführt – bei v1.1.0, als jeder Job selbst veröffentlichte, entstanden zwei Entwürfe, und die x64-Datei überschrieb die arm64-Datei. Erst wenn der Entwurf auf GitHub veröffentlicht ist, sehen ihn `releases/latest` und die automatischen Updates.
 
 **Automatische Updates** (`desktop/lib/updates.js`, electron-updater): 30 s nach dem Start und danach alle sechs Stunden, Download im Hintergrund, Installation beim nächsten Neustart. Vor der ersten Migration der neuen Version sichert die App die Datenbank. Abschaltbar mit `LERNRAUM_DISABLE_UPDATES`.
 

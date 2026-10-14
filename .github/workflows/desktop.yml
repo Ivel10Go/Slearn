@@ -16,8 +16,9 @@ name: Desktop
 #   APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID   Notarisierung
 # Siehe docs/desktop.md, "Signieren und Veroeffentlichen".
 #
-# Veroeffentlichen: ein Tag `v*` laedt Installer und die `latest*.yml` der
-# Auto-Updates in einen Release-*Entwurf*. Erst das Veroeffentlichen des
+# Veroeffentlichen: bei einem Tag `v*` sammelt der Job `release` die Installer
+# aller drei Builds und die `latest*.yml` der Auto-Updates in *einen*
+# Release-*Entwurf*. Erst das Veroeffentlichen des
 # Entwurfs auf GitHub macht das Update fuer installierte Apps sichtbar.
 # `workflow_dispatch` baut nur und laedt die Installer als Artefakt hoch.
 
@@ -118,8 +119,10 @@ jobs:
                       APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
             if [[ -z "${!name}" ]]; then unset "$name"; fi
           done
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then publish=always; else publish=never; fi
-          npx electron-builder ${{ matrix.builder }} --publish "$publish"
+          # Veroeffentlicht wird nie aus der Matrix: drei parallele Jobs legten
+          # bei v1.1.0 zwei Release-Entwuerfe an, und der x64-Mac ueberschrieb
+          # die latest-mac.yml des arm64-Macs. Das macht der Job `release`.
+          npx electron-builder ${{ matrix.builder }} --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: Lernraum-${{ matrix.name }}
@@ -127,5 +130,53 @@ jobs:
             desktop/dist/*.exe
             desktop/dist/*.dmg
             desktop/dist/*.zip
+            desktop/dist/*.blockmap
             desktop/dist/latest*.yml
           if-no-files-found: error
+
+  release:
+    # Ein einziger Entwurf je Tag, erst wenn alle drei Installer gebaut sind.
+    # Erst das Veroeffentlichen des Entwurfs auf GitHub macht das Update fuer
+    # installierte Apps sichtbar.
+    name: release draft
+    needs: installer
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: merge latest-mac.yml
+        # Beide Mac-Jobs schreiben eine latest-mac.yml mit nur ihrer
+        # Architektur. electron-updater waehlt aus *einer* Datei die passende
+        # Architektur aus, deshalb muessen beide Listen zusammen.
+        run: |
+          mkdir release
+          node .github/ci/merge-latest-mac.mjs artifacts/Lernraum-macos-x64/latest-mac.yml artifacts/Lernraum-macos-arm64/latest-mac.yml > release/latest-mac.yml
+          find artifacts -type f ! -name latest-mac.yml -exec cp {} release/ \;
+          ls -l release
+      - name: release notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          {
+            echo "### Downloads"
+            echo
+            echo "| System | File |"
+            echo "| --- | --- |"
+            echo "| Windows (x64) | \`Lernraum-Setup-${version}.exe\` |"
+            echo "| macOS Apple Silicon | \`Lernraum-${version}-arm64.dmg\` |"
+            echo "| macOS Intel | \`Lernraum-${version}-x64.dmg\` |"
+            echo
+            echo "> Unsigned installers: Windows *More info → Run anyway*; macOS *right-click → Open*."
+            echo
+            echo "---"
+            echo
+            awk -v v="## [${version}]" 'index($0, v) == 1 {on = 1; next} on && /^## \[/ {exit} on' CHANGELOG.md
+          } > notes.md
+          cat notes.md
+      - name: create draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* --draft --title "Lernraum ${GITHUB_REF_NAME#v}" --notes-file notes.md

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "school-assistant-backend"
-version = "1.1.0"
+version = "1.1.1"
 description = "Backend service for the school assistant"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.12"

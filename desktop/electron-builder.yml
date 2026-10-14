@@ -4,7 +4,7 @@
 # auf Windows, macOS auf einem Mac (PyInstaller kann nicht quer kompilieren).
 appId: app.lernraum.desktop
 productName: Lernraum
-copyright: Lernraum
+copyright: Copyright © 2026 Lernraum, AGPL-3.0-or-later
 directories:
   output: dist
   buildResources: assets
@@ -35,6 +35,9 @@ extraResources:
     to: frontend/node_modules
     filter:
       - "**/*"
+  # Die Lizenz liegt jeder Installation bei (AGPL-3.0, Abschnitt 4 und 6).
+  - from: ../LICENSE
+    to: LICENSE.txt
   # Die Skripte des LoRA-Trainers und seine Sperrdatei. Sein Python (torch/CUDA,
   # mehrere GB) richtet das Backend auf /ki selbst ein (trainer_install.py) -
   # ohne die *.lock-Datei hier fände es keine Paketliste.
