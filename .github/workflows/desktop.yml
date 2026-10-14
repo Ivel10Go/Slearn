@@ -100,7 +100,9 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Leere Secrets zaehlen fuer electron-builder als nicht gesetzt.
+          # Ein fehlendes Secret kommt als leerer String an, und den nimmt
+          # electron-builder als Pfad ("desktop not a file"). Deshalb entfernt
+          # der Schritt leere Werte vor dem Aufruf, siehe unten.
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
@@ -112,6 +114,10 @@ jobs:
           # Schluesselbund suchen.
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CSC_LINK != '' }}
         run: |
+          for name in WIN_CSC_LINK WIN_CSC_KEY_PASSWORD CSC_LINK CSC_KEY_PASSWORD \
+                      APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!name}" ]]; then unset "$name"; fi
+          done
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then publish=always; else publish=never; fi
           npx electron-builder ${{ matrix.builder }} --publish "$publish"
       - uses: actions/upload-artifact@v4
