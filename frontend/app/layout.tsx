@@ -7,11 +7,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Lernraum",
-    template: "%s · Lernraum",
+    default: "Slearn",
+    template: "%s · Slearn",
   },
   description: "Stundenplan, Aufgaben und Lernzeit an einem Ort.",
-  applicationName: "Lernraum",
+  applicationName: "Slearn",
   icons: {
     icon: "/icons/icon-192.svg",
     apple: "/icons/icon-192.svg",

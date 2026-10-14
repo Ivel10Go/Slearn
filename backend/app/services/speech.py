@@ -85,7 +85,7 @@ DEFAULT_MAX_TEXT_CHARACTERS: Final[int] = 4000
 
 #: Was ein Browser an ``MediaRecorder`` liefert. **Zwei Container, zwei Codecs** -
 #: das ist der Grund fuer den ffmpeg-Schritt und nicht fuer eine Fummelei.
-#: Reihenfolge = Praeferenz des Lernraums: erst das, was jeder Browser kann,
+#: Reihenfolge = Praeferenz von Slearn: erst das, was jeder Browser kann,
 #: dann die Nachlieger.
 BROWSER_RECORDING_TYPES: Final[tuple[str, ...]] = (
     "audio/webm",
@@ -353,7 +353,7 @@ def prepare_wav(
         raise SpeechUnavailableError(
             "Diese Aufnahme muss erst umgewandelt werden, und auf diesem Server fehlt ffmpeg. "
             "Entweder wird ffmpeg installiert, oder es wird eine WAV-Datei geschickt. "
-            "Alles andere im Lernraum funktioniert davon unberuehrt."
+            "Alles andere in Slearn funktioniert davon unberuehrt."
         )
     argv = [
         ffmpeg_path,
@@ -697,7 +697,7 @@ class SpeechCapabilities:
 
     ``text_mode_available`` steht **konstant** auf ``true``. Das ist keine
     Bequemlichkeit, sondern die Zusicherung dieses Endpunkts: es gibt keinen
-    Zustand, in dem der Lernraum nichts kann.
+    Zustand, in dem Slearn nichts kann.
     """
 
     text_mode_available: bool

@@ -1,6 +1,6 @@
-# Lernraum – Funktionen im Überblick
+# Slearn – Funktionen im Überblick
 
-Lernraum ist ein persönlicher Schulassistent. Er bündelt Stundenplan, Hausaufgaben, Prüfungen, Termine, Lernpläne, Noten, Lernzeit und eigene Unterlagen an einem Ort und hilft beim Lernen – auf Wunsch mit einer KI, die komplett lokal auf dem eigenen Rechner läuft.
+Slearn ist ein persönlicher Schulassistent. Er bündelt Stundenplan, Hausaufgaben, Prüfungen, Termine, Lernpläne, Noten, Lernzeit und eigene Unterlagen an einem Ort und hilft beim Lernen – auf Wunsch mit einer KI, die komplett lokal auf dem eigenen Rechner läuft.
 
 Diese Seite erklärt, **was** die App kann und **wie** die einzelnen Teile funktionieren. Für Installation und Betrieb siehe [README](../README.de.md), für die API [api.md](api.md), für Konfiguration [konfiguration.md](konfiguration.md).
 
@@ -281,7 +281,7 @@ In den Einstellungen (KI-Verbindungen auf `/ki`). Alle Zugangsdaten werden **ver
 ## Backups
 
 - **Server:** Der Worker erstellt planmäßig `pg_dump`-Sicherungen der Datenbank; ihr Stand ist in der App sichtbar. Hochgeladene Dokumente liegen als Dateien und müssen mitgesichert werden – siehe [server.md](server.md).
-- **Desktop:** Der Datenordner (`%APPDATA%\Lernraum` bzw. `~/Library/Application Support/Lernraum`) enthält alles; vor jedem Update sichert die App die Datenbank selbst.
+- **Desktop:** Der Datenordner (`%APPDATA%\Slearn` bzw. `~/Library/Application Support/Slearn`) enthält alles; vor jedem Update sichert die App die Datenbank selbst.
 
 ---
 

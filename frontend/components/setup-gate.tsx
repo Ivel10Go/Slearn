@@ -90,7 +90,7 @@ function Onboarding() {
       <div className="flex flex-1 items-center justify-center px-6 pb-16">
         <div className="w-full max-w-sm">
           <BrandMark className="h-9 w-9 rounded-[7px] text-lg" />
-          <h1 className="mt-6 text-2xl font-semibold tracking-tight">{t("Willkommen im Lernraum")}</h1>
+          <h1 className="mt-6 text-2xl font-semibold tracking-tight">{t("Willkommen in Slearn")}</h1>
           <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
             {t("Stundenplan, Hausaufgaben, Prüfungen und Lernzeit an einem Ort. Alles bleibt auf diesem Rechner.")}
           </p>

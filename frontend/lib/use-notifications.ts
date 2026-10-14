@@ -25,7 +25,7 @@ import {
   darfLokalAnzeigen,
 } from "./notifications";
 import type {
-  LernraumNotification,
+  SlearnNotification,
   NotificationKind,
   NotificationSettings,
   PushSubscriptionRecord,
@@ -51,7 +51,7 @@ export interface NotificationState {
   /** Was der letzte Lauf gemeldet hat - in der Einstellungen sichtbar. */
   pruefbericht: ReminderRunReport | null;
   /** Die zuletzt gezeigten Erinnerungen - fuer die Kachel auf dem Dashboard. */
-  zuletzt: LernraumNotification[];
+  zuletzt: SlearnNotification[];
 }
 
 export interface NotificationApi {
@@ -187,7 +187,7 @@ export function useNotifications(): NotificationApi & NotificationState {
    * sichtbar ist. Im Hintergrund uebernimmt der Worker, sonst wuerde die
    * Benachrichtigung im Nirgends verschwinden.
    */
-  const zeigen = useCallback(async (erinnerung: LernraumNotification) => {
+  const zeigen = useCallback(async (erinnerung: SlearnNotification) => {
     if (typeof Notification === "undefined") {
       return false;
     }

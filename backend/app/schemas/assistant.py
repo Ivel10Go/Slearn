@@ -19,7 +19,7 @@ class AssistantChatRequest(BaseModel):
     #: Genau diese KI-Verbindung verwenden. Ohne Angabe gilt die Reihenfolge
     #: aus ``ai_routing`` (lokal zuerst).
     integration_id: int | None = None
-    #: Ein im Lernraum geladenes Textmodell, das eingebaut laeuft (``llama-server``).
+    #: Ein in Slearn geladenes Textmodell, das eingebaut laeuft (``llama-server``).
     local_model_id: str | None = Field(default=None, max_length=64)
     #: Gespraechsmodus: kurze, vorlesbare Antwort.
     voice: bool = False

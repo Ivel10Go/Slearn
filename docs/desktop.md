@@ -2,7 +2,7 @@
 
 Aufbau, Datenablage und Bau der Installer der Desktop-App für Windows und macOS.
 
-Für Verbraucherinnen und Verbraucher gibt es Lernraum als Desktop-App, ohne Docker, Server und Anmeldung: Installer starten, Namen eingeben, fertig. Die App ist dieselbe Oberfläche wie im Browser; sie bringt Backend und Oberfläche selbst mit.
+Für Verbraucherinnen und Verbraucher gibt es Slearn als Desktop-App, ohne Docker, Server und Anmeldung: Installer starten, Namen eingeben, fertig. Die App ist dieselbe Oberfläche wie im Browser; sie bringt Backend und Oberfläche selbst mit.
 
 ```text
 Electron-Fenster ──http://127.0.0.1:47821──▶ Next-Standalone-Server (Electrons eigenes Node)
@@ -17,7 +17,7 @@ Electron-Fenster ──http://127.0.0.1:47821──▶ Next-Standalone-Server (E
 | Backups | Datenordner bei geschlossener App kopieren | `pg_dump`-Runner im Worker |
 | Schlüssel | beim ersten Start erzeugt, `secrets.json` im Benutzerordner | `.env` |
 
-**Wo die Daten liegen:** Windows `%APPDATA%\Lernraum\`, macOS `~/Library/Application Support/Lernraum/`. Darin `data/` (Datenbank, Dokumente, Modelle), `logs/` und `secrets.json`. Ohne `secrets.json` sind gespeicherte Zugangsdaten (WebUntis, KI-Dienst) nicht mehr lesbar – beim Sichern immer den ganzen Ordner kopieren. Eine Deinstallation lässt die Daten liegen. In der App: *Einstellungen → Daten auf diesem Rechner* bzw. Menü *Hilfe → Datenordner öffnen*.
+**Wo die Daten liegen:** Windows `%APPDATA%\Slearn\`, macOS `~/Library/Application Support/Slearn/`. Darin `data/` (Datenbank, Dokumente, Modelle), `logs/` und `secrets.json`. Ohne `secrets.json` sind gespeicherte Zugangsdaten (WebUntis, KI-Dienst) nicht mehr lesbar – beim Sichern immer den ganzen Ordner kopieren. Eine Deinstallation lässt die Daten liegen. In der App: *Einstellungen → Daten auf diesem Rechner* bzw. Menü *Hilfe → Datenordner öffnen*.
 
 ## Installer bauen
 
@@ -26,13 +26,13 @@ Jeder Installer entsteht auf seinem eigenen System (PyInstaller kompiliert nicht
 ```powershell
 cd frontend; npm.cmd ci; cd ..\desktop
 npm.cmd ci
-npm.cmd run dist          # Windows: desktop\dist\Lernraum-Setup-<version>.exe
+npm.cmd run dist          # Windows: desktop\dist\Slearn-Setup-<version>.exe
 ```
 
 ```bash
 cd frontend && npm ci && cd ../desktop
 npm ci
-npm run dist              # macOS: desktop/dist/Lernraum-<version>-<arch>.dmg (Architektur des bauenden Macs)
+npm run dist              # macOS: desktop/dist/Slearn-<version>-<arch>.dmg (Architektur des bauenden Macs)
 ```
 
 `npm run dist` friert das Backend in einem eigenen venv ein (`desktop/.venv-backend`, nur `backend/requirements.txt`), baut die Oberfläche mit `next build --webpack` als Standalone-Server und packt beides mit electron-builder. `npm run smoke:backend` startet das eingefrorene Backend gegen eine leere Datenbank und prüft Migrationen, Ersteinrichtung und Dashboard. Der Workflow `.github/workflows/desktop.yml` baut alle drei Installer (Windows x64, macOS arm64, macOS x64) bei einem `v*`-Tag oder per Hand.
@@ -65,7 +65,7 @@ npm.cmd start                # startet Python-Backend direkt aus backend/ (LERNR
 
 ## Persönliches Training (LoRA, nur NVIDIA)
 
-Das Training läuft in einem eigenen Python mit torch/CUDA, das die App **nicht** mitliefert (mehrere GB). Einrichten wie in [Konfiguration](konfiguration.md#lora-training-optional-nur-nvidia), dann im Benutzerordner der App (`%APPDATA%\Lernraum`) eine `trainer.json` anlegen:
+Das Training läuft in einem eigenen Python mit torch/CUDA, das die App **nicht** mitliefert (mehrere GB). Einrichten wie in [Konfiguration](konfiguration.md#lora-training-optional-nur-nvidia), dann im Benutzerordner der App (`%APPDATA%\Slearn`) eine `trainer.json` anlegen:
 
 ```json
 {

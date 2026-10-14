@@ -96,7 +96,7 @@ Deno.serve(async (request) => {
     return error(origin, 405, "Nur POST ist erlaubt.");
   }
   if (!originAllowed(origin)) {
-    return error(origin, 403, "Diese Anfrage kommt nicht von der Lernraum-Seite.");
+    return error(origin, 403, "Diese Anfrage kommt nicht von der Slearn-Seite.");
   }
   if (!limiter.allow(clientKey(request))) {
     return error(origin, 429, "Zu viele Versuche. Bitte versuche es in ein paar Minuten noch einmal.");

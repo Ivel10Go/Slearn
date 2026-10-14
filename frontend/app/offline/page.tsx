@@ -10,7 +10,7 @@ export default function OfflinePage() {
         <CloudOff className="mx-auto mb-5 h-6 w-6 text-muted-foreground" strokeWidth={1.75} aria-hidden="true" />
         <h1 className="text-[22px] font-semibold tracking-tight">{t("Keine Verbindung")}</h1>
         <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
-          {t("Der Lernraum ist gerade nicht erreichbar. Private Schul- und Lerndaten werden offline nicht gespeichert.")}
+          {t("Slearn ist gerade nicht erreichbar. Private Schul- und Lerndaten werden offline nicht gespeichert.")}
         </p>
         <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
           <Link href="/" className={buttonVariants()}>

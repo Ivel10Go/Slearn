@@ -270,7 +270,7 @@ class CalendarWritingRead(UTCResponseModel):
 
 
 class CalendarFeedRead(UTCResponseModel):
-    """Die abonnierbare Adresse des Lernraum-Kalenders.
+    """Die abonnierbare Adresse des Slearn-Kalenders.
 
     Der Schlüssel steht in der Antwort, weil nur die Eigentümerin diese Antwort
     bekommt und ohne ihn die Adresse nicht in einen Kalender eingetragen werden

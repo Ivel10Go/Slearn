@@ -354,7 +354,7 @@ def _build_ics(event: RemoteEvent) -> str:
                 modified_at=utc_now(),
             )
         ],
-        calendar_name="Lernraum",
+        calendar_name="Slearn",
         timezone_name="UTC",
     )
 

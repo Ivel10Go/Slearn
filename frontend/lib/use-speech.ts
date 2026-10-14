@@ -409,7 +409,7 @@ export function useSpeech(): SprechApi & SprechState {
       } catch {
         // **Normalfall, kein Fehler.** Der Browser verweigert die Wiedergabe
         // ohne vorherige Nutzergeste - oder ein Autoplay-Riegel steht dazwischen.
-        // Es gibt keinen Autoplay-Pfad im Lernraum (jede Wiedergabe kommt von
+        // Es gibt keinen Autoplay-Pfad in Slearn (jede Wiedergabe kommt von
         // einem Klick), deshalb ist das nur noch die Variante, in der ein
         // Browser nachtraeglich eine Regel durchsetzt. Der Knopf bleibt da und
         // ein zweiter Klick funktioniert.

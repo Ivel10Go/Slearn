@@ -138,7 +138,7 @@ export function BackupStatusCard() {
         return;
       }
       setStatus(payload);
-      setError(payload ? null : t("Die Antwort des Lernraums war nicht lesbar."));
+      setError(payload ? null : t("Die Antwort von Slearn war nicht lesbar."));
     } catch (cause) {
       if (currentRequest !== requestId.current) {
         return;

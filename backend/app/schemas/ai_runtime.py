@@ -26,7 +26,7 @@ class LocalRuntimeRead(UTCResponseModel):
     ``base_url`` ist die Fassung fuer den Docker-Stack (der dokumentierten
     Betriebsart), ``native_base_url`` die fuer ein nativ gestartetes Backend.
     Beide stehen in der Antwort, weil die Oberflaeche nicht raten soll, in
-    welcher Bauart der Lernraum gerade laeuft.
+    welcher Bauart Slearn gerade laeuft.
     """
 
     kind: str

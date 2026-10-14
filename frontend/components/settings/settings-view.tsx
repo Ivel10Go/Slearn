@@ -238,7 +238,7 @@ function ThemeCard() {
     <Card>
       <CardHeader>
         <CardTitle>{t("Darstellung")}</CardTitle>
-        <CardDescription>{t("Wähle, ob dein Lernraum hell, dunkel oder wie das System erscheint.")}</CardDescription>
+        <CardDescription>{t("Wähle, ob dein Slearn hell, dunkel oder wie das System erscheint.")}</CardDescription>
       </CardHeader>
       <CardContent>
         {mounted ? (
@@ -651,7 +651,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
             ))}
           </select>
           <p id={`${fieldId}-hinweis`} className="text-xs leading-5 text-muted-foreground">
-            {t("Leer lassen genügt: Dann erkennt der Lernraum die Art an der Adresse.")}
+            {t("Leer lassen genügt: Dann erkennt Slearn die Art an der Adresse.")}
           </p>
         </div>
       );
@@ -945,7 +945,7 @@ export function IntegrationsCard({
  * Die Zustimmung, Termine in verbundene Kalender zu **schreiben**.
  *
  * Sie steht hier und nicht in der Zeile einer Integration, weil sie nicht an
- * einer hängt, sondern an der Frage, ob der Lernraum das überhaupt darf. Und
+ * einer hängt, sondern an der Frage, ob Slearn das überhaupt darf. Und
  * sie ist **aus**, bis jemand sie einschaltet: Lesen genügt, sobald eine Quelle
  * verbunden ist - die hat die Lernende ja selbst angegeben. Schreiben ist der
  * Fall, der eine ausdrückliche Entscheidung braucht.
@@ -1006,7 +1006,7 @@ function CalendarWritingCard({
 }
 
 /**
- * Die abonnierbare ICS-Adresse des Lernraums - der Weg nach draußen.
+ * Die abonnierbare ICS-Adresse von Slearn - der Weg nach draußen.
  *
  * Der Schlüssel ist im Klartext ein Vollzugriff auf **diese** Kalenderdatei,
  * deshalb gibt es hier ausdrücklich einen Knopf zum Erzeugen: Wer ihn drückt,

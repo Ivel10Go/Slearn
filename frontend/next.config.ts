@@ -48,7 +48,7 @@ const securityHeaders = [
    * fremden Herkunft bekommt es damit auch nicht, obwohl der Iframe es in
    * seiner eigenen Policy erlauben koennte - deshalb `self` und nicht `*`.
    *
-   * Kamera und Standort bleiben zu. Der Lernraum braucht sie nicht, und eine
+   * Kamera und Standort bleiben zu. Slearn braucht sie nicht, und eine
    * abgeschaltete Berechtigung ist die einzige, die man nicht verteidigen muss.
    */
   { key: "Permissions-Policy", value: "camera=(), geolocation=(), microphone=(self)" },

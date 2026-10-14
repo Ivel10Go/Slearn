@@ -9,7 +9,7 @@ import { t } from "@/lib/i18n";
  * Deutsche 404-Seite.
  *
  * Ohne diese Datei zeigt Next.js seine eigene - englisch, ohne Navigation, und
- * sie verlinkt nirgends hin, wo man im Lernraum weitermachen kann.
+ * sie verlinkt nirgends hin, wo man in Slearn weitermachen kann.
  */
 export default function NotFound() {
   return (

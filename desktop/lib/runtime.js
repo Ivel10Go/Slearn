@@ -390,6 +390,33 @@ function backupBeforeUpdate({ dataDir, version, now = new Date() }) {
   return target;
 }
 
+/**
+ * Bis 1.1.0 hiess die App "Slearn", und Electron legte die Daten unter
+ * `<appData>/Slearn` ab. Mit dem Namen "Slearn" sucht es `<appData>/Slearn`
+ * - ohne diesen Schritt startete ein Update mit leerer Datenbank, waehrend die
+ * alten Daten unbenutzt daneben laegen.
+ *
+ * Gibt es nur den alten Ordner, wird er umbenannt. Scheitert das (unter
+ * Windows z. B. eine noch gesperrte Datei), bleibt die App beim alten Ordner:
+ * lieber ein alter Name als scheinbar verlorene Daten. Existiert der neue
+ * Ordner schon, wird nichts angefasst.
+ *
+ * @param {{ userDataDir: string, legacyName?: string }} options
+ * @returns {string} der Ordner, den die App benutzen soll
+ */
+function migrateLegacyUserData({ userDataDir, legacyName = "Slearn" }) {
+  const legacyDir = path.join(path.dirname(userDataDir), legacyName);
+  if (legacyDir === userDataDir || fs.existsSync(userDataDir) || !fs.existsSync(legacyDir)) {
+    return userDataDir;
+  }
+  try {
+    fs.renameSync(legacyDir, userDataDir);
+    return userDataDir;
+  } catch {
+    return legacyDir;
+  }
+}
+
 module.exports = {
   DEFAULT_DESKTOP_SETTINGS,
   HIDDEN_ARGUMENT,
@@ -398,6 +425,7 @@ module.exports = {
   backupBeforeUpdate,
   isHiddenLaunch,
   loadDesktopSettings,
+  migrateLegacyUserData,
   saveDesktopSettings,
   TRAINING_IDLE_SECONDS,
   backendCommand,

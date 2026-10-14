@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Lernraum – Schulassistent",
-    short_name: "Lernraum",
-    description: "Dein persönlicher, intelligenter Lernraum.",
+    name: "Slearn – Schulassistent",
+    short_name: "Slearn",
+    description: "Dein persönlicher, intelligenter Slearn.",
     start_url: "/",
     scope: "/",
     display: "standalone",

@@ -14,7 +14,7 @@ import {
   pruefknopfMoeglich,
 } from "@/lib/notifications";
 import type {
-  LernraumNotification,
+  SlearnNotification,
   NotificationSettings,
   PushSubscriptionRecord,
   ReminderRunReport,
@@ -55,7 +55,7 @@ interface NotificationSettingsCardProps {
   pending: string | null;
   bericht: ReminderRunReport | null;
   /** Die in dieser Sitzung angezeigten Erinnerungen. */
-  zuletzt: LernraumNotification[];
+  zuletzt: SlearnNotification[];
   onSpeichern: (changes: {
     enabled?: boolean;
     channels?: Record<string, boolean>;

@@ -32,5 +32,5 @@ def complete_setup(payload: SetupRequest, db: DatabaseSession, settings: AppSett
     try:
         user = create_first_user(db, payload.name, payload.timezone or settings.timezone)
     except SetupAlreadyDoneError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Der Lernraum ist bereits eingerichtet.") from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Slearn ist bereits eingerichtet.") from exc
     return UserRead.model_validate(user)

@@ -37,7 +37,7 @@ BACKEND_MLX: Final[str] = "mlx"
 BACKEND_CUDA: Final[str] = "cuda"
 
 #: Untergrenzen fuer Phase 1. Ein 1,5B-Modell mit LoRA braucht unter MLX rund
-#: 8 GB; 16 GB lassen Platz fuer Betriebssystem, Browser und Lernraum.
+#: 8 GB; 16 GB lassen Platz fuer Betriebssystem, Browser und Slearn.
 MIN_MAC_RAM_GB: Final[float] = 16.0
 #: 6 GB VRAM reichen fuer LoRA auf einem 1,5B-Modell in 16 Bit bzw. 3B in 4 Bit.
 MIN_VRAM_GB: Final[float] = 6.0

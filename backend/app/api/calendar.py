@@ -1,4 +1,4 @@
-"""Termine im Lernraum: von Hand, aus einer Quelle und wieder nach draußen.
+"""Termine in Slearn: von Hand, aus einer Quelle und wieder nach draußen.
 
 Neben dem üblichen Anlegen, Ändern und Löschen kommen hier drei Dinge dazu, die
 alle aus derselben Frage stammen: **woher weiß die App, was wohin gehört?**
@@ -19,7 +19,7 @@ alle aus derselben Frage stammen: **woher weiß die App, was wohin gehört?**
 
 Ebenfalls hier und aus demselben Grund: die Einwilligung zum Schreiben. Sie
 gehört nicht in ``integrations``, weil sie **nicht** an einer einzelnen
-Integration hängt, sondern an der Frage, ob der Lernraum Termine in einen
+Integration hängt, sondern an der Frage, ob Slearn Termine in einen
 Kalender schreiben darf - für alle zusammen.
 """
 
@@ -207,7 +207,7 @@ def read_feed(current_user: CurrentUser, db: DatabaseSession) -> CalendarFeedRea
         url_path=calendar_feed.feed_path(token) if token else "",
         active=bool(token),
         message=(
-            "Trage diese Adresse in deinem Kalender ein, um den Lernraum zu abonnieren."
+            "Trage diese Adresse in deinem Kalender ein, um Slearn zu abonnieren."
             if token
             else "Es ist noch keine abonnierbare Adresse eingerichtet."
         ),

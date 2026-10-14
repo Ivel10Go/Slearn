@@ -1,5 +1,5 @@
 What do I need on the next test to pass?
 Stop calculating on a napkin.
-Lernraum keeps every grade with its weighting, and shows your average and trend for each subject.
+Slearn keeps every grade with its weighting, and shows your average and trend for each subject.
 The projection tells you what still has to come, so it's enough.
-Lernraum. Join the waitlist.
+Slearn. Join the waitlist.

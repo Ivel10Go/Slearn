@@ -281,7 +281,7 @@ export function containerTrapNote(url: string): string | null {
   if (!replacement) {
     return null;
   }
-  return t("Läuft der Lernraum in Docker, zeigt „{url}“ auf den Container, nicht auf deinen Rechner. Nimm {ersatz}.", { url: url.trim(), ersatz: replacement });
+  return t("Läuft Slearn in Docker, zeigt „{url}“ auf den Container, nicht auf deinen Rechner. Nimm {ersatz}.", { url: url.trim(), ersatz: replacement });
 }
 
 export interface RuntimeOption {
@@ -321,7 +321,7 @@ export function presetFor(runtime: AiRuntimePayload, kind: string): LocalRuntime
  * Was beim Anwaehlen eines Presets in das Formular geschrieben wird.
  *
  * Beide Adressen kommen mit, weil die Oberflaeche nicht weiss, ob der
- * Lernraum gerade in Docker laeuft. `native` waehlt der Mensch - deshalb steht
+ * Slearn gerade in Docker laeuft. `native` waehlt der Mensch - deshalb steht
  * es als eigener Knopf daneben und nicht als versteckter Default.
  */
 export function presetFields(preset: LocalRuntimePayload, native = false): Record<string, string> {

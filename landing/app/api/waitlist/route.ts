@@ -34,7 +34,7 @@ function error(status: number, message: string, field = "form") {
 
 export async function POST(request: NextRequest) {
   if (!sameOrigin(request)) {
-    return error(403, "Diese Anfrage kommt nicht von der Lernraum-Seite.");
+    return error(403, "Diese Anfrage kommt nicht von der Slearn-Seite.");
   }
   if (!limiter.allow(clientKey(request))) {
     return error(429, "Zu viele Versuche. Bitte versuche es in ein paar Minuten noch einmal.");

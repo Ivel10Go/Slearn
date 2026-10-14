@@ -1,13 +1,14 @@
 # Changelog
 
-Alle nennenswerten Änderungen an Lernraum stehen in dieser Datei.
+Alle nennenswerten Änderungen an Slearn stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die Versionen folgen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [1.1.1] – 2026-10-14
 
 ### Geändert
 
-- **Lizenz:** Lernraum steht unter der GNU Affero General Public License v3.0 oder neuer. Die Lizenz liegt jeder Installation als `LICENSE.txt` bei.
+- **Neuer Name: Slearn.** Lernraum heißt jetzt Slearn – in der App, im Installer und im Repository (`Ivel10Go/Slearn`). Der Datenordner zieht beim ersten Start einmal von `Lernraum` nach `Slearn` um; Einstellungen und Daten bleiben erhalten.
+- **Lizenz:** Slearn steht unter der GNU Affero General Public License v3.0 oder neuer. Die Lizenz liegt jeder Installation als `LICENSE.txt` bei.
 - **Release-Ablauf:** Die Installer für Windows, macOS arm64 und macOS x64 landen in einem gemeinsamen Release, und die Update-Datei für macOS enthält beide Architekturen.
 
 ### Behoben
@@ -45,5 +46,5 @@ Erste öffentliche Version.
 - Persönliches Training nur auf NVIDIA-Grafikkarten ab 6 GB; Apple Silicon (MLX) folgt.
 - Google und Apple Kalender sind bisher nur gegen nachgebildete Antworten getestet.
 
-[1.1.1]: https://github.com/Ivel10Go/School-assistant/releases/tag/v1.1.1
-[1.1.0]: https://github.com/Ivel10Go/School-assistant/releases/tag/v1.1.0
+[1.1.1]: https://github.com/Ivel10Go/Slearn/releases/tag/v1.1.1
+[1.1.0]: https://github.com/Ivel10Go/Slearn/releases/tag/v1.1.0

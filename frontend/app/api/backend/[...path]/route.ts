@@ -52,7 +52,7 @@ async function proxyRequest(request: Request, context: RouteContext) {
       headers: getForwardResponseHeaders(upstreamResponse),
     });
   } catch {
-    return jsonError("Der Lernraum-Backend ist vorübergehend nicht erreichbar.", 503);
+    return jsonError("Der Slearn-Backend ist vorübergehend nicht erreichbar.", 503);
   }
 }
 

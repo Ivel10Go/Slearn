@@ -125,7 +125,7 @@ jobs:
           npx electron-builder ${{ matrix.builder }} --publish never
       - uses: actions/upload-artifact@v4
         with:
-          name: Lernraum-${{ matrix.name }}
+          name: Slearn-${{ matrix.name }}
           path: |
             desktop/dist/*.exe
             desktop/dist/*.dmg
@@ -153,7 +153,7 @@ jobs:
         # Architektur aus, deshalb muessen beide Listen zusammen.
         run: |
           mkdir release
-          node .github/ci/merge-latest-mac.mjs artifacts/Lernraum-macos-x64/latest-mac.yml artifacts/Lernraum-macos-arm64/latest-mac.yml > release/latest-mac.yml
+          node .github/ci/merge-latest-mac.mjs artifacts/Slearn-macos-x64/latest-mac.yml artifacts/Slearn-macos-arm64/latest-mac.yml > release/latest-mac.yml
           find artifacts -type f ! -name latest-mac.yml -exec cp {} release/ \;
           ls -l release
       - name: release notes
@@ -164,9 +164,9 @@ jobs:
             echo
             echo "| System | File |"
             echo "| --- | --- |"
-            echo "| Windows (x64) | \`Lernraum-Setup-${version}.exe\` |"
-            echo "| macOS Apple Silicon | \`Lernraum-${version}-arm64.dmg\` |"
-            echo "| macOS Intel | \`Lernraum-${version}-x64.dmg\` |"
+            echo "| Windows (x64) | \`Slearn-Setup-${version}.exe\` |"
+            echo "| macOS Apple Silicon | \`Slearn-${version}-arm64.dmg\` |"
+            echo "| macOS Intel | \`Slearn-${version}-x64.dmg\` |"
             echo
             echo "> Unsigned installers: Windows *More info → Run anyway*; macOS *right-click → Open*."
             echo
@@ -179,4 +179,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" release/* --draft --title "Lernraum ${GITHUB_REF_NAME#v}" --notes-file notes.md
+          gh release create "$GITHUB_REF_NAME" release/* --draft --title "Slearn ${GITHUB_REF_NAME#v}" --notes-file notes.md

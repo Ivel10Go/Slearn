@@ -3,8 +3,8 @@
 # beides. Ein Installer laesst sich nur auf dem eigenen System bauen: Windows
 # auf Windows, macOS auf einem Mac (PyInstaller kann nicht quer kompilieren).
 appId: app.lernraum.desktop
-productName: Lernraum
-copyright: Copyright © 2026 Lernraum, AGPL-3.0-or-later
+productName: Slearn
+copyright: Copyright © 2026 Slearn, AGPL-3.0-or-later
 directories:
   output: dist
   buildResources: assets
@@ -55,13 +55,13 @@ asar: true
 publish:
   provider: github
   owner: Ivel10Go
-  repo: School-assistant
+  repo: Slearn
   releaseType: draft
 
 win:
   target: nsis
   icon: assets/icon.ico
-  artifactName: Lernraum-Setup-${version}.${ext}
+  artifactName: Slearn-Setup-${version}.${ext}
 
 nsis:
   # Ein-Klick-Installation ohne Adminrechte: installiert fuer den aktuellen
@@ -71,7 +71,7 @@ nsis:
   runAfterFinish: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Lernraum
+  shortcutName: Slearn
   # Die Lerndaten liegen im Benutzerprofil und ueberleben eine Deinstallation.
   deleteAppDataOnUninstall: false
 
@@ -85,7 +85,7 @@ mac:
     - zip
   category: public.app-category.education
   icon: assets/icon.icns
-  artifactName: Lernraum-${version}-${arch}.${ext}
+  artifactName: Slearn-${version}-${arch}.${ext}
   hardenedRuntime: true
   entitlements: assets/entitlements.mac.plist
   entitlementsInherit: assets/entitlements.mac.plist
@@ -94,7 +94,7 @@ mac:
   # APPLE_TEAM_ID) - electron-builder erkennt sie selbst. Ohne sie entsteht
   # eine unsignierte App wie bisher.
   extendInfo:
-    NSMicrophoneUsageDescription: Lernraum nutzt das Mikrofon nur, wenn du eine Frage diktierst.
+    NSMicrophoneUsageDescription: Slearn nutzt das Mikrofon nur, wenn du eine Frage diktierst.
 
 dmg:
-  title: Lernraum
+  title: Slearn

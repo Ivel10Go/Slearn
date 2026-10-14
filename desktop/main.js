@@ -2,7 +2,7 @@
 "use strict";
 
 /**
- * Lernraum als Desktop-App.
+ * Slearn als Desktop-App.
  *
  * Die App ist dieselbe Oberflaeche wie im Browser - nur dass sie ihre zwei
  * Server selbst mitbringt und startet:
@@ -47,6 +47,9 @@ const repoRoot = path.resolve(__dirname, "..");
 // `getPath("userData")` gesetzt werden - auch Chromium legt dort sein Profil ab.
 if (process.env.LERNRAUM_USER_DATA) {
   app.setPath("userData", path.resolve(process.env.LERNRAUM_USER_DATA));
+} else {
+  // Bis 1.1.0 hiess die App "Slearn"; ihr Datenordner zieht einmal um.
+  app.setPath("userData", runtime.migrateLegacyUserData({ userDataDir: app.getPath("userData") }));
 }
 const userDataDir = app.getPath("userData");
 const dataDir = path.join(userDataDir, "data");
@@ -159,7 +162,7 @@ async function startFrontend(port, backendPort) {
   // installiertes Node auf dem Rechner, und der Prozess endet mit der App.
   const child = utilityProcess.fork(serverFile, [], {
     cwd: frontendDir,
-    serviceName: "Lernraum Oberfläche",
+    serviceName: "Slearn Oberfläche",
     stdio: "pipe",
     env: {
       ...process.env,
@@ -274,7 +277,7 @@ async function fatal(message) {
   splashWindow?.destroy();
   const result = await dialog.showMessageBox({
     type: "error",
-    title: "Lernraum",
+    title: "Slearn",
     message,
     detail: `${text("dataSafe")}\n${logDir}`,
     buttons: [text("quit"), text("openLogs")],
@@ -325,7 +328,7 @@ function createMainWindow() {
     minWidth: 960,
     minHeight: 620,
     show: false,
-    title: "Lernraum",
+    title: "Slearn",
     backgroundColor: windowBackground(),
     autoHideMenuBar: true,
     // Beide Systeme behalten ihre normale Titelleiste; sie folgt ueber
@@ -411,7 +414,7 @@ function buildMenu() {
     ...(isMac
       ? [
           {
-            label: "Lernraum",
+            label: "Slearn",
             submenu: [
               { role: /** @type {const} */ ("about"), label: text("about") },
               { type: /** @type {const} */ ("separator") },
@@ -526,7 +529,7 @@ function createTray() {
     image.setTemplateImage(true);
   }
   tray = new Tray(image);
-  tray.setToolTip("Lernraum");
+  tray.setToolTip("Slearn");
   tray.on("click", showMainWindow);
   refreshTrayMenu();
 }

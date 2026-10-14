@@ -23,14 +23,14 @@
  * stehen die Entscheidungen, dort die Form der Daten.
  */
 import type {
-  LernraumNotification,
+  SlearnNotification,
   NotificationKind,
   NotificationSettings,
   QuietHours,
 } from "./types";
 import { t } from "./i18n";
 
-export type { LernraumNotification, NotificationKind, NotificationSettings, QuietHours };
+export type { SlearnNotification, NotificationKind, NotificationSettings, QuietHours };
 
 /** Die Nachrichtentypen, die zwischen Seite und Service Worker laufen. */
 export const NACHRICHT_PUSH = "LERNRAUM_PUSH";

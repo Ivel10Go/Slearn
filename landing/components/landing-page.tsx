@@ -36,7 +36,7 @@ function Kopf({ content }: { content: LandingContent }) {
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         <a href="#" aria-label={header.homeLabel} className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
           <Faultier groesse={24} still />
-          Lernraum
+          Slearn
         </a>
         <nav aria-label={header.navLabel} className="hidden items-center gap-1 md:flex">
           {header.nav.map((punkt) => (

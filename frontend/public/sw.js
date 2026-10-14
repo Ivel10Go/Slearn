@@ -21,7 +21,7 @@
 // 4. **`showNotification` wird nur aufgerufen, wenn der Browser gefragt hat.**
 //    Ein `Notification` ohne Erlaubnis ist ein Versuch, der mit einer Ausnahme
 //    endet - im Worker endet sie im Nirgends.
-const CACHE_NAME = "lernraum-static-v11";
+const CACHE_NAME = "lernraum-static-v12";
 const APP_SHELL = ["/offline/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -106,7 +106,7 @@ async function zeigeNutzlast(nutzlast) {
     // der Weg ohne Push.
     return false;
   }
-  await self.registration.showNotification(nutzlast.title || "Lernraum", {
+  await self.registration.showNotification(nutzlast.title || "Slearn", {
     body: nutzlast.body || "",
     // Ohne `tag` ersetzt jede Nachricht die vorige; mit `tag` fasst der Browser
     // dieselbe Aufgabe zu einer Benachrichtigung zusammen.
@@ -134,7 +134,7 @@ self.addEventListener("push", (event) => {
   try {
     nutzlast = event.data ? event.data.json() : {};
   } catch (error) {
-    nutzlast = { title: "Lernraum", body: event.data ? event.data.text() : "" };
+    nutzlast = { title: "Slearn", body: event.data ? event.data.text() : "" };
   }
   event.waitUntil(
     (async () => {

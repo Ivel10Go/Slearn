@@ -105,7 +105,7 @@ function VoiceRow({
         {vorschlag ? (
           <>
             <span aria-hidden="true">·</span>
-            <span className="font-medium text-foreground">{t("Vorschlag des Lernraums")}</span>
+            <span className="font-medium text-foreground">{t("Vorschlag von Slearn")}</span>
           </>
         ) : null}
       </p>
@@ -320,7 +320,7 @@ export function VoiceCatalogCard() {
         <div className="min-w-0 space-y-1">
           <CardTitle>{t("Stimmen für die Sprachausgabe")}</CardTitle>
           <CardDescription>
-            {t("Eine Stimme ist immer")}{" "}<strong>{t("eine Stimme in einer Sprache")}</strong>{t(". Für den Lernraum brauchst du eine in der Sprache der Oberfläche - jede Stimme ist eine andere Person. Ohne Stimme bleibt alles andere genau so, wie es ist.")}
+            {t("Eine Stimme ist immer")}{" "}<strong>{t("eine Stimme in einer Sprache")}</strong>{t(". Für Slearn brauchst du eine in der Sprache der Oberfläche - jede Stimme ist eine andere Person. Ohne Stimme bleibt alles andere genau so, wie es ist.")}
           </CardDescription>
         </div>
         <Button type="button" size="sm" variant="outline" onClick={() => void laden()} disabled={laedt}>

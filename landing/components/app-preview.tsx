@@ -18,7 +18,7 @@ export function AppPreview({ texts, className }: { texts: LandingContent["appPre
         <span className="size-2.5 rounded-full border border-border bg-muted" />
         <span className="size-2.5 rounded-full border border-border bg-muted" />
         <span className="size-2.5 rounded-full border border-border bg-muted" />
-        <span className="ml-3 text-[11px] text-muted-foreground">Lernraum</span>
+        <span className="ml-3 text-[11px] text-muted-foreground">Slearn</span>
       </div>
       <div className="flex">
         <aside className="hidden w-40 shrink-0 border-r border-border bg-muted/50 px-2.5 py-3 md:block">

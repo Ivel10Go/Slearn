@@ -236,7 +236,7 @@ export interface CalendarWriting {
 }
 
 /**
- * Die abonnierbare ICS-Adresse des Lernraums.
+ * Die abonnierbare ICS-Adresse von Slearn.
  *
  * `rotated` ist nach dem Erzeugen eines neuen Schlüssels wahr und weist darauf
  * hin, dass die alte Adresse nicht mehr funktioniert.
@@ -901,7 +901,7 @@ export interface QuietHours {
   spans_midnight: boolean;
 }
 
-export interface LernraumNotification {
+export interface SlearnNotification {
   id: number;
   kind: NotificationKind;
   title: string;

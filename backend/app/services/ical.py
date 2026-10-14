@@ -43,7 +43,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Final
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-PRODID: Final = "-//school-assistant//Lernraum Kalender//DE"
+PRODID: Final = "-//school-assistant//Slearn Kalender//DE"
 _LINE_BREAK: Final = "\r\n"
 # Zeilen werden nach 75 Oktetten gefaltet, weil RFC 5545 das so vorsieht. Die
 # Grenze zählt Oktette und nicht Zeichen: ein Umlaut belegt zwei.

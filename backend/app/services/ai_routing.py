@@ -99,7 +99,7 @@ SOURCE_LOCAL: Final = "local"
 SOURCE_PROVIDER: Final = "provider"
 SOURCE_FALLBACK: Final = "fallback"
 
-#: ``runtime`` des eingebauten Weges: ein im Lernraum geladenes GGUF, das
+#: ``runtime`` des eingebauten Weges: ein in Slearn geladenes GGUF, das
 #: ``app.services.local_runtimes`` per ``llama-server`` selbst startet. Seine
 #: ``integration_id`` ist 0 - es gibt keine Zeile in ``sync_sources`` dafuer, und
 #: 0 sortiert ihn innerhalb der lokalen Wege nach vorn.

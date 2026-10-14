@@ -6583,7 +6583,7 @@ def test_ics_rundlauf_behaelt_utc_und_ganztaegig() -> None:
             all_day=True,
         ),
     ]
-    text = build_calendar(ursprung, "Lernraum", "Europe/Berlin")
+    text = build_calendar(ursprung, "Slearn", "Europe/Berlin")
     assert "DTSTART:20260907T060000Z" in text
     assert "DTSTART;VALUE=DATE:20260907" in text
     zurueck = parse_calendar(text, BERLIN)
@@ -9096,7 +9096,7 @@ def test_der_stimmdownload_laeuft_ueber_denselben_manager(
 
 
 def test_abgeschaltete_sprachfunktionen_lassen_den_textmodus(app_client: TestClient, tmp_path: Path) -> None:
-    """``SPEECH_ENABLED=false`` nimmt beide Richtungen, nicht den Lernraum."""
+    """``SPEECH_ENABLED=false`` nimmt beide Richtungen, nicht Slearn."""
     manager = _manager_fuer(app_client, tmp_path)
     _whisper_installieren(manager)
     _stimmt_installieren(manager, piper_voices.voice_by_id("de-de-thorsten-medium"))
@@ -9607,7 +9607,7 @@ def test_die_sprachausgabe_kommt_als_wav_und_nicht_als_base64(app_client: TestCl
     _bereit(app_client, transcriber=None, synthesizer=_synthese(aufrufe))
     login(app_client)
 
-    antwort = app_client.post("/api/v1/speech/speak", json={"text": "Dein Lernraum."})
+    antwort = app_client.post("/api/v1/speech/speak", json={"text": "Dein Slearn."})
     assert antwort.status_code == 200
     assert antwort.headers["content-type"].startswith("audio/wav")
     assert antwort.content == ton
@@ -9621,7 +9621,7 @@ def test_die_sprachausgabe_kommt_als_wav_und_nicht_als_base64(app_client: TestCl
     argv, stdin = aufrufe.aufrufe[0]
     assert argv[argv.index("--model") + 1].endswith(stimme.onnx_name)
     assert argv[argv.index("--config") + 1].endswith(stimme.config_name)
-    assert stdin.decode("utf-8") == "Dein Lernraum."
+    assert stdin.decode("utf-8") == "Dein Slearn."
 
 
 def test_piper_mit_einer_eigenen_stimme(app_client: TestClient, tmp_path: Path) -> None:

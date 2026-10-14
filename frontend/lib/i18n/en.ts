@@ -35,7 +35,7 @@ export const en: Record<string, string> = {
 
   // Seiten
   "Hier ist etwas schiefgelaufen": "Something went wrong here",
-  "Dein Lernraum konnte diese Seite gerade nicht anzeigen. Deine Daten sind davon nicht betroffen.": "Lernraum could not display this page right now. Your data is not affected.",
+  "Dein Slearn konnte diese Seite gerade nicht anzeigen. Deine Daten sind davon nicht betroffen.": "Slearn could not display this page right now. Your data is not affected.",
   "Fehlercode:": "Error code:",
   "Erneut versuchen": "Try again",
   "Zur Übersicht": "Go to overview",
@@ -50,7 +50,7 @@ export const en: Record<string, string> = {
   "Abschnitte": "Sections",
   "Ein Server wie Ollama oder LM Studio auf deinem Rechner, oder ein Online-Dienst mit OpenAI-kompatibler Schnittstelle.": "A server such as Ollama or LM Studio on your computer, or an online service with an OpenAI-compatible API.",
   "Kein KI-Dienst verbunden": "No AI service connected",
-  "Ohne Dienst antwortet der Lernraum aus deinen Daten und Dokumenten. Unter „Hinzufügen“ stehen Vorschläge für bekannte lokale Server.": "Without a service, Lernraum answers from your data and documents. “Add” offers presets for well-known local servers.",
+  "Ohne Dienst antwortet Slearn aus deinen Daten und Dokumenten. Unter „Hinzufügen“ stehen Vorschläge für bekannte lokale Server.": "Without a service, Slearn answers from your data and documents. “Add” offers presets for well-known local servers.",
   "So entsteht eine Antwort": "How an answer is produced",
   "Der erste Weg, der antwortet, gewinnt. Jede Antwort zeigt an, woher sie kommt.": "The first route that answers wins. Every answer shows where it came from.",
   "Lokaler Server, dann Online-Dienst, sonst eine Antwort aus deinen Daten. Die genaue Reihenfolge konnte nicht geladen werden.": "Local server, then online service, otherwise an answer from your data. The exact order could not be loaded.",
@@ -61,7 +61,7 @@ export const en: Record<string, string> = {
   "Vielleicht wurde sie verschoben oder der Link ist nicht mehr aktuell.": "It may have been moved, or the link is out of date.",
   "Zu den Einstellungen": "Go to settings",
   "Keine Verbindung": "No connection",
-  "Der Lernraum ist gerade nicht erreichbar. Private Schul- und Lerndaten werden offline nicht gespeichert.": "Lernraum cannot be reached right now. Private school and study data is not stored offline.",
+  "Slearn ist gerade nicht erreichbar. Private Schul- und Lerndaten werden offline nicht gespeichert.": "Slearn cannot be reached right now. Private school and study data is not stored offline.",
 
   // components/app-shell.tsx
   "Übersicht": "Overview",
@@ -76,8 +76,8 @@ export const en: Record<string, string> = {
   "Einstellungen": "Settings",
   "Mehr": "More",
   "Zum Inhalt springen": "Skip to content",
-  "Lernraum Startseite": "Lernraum home",
-  "Lernraum": "Lernraum",
+  "Slearn Startseite": "Slearn home",
+  "Slearn": "Slearn",
   "Hauptnavigation": "Main navigation",
   "Mobile Navigation": "Mobile navigation",
   "Lernende:r": "Learner",
@@ -89,7 +89,7 @@ export const en: Record<string, string> = {
   "Dunkles Design": "Dark theme",
 
   // components/setup-gate.tsx
-  "Willkommen im Lernraum": "Welcome to Lernraum",
+  "Willkommen in Slearn": "Welcome to Slearn",
   "Stundenplan, Hausaufgaben, Prüfungen und Lernzeit an einem Ort. Alles bleibt auf diesem Rechner.": "Timetable, homework, exams and study time in one place. Everything stays on this computer.",
   "Wie sollen wir dich nennen?": "What should we call you?",
   "Vorname": "First name",
@@ -191,7 +191,7 @@ export const en: Record<string, string> = {
   "Offen": "Open",
   "In Arbeit": "In progress",
   "Dashboard wird geladen": "Loading dashboard",
-  "Der Lernraum ist gerade nicht erreichbar": "Lernraum cannot be reached right now",
+  "Slearn ist gerade nicht erreichbar": "Slearn cannot be reached right now",
   "Willkommen, {name}.": "Welcome, {name}.",
   "Willkommen.": "Welcome.",
   "Tagessatz neu formulieren": "Rephrase today's message",
@@ -702,7 +702,7 @@ export const en: Record<string, string> = {
   // components/settings/backup-status-card.tsx
   "Der Worker hat nichts zum Backup gemeldet.": "The worker has not reported anything about backups.",
   "Der Backup-Status konnte nicht geladen werden.": "The backup status could not be loaded.",
-  "Die Antwort des Lernraums war nicht lesbar.": "Lernraum's response could not be read.",
+  "Die Antwort von Slearn war nicht lesbar.": "Slearn's response could not be read.",
   "Sicherung": "Backup",
   "Der Worker legt regelmäßig einen Dump der Datenbank ab. Ein Backup sichert nicht die hochgeladenen Dateien.": "The worker regularly stores a dump of the database. A backup does not include uploaded files.",
   "Aktualisieren": "Refresh",
@@ -723,7 +723,7 @@ export const en: Record<string, string> = {
 
   // components/settings/desktop-card.tsx
   "Desktop-App": "Desktop app",
-  "Datenbank, Dokumente und Modelle liegen in einem Ordner. Zum Sichern Lernraum beenden und den Ordner kopieren.": "Database, documents and models live in one folder. To back up, quit Lernraum and copy the folder.",
+  "Datenbank, Dokumente und Modelle liegen in einem Ordner. Zum Sichern Slearn beenden und den Ordner kopieren.": "Database, documents and models live in one folder. To back up, quit Slearn and copy the folder.",
   "Ordner öffnen": "Open folder",
   "Beim Anmelden starten": "Start at login",
   "Ohne Fenster, nur in der Menüleiste - damit Erinnerungen auch ohne geöffnete App kommen.": "Without a window, just in the menu bar - so reminders arrive even when the app isn't open.",
@@ -800,7 +800,7 @@ export const en: Record<string, string> = {
   "Der Export ist fehlgeschlagen.": "The export failed.",
   "Das Konto konnte nicht gelöscht werden.": "The account could not be deleted.",
   "Deine Daten": "Your data",
-  "Alles, was du im Lernraum gespeichert hast, als Datei herunterladen oder endgültig löschen. Mehr dazu in der": "Download everything you have stored in Lernraum as a file, or delete it permanently. More in the",
+  "Alles, was du in Slearn gespeichert hast, als Datei herunterladen oder endgültig löschen. Mehr dazu in der": "Download everything you have stored in Slearn as a file, or delete it permanently. More in the",
   "Datenschutzerklärung": "privacy policy",
   "Eine ZIP-Datei mit allen Einträgen (Fächer, Noten, Aufgaben, Notizen des Assistenten …) und deinen hochgeladenen Dokumenten. Zugangsdaten und Schlüssel sind nicht enthalten.": "A ZIP file with all entries (subjects, grades, tasks, assistant notes …) and your uploaded documents. Credentials and keys are not included.",
   "Wird erstellt …": "Creating …",
@@ -843,7 +843,7 @@ export const en: Record<string, string> = {
   "Jetzt abmelden": "Sign out now",
   "Abmelden": "Sign out",
   "Darstellung": "Appearance",
-  "Wähle, ob dein Lernraum hell, dunkel oder wie das System erscheint.": "Choose whether Lernraum appears light, dark or like your system.",
+  "Wähle, ob dein Slearn hell, dunkel oder wie das System erscheint.": "Choose whether Slearn appears light, dark or like your system.",
   "Farbschema": "Colour scheme",
   "Unvollständig": "Incomplete",
   "Lokal": "Local",
@@ -862,7 +862,7 @@ export const en: Record<string, string> = {
   "Mit Google verbinden": "Connect with Google",
   "(optional)": "(optional)",
   "(alternativ)": "(alternative)",
-  "Leer lassen genügt: Dann erkennt der Lernraum die Art an der Adresse.": "Leaving it empty is fine: Lernraum then recognises the type from the address.",
+  "Leer lassen genügt: Dann erkennt Slearn die Art an der Adresse.": "Leaving it empty is fine: Slearn then recognises the type from the address.",
   "Neue Verbindung": "New connection",
   "Zugangsdaten werden verschlüsselt gespeichert und nie im Browser abgelegt.": "Credentials are stored encrypted and never kept in the browser.",
   "Dienst": "Service",
@@ -910,7 +910,7 @@ export const en: Record<string, string> = {
   "Das Beispiel konnte nicht gelöscht werden.": "The example could not be deleted.",
   "Die Beispiele konnten nicht gelöscht werden.": "The examples could not be deleted.",
   "Persönliches Training": "Personal training",
-  "Mit deiner Freigabe hebt der Lernraum Antworten des Assistenten auf – zusammen mit dem, was du daraus gemacht hast: eingetragen, verworfen, Notiz gelöscht, Daumen. Auf einem Rechner mit passender Grafikkarte entsteht daraus eine Ergänzung zum Modell, die nur auf dich abgestimmt ist. Beispiele und Training bleiben auf diesem Rechner.": "With your permission, Lernraum keeps the assistant's answers – together with what you did with them: added, dismissed, note deleted, thumbs. On a computer with a suitable graphics card this becomes an add-on to the model that is tuned to you alone. Examples and training stay on this computer.",
+  "Mit deiner Freigabe hebt Slearn Antworten des Assistenten auf – zusammen mit dem, was du daraus gemacht hast: eingetragen, verworfen, Notiz gelöscht, Daumen. Auf einem Rechner mit passender Grafikkarte entsteht daraus eine Ergänzung zum Modell, die nur auf dich abgestimmt ist. Beispiele und Training bleiben auf diesem Rechner.": "With your permission, Slearn keeps the assistant's answers – together with what you did with them: added, dismissed, note deleted, thumbs. On a computer with a suitable graphics card this becomes an add-on to the model that is tuned to you alone. Examples and training stay on this computer.",
   "Antworten fürs Training sammeln": "Collect answers for training",
   "Standardmäßig aus. Ausschalten behält das Gesammelte – löschen kannst du es unten.": "Off by default. Turning it off keeps what was collected – you can delete it below.",
   "Dieser Rechner kann trainieren": "This computer can train",
@@ -958,7 +958,7 @@ export const en: Record<string, string> = {
   "Deutsch": "German",
   "Andere Sprachen": "Other languages",
   "Die Stimmen konnten nicht geladen werden.": "The voices could not be loaded.",
-  "Vorschlag des Lernraums": "Lernraum's suggestion",
+  "Vorschlag von Slearn": "Slearn's suggestion",
   "Technische Angaben": "Technical details",
   "Abtastrate": "Sample rate",
   "Hz": "Hz",
@@ -988,14 +988,14 @@ export const en: Record<string, string> = {
   // lib/ai-runtime.ts
   "Keine Treffer": "No matches",
   "Aus deinen Daten": "From your data",
-  "Läuft der Lernraum in Docker, zeigt „{url}“ auf den Container, nicht auf deinen Rechner. Nimm {ersatz}.": "If Lernraum runs in Docker, “{url}” points to the container, not to your computer. Use {ersatz}.",
+  "Läuft Slearn in Docker, zeigt „{url}“ auf den Container, nicht auf deinen Rechner. Nimm {ersatz}.": "If Slearn runs in Docker, “{url}” points to the container, not to your computer. Use {ersatz}.",
   "1. Kein KI-Server eingetragen.": "1. No AI server configured.",
 
   // lib/api.ts
-  "Der Lernraum ist gerade nicht erreichbar. Alles hier laeuft ohne Modell.": "Lernraum cannot be reached right now. Everything here works without a model.",
-  "Der Lernraum ist gerade nicht erreichbar.": "Lernraum cannot be reached right now.",
+  "Slearn ist gerade nicht erreichbar. Alles hier laeuft ohne Modell.": "Slearn cannot be reached right now. Everything here works without a model.",
+  "Slearn ist gerade nicht erreichbar.": "Slearn cannot be reached right now.",
   "API-Anfragen sind nur im Browser verfügbar.": "API requests are only available in the browser.",
-  "Die Verbindung zum Lernraum konnte nicht hergestellt werden.": "Could not connect to Lernraum.",
+  "Die Verbindung zu Slearn konnte nicht hergestellt werden.": "Could not connect to Slearn.",
   "Die Anfrage ist fehlgeschlagen ({status}).": "The request failed ({status}).",
   "Demo-Lernende": "Demo learner",
   "Die Lernaufgabe ist ungültig.": "The study task is invalid.",
@@ -1055,7 +1055,7 @@ export const en: Record<string, string> = {
   "Suche nach Updates …": "Checking for updates …",
   "Version {n} wird geladen …": "Downloading version {n} …",
   "Version {n} ist bereit und wird beim nächsten Neustart installiert.": "Version {n} is ready and will be installed on the next restart.",
-  "Lernraum ist aktuell.": "Lernraum is up to date.",
+  "Slearn ist aktuell.": "Slearn is up to date.",
   "Die Suche nach Updates ist fehlgeschlagen.": "Checking for updates failed.",
   "Updates werden automatisch gesucht.": "Updates are checked automatically.",
 
@@ -1216,7 +1216,7 @@ export const en: Record<string, string> = {
   "Das Passwort stimmt nicht.": "The password is incorrect.",
   "Das Training ist nicht eingerichtet": "Training is not set up",
   "Das weiß der Assistent schon.": "The assistant already knows that.",
-  "Der Lernraum ist bereits eingerichtet.": "Lernraum is already set up.",
+  "Slearn ist bereits eingerichtet.": "Slearn is already set up.",
   "Der Modelldownload ist nicht eingerichtet": "Model download is not set up",
   "Der Sprachdienst ist nicht eingerichtet": "The speech service is not set up",
   "Die Sprachfunktion liess sich nicht ausfuehren.": "The speech function could not be run.",
@@ -1225,7 +1225,7 @@ export const en: Record<string, string> = {
 
   // Sprachwahl und Stimmen
   "Sprache der Oberfläche, der Antworten des Assistenten und der Stimme. Ein Wechsel lädt die Seite neu.": "Language of the interface, the assistant's answers and the voice. Changing it reloads the page.",
-  ". Für den Lernraum brauchst du eine in der Sprache der Oberfläche - jede Stimme ist eine andere Person. Ohne Stimme bleibt alles andere genau so, wie es ist.": ". Lernraum needs one in the interface language - each voice is a different person. Without a voice, everything else stays exactly as it is.",
+  ". Für Slearn brauchst du eine in der Sprache der Oberfläche - jede Stimme ist eine andere Person. Ohne Stimme bleibt alles andere genau so, wie es ist.": ". Slearn needs one in the interface language - each voice is a different person. Without a voice, everything else stays exactly as it is.",
   "Der Katalog enthält zurzeit keine Stimme.": "The catalogue currently contains no voices.",
   "Es ist noch keine Stimme in der Sprache der Oberfläche geladen. Eine Stimme in einer anderen Sprache wird nicht ausgegeben - lade unten eine passende nach.": "No voice in the interface language is downloaded yet. A voice in another language is not used - download a matching one below.",
   "Piper läuft als eigenes Programm auf dem Server und lädt die Dateien zur Laufzeit. Fehlt es, bleibt die Spracheingabe und der Textmodus unverändert - nur das Vorlesen fällt dann aus.": "Piper runs as a separate program on the server and loads the files at runtime. If it is missing, speech input and text mode are unaffected - only reading aloud is unavailable.",
@@ -1233,7 +1233,7 @@ export const en: Record<string, string> = {
   // Saetze mit eingebettetem Link (tSplit)
   "Modelle und Stimmen richtest du unter {link} ein.": "You can set up models and voices under {link}.",
   "Es ist noch kein Dokument vorhanden. Lade unter {link} eine Textdatei mit deinem Notenspiegel hoch.": "There is no document yet. Upload a text file with your grade sheet under {link}.",
-  "Text, PDF und Fotos (JPG, PNG, WebP). Fotos und Scans – auch handschriftliche Aufschriebe – schreibt das Bildmodell im Hintergrund ab; die Art (Aufschrieb, Arbeitsblatt, Lösung) erkennt der Lernraum selbst, und du kannst sie korrigieren. Ein ganzer Ordner lässt sich unter {link} über eine Dokumentverbindung indexieren.": "Text, PDF and photos (JPG, PNG, WebP). Photos and scans – handwritten notes too – are transcribed by the image model in the background; Lernraum recognises the type (class notes, worksheet, solution) itself, and you can correct it. A whole folder can be indexed under {link} using a document connection.",
+  "Text, PDF und Fotos (JPG, PNG, WebP). Fotos und Scans – auch handschriftliche Aufschriebe – schreibt das Bildmodell im Hintergrund ab; die Art (Aufschrieb, Arbeitsblatt, Lösung) erkennt Slearn selbst, und du kannst sie korrigieren. Ein ganzer Ordner lässt sich unter {link} über eine Dokumentverbindung indexieren.": "Text, PDF and photos (JPG, PNG, WebP). Photos and scans – handwritten notes too – are transcribed by the image model in the background; Slearn recognises the type (class notes, worksheet, solution) itself, and you can correct it. A whole folder can be indexed under {link} using a document connection.",
   "Für Fotos und Scans lädst du unter {link} das Bildmodell Qwen2.5-VL. Danach wird es automatisch abgeschrieben.": "For photos and scans, download the image model Qwen2.5-VL under {link}. After that they are transcribed automatically.",
   "Zum Diktieren {taste} halten. Aufgezeichnet wird nur, wenn gerade kein Eingabefeld den Fokus hat.": "Hold {taste} to dictate. Recording only happens when no input field has focus.",
 
@@ -1288,7 +1288,7 @@ export const en: Record<string, string> = {
   "Thorsten (deutsch, hoch)": "Thorsten (German, high)",
   "Amy (englisch, mittel)": "Amy (English, medium)",
   "Weibliche deutsche Stimme mit 16.000 Hz. Die zweite Sprecherin im Katalog, damit die Auswahl eine echte ist: eine andere Person, eine andere Stimmfarbe.": "Female German voice at 16,000 Hz. The second speaker in the catalogue so there is a real choice: a different person, a different timbre.",
-  "Männliche deutsche Stimme in mittlerer Qualität, 22.050 Hz. Die Voreinstellung des Lernraums: verständlich und nicht zu langsam.": "Male German voice in medium quality, 22,050 Hz. Lernraum's default for German: clear and not too slow.",
+  "Männliche deutsche Stimme in mittlerer Qualität, 22.050 Hz. Die Voreinstellung von Slearn: verständlich und nicht zu langsam.": "Male German voice in medium quality, 22,050 Hz. Slearn's default for German: clear and not too slow.",
   "Dieselbe Stimme in hoher Qualität. Erkennbar sauberer, aber fast doppelt so groß und auf einer CPU merklich langsamer - vor allem beim Vorlesen langer Antworten.": "The same voice in high quality. Noticeably cleaner, but almost twice the size and clearly slower on a CPU - especially when reading long answers.",
   "Englische Stimme. Bewusst im Katalog, obwohl die Oberfläche deutsch ist: so ist sichtbar, dass „deutsche Stimme“ und „diese Stimme“ zwei Entscheidungen sind - und eine geladene englische Stimme wird nicht stillschweigend zum Voreinstellen.": "English voice. Used when the interface is set to English.",
   "Importiert Stundenplan, Kurse und Klausuren aus deinem Schulportal.": "Imports timetable, courses and exams from your school portal.",
