@@ -159,23 +159,23 @@ test("es bleiben nur die letzten Update-Sicherungen liegen", () => {
   assert.equal(left.length, runtime.KEEP_UPDATE_BACKUPS);
 });
 
-test("der alte Datenordner Slearn zieht nach Slearn um", () => {
+test("der alte Datenordner Lernraum zieht nach Slearn um", () => {
   const appData = tempDir();
-  fs.mkdirSync(path.join(appData, "Slearn", "data"), { recursive: true });
-  fs.writeFileSync(path.join(appData, "Slearn", "data", "lernraum.db"), "alt");
+  fs.mkdirSync(path.join(appData, "Lernraum", "data"), { recursive: true });
+  fs.writeFileSync(path.join(appData, "Lernraum", "data", "lernraum.db"), "alt");
   const target = path.join(appData, "Slearn");
   assert.equal(runtime.migrateLegacyUserData({ userDataDir: target }), target);
   assert.equal(fs.readFileSync(path.join(target, "data", "lernraum.db"), "utf8"), "alt");
-  assert.equal(fs.existsSync(path.join(appData, "Slearn")), false);
+  assert.equal(fs.existsSync(path.join(appData, "Lernraum")), false);
 });
 
 test("ein vorhandener neuer Datenordner wird nicht angefasst", () => {
   const appData = tempDir();
-  fs.mkdirSync(path.join(appData, "Slearn"));
+  fs.mkdirSync(path.join(appData, "Lernraum"));
   fs.mkdirSync(path.join(appData, "Slearn"));
   const target = path.join(appData, "Slearn");
   assert.equal(runtime.migrateLegacyUserData({ userDataDir: target }), target);
-  assert.equal(fs.existsSync(path.join(appData, "Slearn")), true);
+  assert.equal(fs.existsSync(path.join(appData, "Lernraum")), true);
 });
 
 test("ohne alten Ordner bleibt es beim neuen", () => {

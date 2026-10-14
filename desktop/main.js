@@ -48,7 +48,7 @@ const repoRoot = path.resolve(__dirname, "..");
 if (process.env.LERNRAUM_USER_DATA) {
   app.setPath("userData", path.resolve(process.env.LERNRAUM_USER_DATA));
 } else {
-  // Bis 1.1.0 hiess die App "Slearn"; ihr Datenordner zieht einmal um.
+  // Bis 1.1.0 hiess die App "Lernraum"; ihr Datenordner zieht einmal um.
   app.setPath("userData", runtime.migrateLegacyUserData({ userDataDir: app.getPath("userData") }));
 }
 const userDataDir = app.getPath("userData");

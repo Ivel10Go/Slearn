@@ -391,8 +391,8 @@ function backupBeforeUpdate({ dataDir, version, now = new Date() }) {
 }
 
 /**
- * Bis 1.1.0 hiess die App "Slearn", und Electron legte die Daten unter
- * `<appData>/Slearn` ab. Mit dem Namen "Slearn" sucht es `<appData>/Slearn`
+ * Bis 1.1.0 hiess die App "Lernraum", und Electron legte die Daten unter
+ * `<appData>/Lernraum` ab. Mit dem Namen "Slearn" sucht es `<appData>/Slearn`
  * - ohne diesen Schritt startete ein Update mit leerer Datenbank, waehrend die
  * alten Daten unbenutzt daneben laegen.
  *
@@ -404,7 +404,7 @@ function backupBeforeUpdate({ dataDir, version, now = new Date() }) {
  * @param {{ userDataDir: string, legacyName?: string }} options
  * @returns {string} der Ordner, den die App benutzen soll
  */
-function migrateLegacyUserData({ userDataDir, legacyName = "Slearn" }) {
+function migrateLegacyUserData({ userDataDir, legacyName = "Lernraum" }) {
   const legacyDir = path.join(path.dirname(userDataDir), legacyName);
   if (legacyDir === userDataDir || fs.existsSync(userDataDir) || !fs.existsSync(legacyDir)) {
     return userDataDir;
