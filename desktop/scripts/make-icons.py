@@ -1,5 +1,5 @@
 """Erzeugt das App-Symbol: ein schwarzes, leicht gerundetes Quadrat mit dem Gesicht
-des Faultier-Maskottchens (Entwurf C1 hell / C2 dunkel, siehe logo/).
+des Faultier-Maskottchens (Entwurf C1 hell / C2 dunkel).
 
     python scripts/make-icons.py
 
