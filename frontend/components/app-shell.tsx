@@ -83,8 +83,8 @@ function isActive(pathname: string, href: string) {
 }
 
 /**
- * Das Zeichen der App: der Kopf des Faultiers (Entwurf C1 hell / C2 dunkel,
- * siehe `logo/`). Der Hintergrund folgt dem Theme, der Hairline-Ring haelt das
+ * Das Zeichen der App: der Kopf des Faultiers (Entwurf C1 hell / C2 dunkel).
+ * Der Hintergrund folgt dem Theme, der Hairline-Ring haelt das
  * Quadrat auf dem Seitenhintergrund sichtbar.
  */
 export function BrandMark({ className }: { className?: string }) {

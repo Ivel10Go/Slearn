@@ -38,3 +38,8 @@ data/**
 !data/backups/.gitkeep
 !data/imports/
 !data/imports/.gitkeep
+
+# Nicht Teil des Codes: Werbung, Logo-Entwuerfe, Vorschauen (liegen nur lokal)
+marketing/
+logo/
+maskottchen-vorschau.html
