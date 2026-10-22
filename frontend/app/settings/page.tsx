@@ -1,15 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { SettingsView } from "@/components/settings/settings-view";
 import { logout } from "@/lib/api";
+import { LOGIN_PATH } from "@/lib/auth";
 import { useIntegrations } from "@/lib/use-integrations";
 import { useNotifications } from "@/lib/use-notifications";
 
 export default function SettingsPage() {
-  const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const notifications = useNotifications();
   const {
@@ -37,13 +36,14 @@ export default function SettingsPage() {
   } = useIntegrations();
 
   /**
-   * Meldet ab und wechselt zur Startseite.
+   * Meldet ab und wechselt zur Anmeldeseite.
    *
    * `POST /auth/logout` loescht nur das Session-Cookie. Die Seiten von hier
    * laden ihre Daten ueber `GET /v1/...`, das ohne Cookie mit 401 endet -
    * ohne den Wechsel wuerde also eine Fehlermeldung statt von Slearn
-   * stehen bleiben. `router.replace` statt `push`, damit die Zuruecktaste
-   * nicht auf eine abgelaufene Seite fuehrt.
+   * stehen bleiben. Ein echtes Neuladen statt `router.replace`: die Schranke
+   * prueft die Sitzung nur beim Laden, und `replace` statt `assign`, damit die
+   * Zuruecktaste nicht auf eine abgelaufene Seite fuehrt.
    */
   async function abmelden() {
     setIsLoggingOut(true);
@@ -53,9 +53,7 @@ export default function SettingsPage() {
       // Auch bei einem Fehler wird weitergewechselt: ohne Cookie ist die
       // Sitzung ungueltig, und die Seiten wuerden ohnehin 403 bekommen.
     } finally {
-      setIsLoggingOut(false);
-      router.replace("/");
-      router.refresh();
+      window.location.replace(LOGIN_PATH);
     }
   }
 

@@ -6,10 +6,11 @@ import { BrandMark } from "@/components/app-shell";
 import { LanguageSelect } from "@/components/language-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ApiError, completeSetup, getSetupStatus } from "@/lib/api";
+import { usePathname, useRouter } from "next/navigation";
+import { ApiError, completeSetup, getSession, getSetupMode } from "@/lib/api";
+import { LOGIN_PATH, NEXT_PARAM, loginHref, resolveAccess, safeNextPath, type Access } from "@/lib/auth";
 import { t } from "@/lib/i18n";
-
-type GateState = "checking" | "needed" | "ready";
+import { ServerModeContext } from "@/lib/use-access";
 
 function localTimezone() {
   try {
@@ -26,20 +27,24 @@ function localTimezone() {
  * mit 503. Statt die Seiten das einzeln abfangen zu lassen, steht diese Schranke
  * einmal vor allem: solange `/v1/setup` "noch einzurichten" meldet, gibt es nur
  * die Frage nach dem Namen. Ein Server mit Anmeldung meldet 404 - dann ist die
- * Schranke offen und die Web-Fassung verhaelt sich wie bisher.
+ * Schranke eine Anmeldeschranke: ohne Sitzung fuehrt jede Seite nach
+ * `/anmelden` und nach der Anmeldung dorthin zurueck.
  *
  * Waehrend der Pruefung wird nichts gezeigt und nicht die Seite: die Seite
- * wuerde sofort ihre Daten laden, auf den 503 laufen und einen Fehler blitzen
- * lassen, den es eine Zehntelsekunde spaeter nicht mehr gibt.
+ * wuerde sofort ihre Daten laden, auf den 503 (oder 401) laufen und einen
+ * Fehler blitzen lassen, den es eine Zehntelsekunde spaeter nicht mehr gibt.
  */
 export function SetupGate({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<GateState>("checking");
+  const router = useRouter();
+  const pathname = usePathname();
+  const [access, setAccess] = useState<Access | null>(null);
+  const onLoginPage = pathname === LOGIN_PATH;
 
   useEffect(() => {
     let aktiv = true;
-    void getSetupStatus().then((needed) => {
+    void resolveAccess({ setupMode: getSetupMode, session: getSession }).then((result) => {
       if (aktiv) {
-        setState(needed ? "needed" : "ready");
+        setAccess(result);
       }
     });
     return () => {
@@ -47,13 +52,27 @@ export function SetupGate({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  if (state === "checking") {
+  // Ohne Sitzung zur Anmeldung, mit Sitzung (oder ohne Anmeldung) weg von ihr.
+  // `replace`, damit die Zuruecktaste nicht zwischen beiden hin- und herspringt.
+  useEffect(() => {
+    if (access?.state === "login" && !onLoginPage) {
+      router.replace(loginHref(`${window.location.pathname}${window.location.search}`));
+    }
+    if (access?.state === "ready" && onLoginPage) {
+      router.replace(safeNextPath(new URLSearchParams(window.location.search).get(NEXT_PARAM)));
+    }
+  }, [access, onLoginPage, router]);
+
+  if (access === null) {
     return <div className="min-h-screen bg-background" aria-busy="true" />;
   }
-  if (state === "needed") {
+  if (access.state === "setup") {
     return <Onboarding />;
   }
-  return <>{children}</>;
+  if ((access.state === "login") !== onLoginPage) {
+    return <div className="min-h-screen bg-background" aria-busy="true" />;
+  }
+  return <ServerModeContext.Provider value={access.serverMode}>{children}</ServerModeContext.Provider>;
 }
 
 function Onboarding() {

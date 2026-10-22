@@ -71,6 +71,7 @@ import { cn } from "@/lib/utils";
 import type { IntegrationWrite } from "@/lib/api";
 import type { NotificationApi, NotificationState } from "@/lib/use-notifications";
 import { t, tn, translateServerText } from "@/lib/i18n";
+import { useServerMode } from "@/lib/use-access";
 
 type BadgeVariant = "default" | "secondary" | "outline" | "success" | "warning" | "info" | "accent";
 
@@ -147,6 +148,7 @@ interface AccountCardProps {
 
 function AccountCard({ user, onLogout, isLoggingOut }: AccountCardProps) {
   const [abmeldeOffen, setAbmeldeOffen] = useState(false);
+  const serverMode = useServerMode();
   const displayName = user?.username ?? t("Lernende:r");
   const details = [
     { label: t("E-Mail"), value: user?.email || t("Nicht hinterlegt") },
@@ -182,9 +184,10 @@ function AccountCard({ user, onLogout, isLoggingOut }: AccountCardProps) {
         {/*
           `POST /v1/auth/logout` loescht nur das Session-Cookie. Die Daten
           bleiben, deshalb ist der Knopf erst nach einer Bestaetigung aktiv -
-          sonst waere ein Fehlklick der ganze Abmeldevorgang.
+          sonst waere ein Fehlklick der ganze Abmeldevorgang. Ohne Anmeldung
+          (Desktop, `AUTH_ENABLED=false`) gibt es kein Cookie und keinen Knopf.
         */}
-        {user ? (
+        {user && serverMode ? (
           <div className="flex flex-wrap items-center gap-2">
             {abmeldeOffen ? (
               <>
