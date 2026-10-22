@@ -30,6 +30,7 @@ import type {
   IntegrationTestResult,
   UserResponse,
 } from "./types";
+import { loginHref } from "./auth";
 import { t } from "./i18n";
 
 type SettingsStatus = "loading" | "ready" | "error";
@@ -98,7 +99,11 @@ export function useIntegrations() {
         return;
       }
       if (!user) {
+        // Nur im Server-Modus moeglich: die Sitzung ist abgelaufen, seit die
+        // Schranke sie geprueft hat. Die Meldung bleibt stehen, bis die
+        // Anmeldeseite da ist.
         setState((current) => ({ ...current, status: "error", error: t("Es ist kein Benutzerkonto vorhanden.") }));
+        window.location.replace(loginHref(`${window.location.pathname}${window.location.search}`));
         return;
       }
 

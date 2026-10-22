@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -9,17 +9,21 @@ import {
   FileText,
   Home,
   ListChecks,
+  LogOut,
   MessageSquareText,
   Settings,
   TrendingUp,
   type LucideIcon,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { logout } from "@/lib/api";
+import { LOGIN_PATH } from "@/lib/auth";
 import { getInitials } from "@/lib/format";
 import { isNavigationHrefActive } from "@/lib/navigation";
 import type { UserResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
+import { useServerMode } from "@/lib/use-access";
 
 interface AppShellProps {
   children: ReactNode;
@@ -118,7 +122,43 @@ function SidebarLink({ item, active }: { item: NavItem; active: boolean }) {
   );
 }
 
+/**
+ * Abmelden aus der Seitenleiste, nur im Server-Modus.
+ *
+ * Ohne Rueckfrage, anders als in den Einstellungen: hier steht der Knopf neben
+ * dem eigenen Namen, und die Daten bleiben ohnehin auf dem Server. Ein Fehler
+ * beim Abmelden haelt den Wechsel nicht auf - die Anmeldeseite fragt die
+ * Sitzung beim Laden ohnehin neu.
+ */
+function LogoutButton() {
+  const [pending, setPending] = useState(false);
+
+  async function abmelden() {
+    setPending(true);
+    try {
+      await logout();
+    } catch {
+      // siehe oben
+    }
+    window.location.replace(LOGIN_PATH);
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void abmelden()}
+      disabled={pending}
+      className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+      aria-label={t("Abmelden")}
+      title={t("Abmelden")}
+    >
+      <LogOut className="h-4 w-4" aria-hidden="true" />
+    </button>
+  );
+}
+
 export function AppShell({ children, user }: AppShellProps) {
+  const serverMode = useServerMode();
   const pathname = usePathname();
   const displayName = user?.username ?? "Lernende:r";
 
@@ -164,6 +204,7 @@ export function AppShell({ children, user }: AppShellProps) {
             </span>
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{displayName}</span>
             <ThemeToggle />
+            {serverMode ? <LogoutButton /> : null}
           </div>
         </div>
       </aside>

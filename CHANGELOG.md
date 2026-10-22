@@ -3,6 +3,12 @@
 Alle nennenswerten Änderungen an Slearn stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die Versionen folgen [Semantic Versioning](https://semver.org/lang/de/).
 
+## [Unreleased]
+
+### Hinzugefügt
+
+- **Anmeldeseite für den Server-Betrieb.** Mit `AUTH_ENABLED=true` führt jede Seite ohne Sitzung nach `/anmelden` (Benutzername und Passwort, eigene Meldungen für falsche Zugangsdaten und zu viele Versuche) und danach zurück zur aufgerufenen Seite. Abmelden steht in der Seitenleiste und in den Einstellungen – nur im Server-Betrieb; Desktop-App und lokaler Modus bleiben unverändert.
+
 ## [1.1.1] – 2026-10-14
 
 ### Geändert

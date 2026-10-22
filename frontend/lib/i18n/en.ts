@@ -96,6 +96,16 @@ export const en: Record<string, string> = {
   "Los geht's": "Let's go",
   "Stundenplan aus WebUntis, Kalender und KI-Dienste kannst du später in den Einstellungen verbinden.": "You can connect your WebUntis timetable, calendars and AI services later in the settings.",
 
+  // app/anmelden/page.tsx, lib/auth.ts
+  "Bei Slearn anmelden": "Sign in to Slearn",
+  "Melde dich mit dem Konto an, das für diesen Server eingerichtet ist.": "Sign in with the account set up for this server.",
+  "Anmelden": "Sign in",
+  "Wird angemeldet …": "Signing in …",
+  "Benutzername oder Passwort stimmt nicht.": "Username or password is incorrect.",
+  "Zu viele Anmeldeversuche. Warte ein paar Minuten und versuche es dann noch einmal.": "Too many sign-in attempts. Wait a few minutes and then try again.",
+  "Bitte gib Benutzername und Passwort ein.": "Please enter your username and password.",
+  "Die Anmeldung hat nicht geklappt. Bitte versuche es noch einmal.": "Signing in didn't work. Please try again.",
+
   // components/assistant/assistant-view.tsx
   "Das hat leider nicht geklappt. Trag es bitte über den Knopf ein.": "Sorry, that didn't work. Please add it with the button.",
   "Erledigt, ist eingetragen.": "Done, it's added.",

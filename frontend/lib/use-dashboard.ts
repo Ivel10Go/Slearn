@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, getDashboard, getSession } from "./api";
 import type { DashboardData, UserResponse } from "./types";
+import { loginHref } from "./auth";
 import { t } from "./i18n";
 
 type DashboardStatus = "loading" | "ready" | "error";
@@ -43,7 +44,11 @@ export function useDashboard() {
         return;
       }
       if (!user) {
+        // Nur im Server-Modus moeglich: die Sitzung ist abgelaufen, seit die
+        // Schranke sie geprueft hat. Die Meldung bleibt stehen, bis die
+        // Anmeldeseite da ist.
         setState((current) => ({ ...current, status: "error", error: t("Es ist kein Benutzerkonto vorhanden.") }));
+        window.location.replace(loginHref(`${window.location.pathname}${window.location.search}`));
         return;
       }
 

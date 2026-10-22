@@ -7,6 +7,7 @@ import { isDemoTaskId, normalizeDashboard, normalizeGreeting, normalizeScheduleR
 import { collectSubjectNames, parseCalendarEventArray, parseCalendarEventRead, parseCalendarFeed, parseCalendarWriting, parseDocumentAnswer, parseDocumentArray, parseDocumentSearchResult, parseExamArray, parseExamRead, parseExamTaskPlanResult, parseFileUploadResponse, parseGradeArray, parseGradeImportPreview, parseGradeImportResult, parseGradeRead, parseGradeSharing, parseGradeSummary, parseHomeworkArray, parseHomeworkRead, parseIntegrationArray, parseIntegrationAuthorize, parseIntegrationCatalogArray, parseIntegrationRead, parseIntegrationSyncResult, parseIntegrationTestResult, parseLearningInsights, parseMarkReadResult, parseNotificationArray, parseNotificationSettings, parsePushSubscription, parsePushSubscriptionArray, parseReminderRun, parseRewardOverview, parseStudyDependencyArray, parseStudyDependencyRead, parseStudyPlanArray, parseStudyPlanRead, parseStudySeriesArray, parseStudySeriesRead, parseStudySessionRead, parseStudyTaskArray, parseStudyTaskRead, parseSubjectArray, parseSubjectRead, parseTopicProgressArray, parseTopicProgressRead, parseLoginResponse, parseUserResponse, parseUserSession, parseVapidKey, parseWeeklyGoalRead } from "./schemas";
 import type { CalendarFeed, CalendarWriting, ExamTaskPlanResult, IntegrationAuthorize, IntegrationCatalog, IntegrationRead, IntegrationSyncResult, IntegrationTestResult, LearningInsights, MaterialKind, RewardOverview, StudyPlan, StudyTaskDependency, StudyTaskOrder, StudyTaskSeries, StudyTaskSeriesInput, TopicProgress, WeeklyGoal } from "./types";
 import { getLocale, t, translateServerText } from "./i18n";
+import type { SetupMode } from "./auth";
 
 const API_PREFIX = "/api/backend";
 
@@ -453,19 +454,20 @@ export interface SetupInput {
 }
 
 /**
- * Ob dieser Slearn noch eingerichtet werden muss.
+ * Ob dieser Slearn noch eingerichtet werden muss - und ob er eine Anmeldung hat.
  *
  * Die Einrichtung gibt es nur ohne Anmeldung (Desktop-App). Ein Server mit
- * Anmeldung antwortet mit 404, und ein nicht erreichbares Backend wirft - in
- * beiden Faellen ist die Antwort `false`: dann entscheidet nicht die
- * Einrichtung, sondern die Seite selbst, was sie zeigt.
+ * Anmeldung antwortet mit 404: das ist `auth`, und erst dann fragt die
+ * Schranke nach der Sitzung. Ein nicht erreichbares Backend wirft - dann ist
+ * die Antwort `done`, und nicht die Einrichtung, sondern die Seite selbst
+ * entscheidet, was sie zeigt.
  */
-export async function getSetupStatus(): Promise<boolean> {
+export async function getSetupMode(): Promise<SetupMode> {
   try {
     const payload = await apiRequest("/v1/setup");
-    return typeof payload === "object" && payload !== null && "needs_setup" in payload && payload.needs_setup === true;
-  } catch {
-    return false;
+    return typeof payload === "object" && payload !== null && "needs_setup" in payload && payload.needs_setup === true ? "needed" : "done";
+  } catch (error) {
+    return error instanceof ApiError && error.status === 404 ? "auth" : "done";
   }
 }
 

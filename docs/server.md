@@ -363,6 +363,8 @@ Hinter TLS muss `SESSION_COOKIE_SECURE=true` gesetzt sein. Das Setting existiert
 
 Der Fehler, an dem man das merkt, ist unspektakulär: `POST /api/v1/auth/login` antwortet mit 200 und `Set-Cookie`, jedes `/api/backend/v1/...` danach mit 401. In den Netzwerk-Elementen des Browsers ist das Cookie markiert, aber nicht vorhanden.
 
+In der Oberfläche sieht derselbe Fehler so aus: die Anmeldeseite `/anmelden` nimmt Benutzername und Passwort an, lädt neu – und steht sofort wieder da. Die Schranke vor allen Seiten (`components/setup-gate.tsx`) erkennt den Server-Modus am 404 von `/v1/setup` und schickt jede Seite ohne gültige Sitzung nach `/anmelden?weiter=<Pfad>`; ohne zurückgesendetes Cookie ist das jede Seite. Im lokalen Modus (`AUTH_ENABLED=false`, Desktop-App) gibt es weder die Weiterleitung noch den Abmelden-Knopf.
+
 ### Was der Reverse-Proxy für diese Anwendung nicht ändern muss
 
 - `app/main.py` installiert weder `ProxyHeadersMiddleware` noch `TrustedHostMiddleware`. Das ist hier unkritisch: Das Session-Cookie wird in `app/api/auth.py` mit einem expliziten `secure=settings.cookie_secure` gesetzt, und keine Route bildet eine absolute URL aus `request.url.scheme`. Sobald das Backend Umleitungen oder absolute URLs erzeugt, ist `ProxyHeadersMiddleware` die Stelle, an der das nachgezogen werden muss.
