@@ -45,8 +45,8 @@ function LernenBereich() {
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">{t("Lernen")}</h1>
-        <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">
+        <h1 className="text-[26px] font-semibold leading-9 tracking-tight">{t("Lernen")}</h1>
+        <p className="sr-only">
           {t("Der Wochenplan verteilt alles Offene auf deine freie Zeit. Lernpläne sammeln Aufgaben zu einem Thema, Serien erzeugen daraus wiederkehrende Aufgaben, und eine Prüfung kann ihre Themen direkt in Aufgaben umsetzen.")}
         </p>
       </header>

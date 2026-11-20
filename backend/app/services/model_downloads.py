@@ -12,9 +12,9 @@ Auftrag heraus:
 Die Ablage ist ein Verzeichnis pro Modell und sonst nichts::
 
     MODEL_STORAGE_PATH/
-      qwen2.5-1.5b-instruct-q4km/
-        Qwen2.5-1.5B-Instruct-Q4_K_M.gguf          <- erst nach der Prüfung so benannt
-        Qwen2.5-1.5B-Instruct-Q4_K_M.gguf.part     <- der Teilstand
+      qwen3.5-2b-q4km/
+        Qwen_Qwen3.5-2B-Q4_K_M.gguf                <- erst nach der Prüfung so benannt
+        Qwen_Qwen3.5-2B-Q4_K_M.gguf.part           <- der Teilstand
         installed.json                              <- Prüfsummen und Zeitpunkt
 
 Das Muster ist dem Backup-Runner im Worker abgeschaut (``worker/backup.py``):

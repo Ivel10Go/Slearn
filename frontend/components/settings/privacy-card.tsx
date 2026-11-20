@@ -92,7 +92,7 @@ export function PrivacyCard() {
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="space-y-2">
-          <p className="text-[13px] leading-5 text-muted-foreground">
+          <p className="text-[15px] leading-5 text-muted-foreground">
             {t("Eine ZIP-Datei mit allen Einträgen (Fächer, Noten, Aufgaben, Notizen des Assistenten …) und deinen hochgeladenen Dokumenten. Zugangsdaten und Schlüssel sind nicht enthalten.")}
           </p>
           <div className="flex items-center gap-3">
@@ -100,18 +100,18 @@ export function PrivacyCard() {
               <Download aria-hidden="true" />
               {exportiert === "laeuft" ? t("Wird erstellt …") : t("Daten herunterladen")}
             </Button>
-            {exportiert === "fertig" ? <span className="text-xs text-muted-foreground">{t("Heruntergeladen.")}</span> : null}
+            {exportiert === "fertig" ? <span className="text-[13px] text-muted-foreground">{t("Heruntergeladen.")}</span> : null}
           </div>
           {exportFehler ? (
-            <p className="text-[13px] text-destructive" role="alert">
+            <p className="text-[15px] text-destructive" role="alert">
               {exportFehler}
             </p>
           ) : null}
         </div>
 
         <form className="space-y-3 border-t border-border pt-4" onSubmit={(event) => void loeschen(event)}>
-          <p className="text-[13px] font-medium">{t("Konto löschen")}</p>
-          <p className="text-[13px] leading-5 text-muted-foreground">
+          <p className="text-[15px] font-medium">{t("Konto löschen")}</p>
+          <p className="text-[15px] leading-5 text-muted-foreground">
             {t("Löscht dein Konto mit allen Einträgen, hochgeladenen Dokumenten, Trainingsdaten und persönlichen Adaptern. Das lässt sich nicht rückgängig machen. Heruntergeladene Modelle und Dateien in verbundenen Ordnern bleiben erhalten.")}
           </p>
           <Field id="konto-loeschen-wort" label={t("Zur Bestätigung „{wort}“ eingeben", { wort: BESTAETIGUNG_ANZEIGE })}>
@@ -131,7 +131,7 @@ export function PrivacyCard() {
             </Field>
           )}
           {loeschFehler ? (
-            <p className="text-[13px] text-destructive" role="alert">
+            <p className="text-[15px] text-destructive" role="alert">
               {loeschFehler}
             </p>
           ) : null}

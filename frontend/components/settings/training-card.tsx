@@ -108,7 +108,7 @@ export function TrainingCard() {
       </CardHeader>
       <CardContent className="space-y-4">
         {fehler ? (
-          <p className="rounded-md border border-foreground/30 bg-muted px-3 py-2 text-[13px]" role="alert">
+          <p className="rounded-md border border-foreground/30 bg-muted px-3 py-2 text-[15px]" role="alert">
             {fehler}
           </p>
         ) : null}
@@ -117,10 +117,10 @@ export function TrainingCard() {
           fehler ? null : <Skeleton className="h-24 w-full" />
         ) : (
           <>
-            <label className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2.5 text-[13px]">
+            <label className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2.5 text-[15px]">
               <span>
                 <span className="font-medium">{t("Antworten fürs Training sammeln")}</span>
-                <span className="block text-xs text-muted-foreground">
+                <span className="block text-[13px] text-muted-foreground">
                   {t("Standardmäßig aus. Ausschalten behält das Gesammelte – löschen kannst du es unten.")}
                 </span>
               </span>
@@ -133,7 +133,7 @@ export function TrainingCard() {
               />
             </label>
 
-            <div className="rounded-md border border-border px-3 py-2.5 text-xs leading-5">
+            <div className="rounded-md border border-border px-3 py-2.5 text-[13px] leading-5">
               <p className="font-medium text-foreground">{status.hardware.eligible ? t("Dieser Rechner kann trainieren") : t("Dieser Rechner trainiert vorerst nicht")}</p>
               <p className="text-muted-foreground">{status.hardware.reason}</p>
               {!status.hardware.eligible ? (
@@ -143,16 +143,16 @@ export function TrainingCard() {
 
             {status.hardware.eligible ? <TrainingRunPanel status={status} onStatus={setStatus} /> : null}
 
-            <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-border bg-border text-[13px] sm:grid-cols-5">
+            <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-border bg-border text-[15px] sm:grid-cols-5">
               <div className="bg-card px-3 py-2">
-                <dt className="text-xs text-muted-foreground">{t("Gesammelt")}</dt>
+                <dt className="text-[13px] text-muted-foreground">{t("Gesammelt")}</dt>
                 <dd className="font-medium tabular-nums">
-                  {status.stats.total} <span className="text-xs font-normal text-muted-foreground">/ {status.max_examples}</span>
+                  {status.stats.total} <span className="text-[13px] font-normal text-muted-foreground">/ {status.max_examples}</span>
                 </dd>
               </div>
               {ZAHLEN.map((zahl) => (
                 <div key={zahl.key} className="bg-card px-3 py-2">
-                  <dt className="text-xs text-muted-foreground">{zahl.label}</dt>
+                  <dt className="text-[13px] text-muted-foreground">{zahl.label}</dt>
                   <dd className="font-medium tabular-nums">{status.stats[zahl.key]}</dd>
                 </div>
               ))}
@@ -161,7 +161,7 @@ export function TrainingCard() {
             {beispiele.length > 0 ? (
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-medium">{t("Zuletzt gesammelt")}</p>
+                  <p className="text-[13px] font-medium">{t("Zuletzt gesammelt")}</p>
                   <Button type="button" size="sm" variant={loeschenFragen ? "default" : "ghost"} onClick={() => void alleLoeschen()} disabled={beschaeftigt}>
                     {beschaeftigt ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
                     {loeschenFragen ? t("Wirklich alle löschen?") : t("Alle löschen")}
@@ -171,8 +171,8 @@ export function TrainingCard() {
                   {beispiele.map((beispiel) => (
                     <li key={beispiel.id} className="flex items-start justify-between gap-2 px-3 py-2">
                       <div className="min-w-0">
-                        <p className="truncate text-[13px]">{beispiel.question || t("(ohne Frage)")}</p>
-                        <p className="line-clamp-1 text-xs text-muted-foreground">{beispiel.completion}</p>
+                        <p className="truncate text-[15px]">{beispiel.question || t("(ohne Frage)")}</p>
+                        <p className="line-clamp-1 text-[13px] text-muted-foreground">{beispiel.completion}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
                         <Badge variant="outline">{beispiel.label ? TRAINING_LABELS[beispiel.label] : t("Ohne Signal")}</Badge>
@@ -190,7 +190,7 @@ export function TrainingCard() {
                 </ul>
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[13px] text-muted-foreground">
                 {status.enabled ? t("Noch nichts gesammelt. Stell dem Assistenten eine Frage.") : t("Noch nichts gesammelt.")}
               </p>
             )}

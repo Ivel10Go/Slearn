@@ -59,8 +59,8 @@ function KiBereich() {
     <div className="space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-[22px] font-semibold leading-8 tracking-tight">{t("KI & Modelle")}</h1>
-          <p className="mt-0.5 max-w-2xl text-[13px] leading-5 text-muted-foreground">
+          <h1 className="text-[26px] font-semibold leading-9 tracking-tight">{t("KI & Modelle")}</h1>
+          <p className="sr-only">
             {t("Woher Antworten, Tagessatz und Vorschläge kommen: ein KI-Server, Modelle auf diesem Rechner und Stimmen zum Vorlesen.")}
           </p>
         </div>
@@ -74,7 +74,7 @@ function KiBereich() {
       </header>
 
       {ki.error ? (
-        <div className="flex flex-col gap-3 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between" role="alert">
+        <div className="flex flex-col gap-3 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-[15px] text-destructive sm:flex-row sm:items-center sm:justify-between" role="alert">
           <span>{ki.error}</span>
           <Button type="button" size="sm" variant="outline" onClick={ki.retry}>
             <RefreshCw aria-hidden="true" />
@@ -84,7 +84,7 @@ function KiBereich() {
       ) : null}
 
       {ki.actionError ? (
-        <p className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-sm font-medium text-destructive" role="alert">
+        <p className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-[15px] font-medium text-destructive" role="alert">
           {ki.actionError}
         </p>
       ) : null}
@@ -129,7 +129,7 @@ function KiBereich() {
           </CardHeader>
           <CardContent>
             {ki.runtime ? (
-              <ol className="space-y-1.5 border-l-2 border-border pl-3 text-xs leading-5 text-muted-foreground">
+              <ol className="space-y-1.5 border-l-2 border-border pl-3 text-[13px] leading-5 text-muted-foreground">
                 {describeStages(ki.runtime).map((stufe) => (
                   <li key={stufe}>{stufe}</li>
                 ))}
@@ -137,7 +137,7 @@ function KiBereich() {
             ) : laedt ? (
               <Skeleton className="h-16 w-full" />
             ) : (
-              <p className="text-xs leading-5 text-muted-foreground">
+              <p className="text-[13px] leading-5 text-muted-foreground">
                 {t("Lokaler Server, dann Online-Dienst, sonst eine Antwort aus deinen Daten. Die genaue Reihenfolge konnte nicht geladen werden.")}
               </p>
             )}

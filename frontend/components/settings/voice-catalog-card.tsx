@@ -89,14 +89,14 @@ function VoiceRow({
   const anteil = Math.min(100, Math.max(0, stimme.status.progress_percent));
 
   return (
-    <li className="flex flex-col rounded-md border border-border/70 p-3.5">
+    <li className="flex flex-col border-b border-border py-3 last:border-b-0">
       <div className="flex items-start justify-between gap-3">
-        <p className="min-w-0 text-[13px] font-semibold leading-5">{translateServerText(stimme.label)}</p>
+        <p className="min-w-0 text-[15px] font-semibold leading-5">{translateServerText(stimme.label)}</p>
         <Badge variant={geladen ? "success" : "secondary"} className="shrink-0">
           {beschreibeStimmstatus(stimme.status.status)}
         </Badge>
       </div>
-      <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground">
+      <p className="mt-1 flex flex-wrap gap-x-2 text-[13px] text-muted-foreground">
         <span>{stimme.speaker_label}</span>
         <span aria-hidden="true">·</span>
         <span>{beschreibeQualitaet(stimme.quality)}</span>
@@ -110,7 +110,7 @@ function VoiceRow({
         ) : null}
       </p>
 
-      <p className="mt-2 text-xs leading-5 text-muted-foreground">{translateServerText(stimme.description)}</p>
+      <p className="mt-2 text-[13px] leading-5 text-muted-foreground">{translateServerText(stimme.description)}</p>
 
       {/*
         Zwei Dateien, nicht eine: das ONNX-Modell und seine JSON-Konfiguration.
@@ -118,7 +118,7 @@ function VoiceRow({
         noch Phoneme. Die technischen Angaben sind eingeklappt: sie sind Beleg,
         nicht der Grund, eine Stimme zu waehlen.
       */}
-      <details className="mt-2 text-[11px] text-muted-foreground">
+      <details className="mt-2 text-[13px] text-muted-foreground">
         <summary className="cursor-pointer select-none hover:text-foreground">{t("Technische Angaben")}</summary>
         <dl className="mt-1.5 space-y-0.5">
           <div className="flex justify-between gap-3">
@@ -160,7 +160,7 @@ function VoiceRow({
 
       {/* Wie in der Modellkarte: der Container steht immer da, nur sein Inhalt wechselt. */}
       <div className={cn(stimme.status.message && "mt-2")} role="status" aria-live="polite">
-        {stimme.status.message ? <p className="text-xs leading-5 text-muted-foreground">{translateServerText(stimme.status.message)}</p> : null}
+        {stimme.status.message ? <p className="text-[13px] leading-5 text-muted-foreground">{translateServerText(stimme.status.message)}</p> : null}
       </div>
 
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-3">
@@ -204,7 +204,7 @@ function VoiceRow({
           href={stimme.source_page}
           target="_blank"
           rel="noreferrer noopener"
-          className="inline-flex h-9 items-center gap-2 border border-transparent px-3.5 text-xs font-semibold text-muted-foreground underline underline-offset-4 hover:bg-muted hover:text-foreground"
+          className="inline-flex h-9 items-center gap-2 border border-transparent px-3.5 text-[13px] font-semibold text-muted-foreground underline underline-offset-4 hover:bg-muted hover:text-foreground"
         >
           <Volume2 aria-hidden="true" />
           {t("Quelle")}
@@ -331,7 +331,7 @@ export function VoiceCatalogCard() {
 
       <CardContent className="space-y-4">
         {fehler ? (
-          <p className="border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert">
+          <p className="border border-destructive/20 bg-destructive/10 px-4 py-3 text-[15px] font-medium text-destructive" role="alert">
             {fehler}
           </p>
         ) : null}
@@ -344,7 +344,7 @@ export function VoiceCatalogCard() {
         ) : null}
 
         {!laedt && stimmen.length === 0 && !fehler ? (
-          <p className="text-sm text-muted-foreground">{t("Der Katalog enthält zurzeit keine Stimme.")}</p>
+          <p className="text-[15px] text-muted-foreground">{t("Der Katalog enthält zurzeit keine Stimme.")}</p>
         ) : null}
 
         {/*
@@ -353,7 +353,7 @@ export function VoiceCatalogCard() {
           Vorauswahl einer anderen Sprache zugeteeckt.
         */}
         {!laedt && stimmen.length > 0 && !hatPassende ? (
-          <p className="flex items-start gap-2 border border-foreground/25 bg-foreground/10 px-4 py-3 text-sm font-semibold">
+          <p className="flex items-start gap-2 border border-foreground/25 bg-foreground/10 px-4 py-3 text-[15px] font-semibold">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             {t("Es ist noch keine Stimme in der Sprache der Oberfläche geladen. Eine Stimme in einer anderen Sprache wird nicht ausgegeben - lade unten eine passende nach.")}
           </p>
@@ -362,8 +362,8 @@ export function VoiceCatalogCard() {
         {!laedt
           ? stimmenNachSprache(stimmen).map((abschnitt) => (
               <section key={abschnitt.sprache} className="space-y-2">
-                <h4 className="text-xs font-medium text-muted-foreground">{abschnitt.sprache}</h4>
-                <ul className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+                <h4 className="text-[13px] font-medium text-muted-foreground">{abschnitt.sprache}</h4>
+        <ul className="">
                   {abschnitt.gruppe.map((stimme) => (
                     <VoiceRow
                       key={stimme.id}
@@ -380,7 +380,7 @@ export function VoiceCatalogCard() {
             ))
           : null}
 
-        <p className="text-[11px] leading-4 text-muted-foreground">
+        <p className="text-[13px] leading-4 text-muted-foreground">
           {t("Piper läuft als eigenes Programm auf dem Server und lädt die Dateien zur Laufzeit. Fehlt es, bleibt die Spracheingabe und der Textmodus unverändert - nur das Vorlesen fällt dann aus.")}
         </p>
       </CardContent>

@@ -22,6 +22,7 @@ from app.services.timetable_import import (
     SyncOutcome,
     import_timetable,
 )
+from app.services.webdav import WebDavClient, WebDavError, sync_webdav
 from app.services.webuntis import WebUntisClient, WebUntisError, probe_webuntis
 
 
@@ -96,6 +97,16 @@ INTEGRATION_SPECS: Final[dict[str, IntegrationSpec]] = {
         label="Dokumente und Sync-Ordner",
         description="Lokaler Ablageort für Dokumente, die später durchsuchbar werden.",
         required_config=("path",),
+    ),
+    "webdav": IntegrationSpec(
+        kind="webdav",
+        label="Cloud-Ordner (WebDAV)",
+        description=(
+            "Lädt Unterrichtsmaterial automatisch aus einem Cloud-Ordner (Nextcloud, ownCloud, IServ, "
+            "Synology …). Wird nur gelesen; neue und geänderte Dateien kommen stündlich dazu."
+        ),
+        required_config=("base_url",),
+        required_credentials=("username", "password"),
     ),
     "ical": IntegrationSpec(
         kind="ical",
@@ -325,6 +336,18 @@ def check_integration_connection(
     if kind == "documents":
         return _check_documents_path(config.get("path", ""), document_storage_path)
 
+    if kind == "webdav":
+        try:
+            with WebDavClient(
+                base_url=config.get("base_url", ""),
+                username=credentials.get("username", ""),
+                password=credentials.get("password", ""),
+                timeout_seconds=timeout_seconds,
+            ) as client:
+                return client.check_connection()
+        except WebDavError as exc:
+            raise IntegrationConnectionError(str(exc)) from exc
+
     if kind == "ical":
         try:
             return ical_adapter(config, document_storage_path, timezone_name, timeout_seconds).check_connection()
@@ -483,6 +506,11 @@ def sync_integration(
             folder=str(config.get("path", "")),
             settings=settings,
         )
+    if source.source_type == "webdav":
+        try:
+            return sync_webdav(db, source, config, credentials, settings, timeout_seconds)
+        except WebDavError as exc:
+            raise IntegrationConnectionError(str(exc)) from exc
     if source.source_type in CALENDAR_KINDS:
         return _sync_calendar(
             db=db,

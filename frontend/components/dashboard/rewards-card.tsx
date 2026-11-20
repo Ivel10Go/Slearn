@@ -67,9 +67,9 @@ function Balken({ anteil, label, className }: { anteil: number; label: string; c
 function Kennzahl({ titel, wert, zusatz, balken, balkenLabel }: { titel: string; wert: string; zusatz: string; balken?: number; balkenLabel?: string }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] font-medium text-muted-foreground">{titel}</p>
+      <p className="text-[13px] font-medium text-muted-foreground">{titel}</p>
       <p className="mt-1 truncate text-base font-semibold tracking-tight">{wert}</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">{zusatz}</p>
+      <p className="mt-0.5 text-[13px] text-muted-foreground">{zusatz}</p>
       {balken === undefined ? null : <Balken anteil={balken} label={balkenLabel ?? titel} className="mt-2" />}
     </div>
   );
@@ -88,19 +88,19 @@ function BadgeZeile({ badge }: { badge: RewardBadge }) {
   return (
     <li className={cn("border px-3 py-2.5", badge.awarded ? "border-foreground bg-card" : "border-border bg-card/60")}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className={cn("min-w-0 truncate text-sm", badge.awarded ? "font-semibold underline underline-offset-4" : "font-semibold")}>
+        <p className={cn("min-w-0 truncate text-[15px]", badge.awarded ? "font-semibold underline underline-offset-4" : "font-semibold")}>
           {badge.title}
         </p>
-        <p className="shrink-0 text-xs font-semibold text-muted-foreground">
+        <p className="shrink-0 text-[13px] font-semibold text-muted-foreground">
           {badge.awarded ? t("Erreicht") : badgeFortschrittLabel(badge)}
         </p>
       </div>
-      <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+      <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
         {[bereich, badge.awarded ? null : badge.description].filter(Boolean).join(" · ")}
       </p>
       {badge.awarded ? null : <Balken anteil={anteil} label={`${badge.title}: ${badgeFortschrittLabel(badge)}`} className="mt-2" />}
       {badge.repeatable && badge.awarded ? (
-        <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">{t("Wiederholbar · nächste Woche neu")}</p>
+        <p className="mt-1.5 text-[13px] font-medium text-muted-foreground">{t("Wiederholbar · nächste Woche neu")}</p>
       ) : null}
     </li>
   );
@@ -111,14 +111,14 @@ function BuchungZeile({ entry, hinweis }: { entry: RewardEntry; hinweis: string 
   return (
     <li className="border border-border bg-card/60 px-3 py-2.5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className="min-w-0 truncate text-sm font-semibold">
+        <p className="min-w-0 truncate text-[15px] font-semibold">
           <span className="font-medium text-muted-foreground">{entryArtLabel(entry)}</span>
           <span className="mx-2 text-border">·</span>
           {entry.detail}
         </p>
-        <p className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">{entryPunkteLabel(entry.points)}</p>
+        <p className="shrink-0 text-[13px] font-semibold tabular-nums text-muted-foreground">{entryPunkteLabel(entry.points)}</p>
       </div>
-      <p className="mt-0.5 text-xs text-muted-foreground">
+      <p className="mt-0.5 text-[13px] text-muted-foreground">
         {entryDatumLabel(entry.earned_on)}
         {entry.points === 0 ? <span className="mx-2 text-border">·</span> : null}
         {entry.points === 0 ? <span>{hinweis}</span> : null}
@@ -137,7 +137,7 @@ function KartenInhalt({ overview, error }: { overview: RewardOverview; error: st
   return (
     <CardContent className="space-y-4">
       {error ? (
-        <p className="border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+        <p className="border border-destructive/20 bg-destructive/10 px-3 py-2 text-[15px] text-destructive" role="alert">
           {error}
         </p>
       ) : null}
@@ -164,14 +164,14 @@ function KartenInhalt({ overview, error }: { overview: RewardOverview; error: st
         Eintraege, von denen die Karte nur die naechsten zeigt.
       */}
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-t border-border pt-4">
-        <h3 className="text-xs font-medium text-muted-foreground">{t("Insgesamt")}</h3>
-        <p className="text-sm font-semibold tabular-nums">{summary.total_points} {t("Punkte")}</p>
+        <h3 className="text-[13px] font-medium text-muted-foreground">{t("Insgesamt")}</h3>
+        <p className="text-[15px] font-semibold tabular-nums">{summary.total_points} {t("Punkte")}</p>
       </div>
 
       <div>
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-xs font-medium text-muted-foreground">{t("Auszeichnungen")}</h3>
-          <p className="text-xs text-muted-foreground">
+          <h3 className="text-[13px] font-medium text-muted-foreground">{t("Auszeichnungen")}</h3>
+          <p className="text-[13px] text-muted-foreground">
             {haufen.erreicht.length > 0 ? t("{n} erreicht", { n: haufen.erreicht.length }) : t("Noch keine erreicht")}
             {haufen.offen.length > 0 ? ` · ${t("{n} offen", { n: haufen.offen.length })}` : ""}
           </p>
@@ -194,14 +194,14 @@ function KartenInhalt({ overview, error }: { overview: RewardOverview; error: st
 
       <div>
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-xs font-medium text-muted-foreground">{t("Zuletzt gutgeschrieben")}</h3>
-          <p className="text-xs text-muted-foreground">
+          <h3 className="text-[13px] font-medium text-muted-foreground">{t("Zuletzt gutgeschrieben")}</h3>
+          <p className="text-[13px] text-muted-foreground">
             {entries.length > sichtbareEintraege.length ? t("die letzten {n} von {gesamt}", { n: sichtbareEintraege.length, gesamt: entries.length }) : t("die letzten Buchungen")}
           </p>
         </div>
 
         {sichtbareEintraege.length === 0 ? (
-          <p className="border border-dashed border-border bg-muted/30 px-3 py-4 text-sm leading-6 text-muted-foreground">
+          <p className="border border-dashed border-border bg-muted/30 px-3 py-4 text-[15px] leading-6 text-muted-foreground">
             {t("Noch nichts gebucht. Punkte gibt es für erledigte Aufgaben mit Thema und für abgeschlossene Lernzeit in einem Fach.")}
           </p>
         ) : (
@@ -219,7 +219,7 @@ function KartenInhalt({ overview, error }: { overview: RewardOverview; error: st
         Zahlen der Antwort, nach denen das Backend rechnet - nicht aus einem
         zweiten Satz im Frontend.
       */}
-      <p className="border-t border-border pt-3 text-xs leading-5 text-muted-foreground">{regelSatz(rules, rules.subject_day_steps)}</p>
+      <p className="border-t border-border pt-3 text-[13px] leading-5 text-muted-foreground">{regelSatz(rules, rules.subject_day_steps)}</p>
     </CardContent>
   );
 }

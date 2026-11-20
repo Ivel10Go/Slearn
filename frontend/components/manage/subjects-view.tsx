@@ -101,8 +101,8 @@ export function SubjectsView() {
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">{t("Fächer")}</h1>
-        <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">
+        <h1 className="text-[26px] font-semibold leading-9 tracking-tight">{t("Fächer")}</h1>
+        <p className="sr-only">
           {t("Jede Hausaufgabe, Prüfung und Lernaufgabe kann einem Fach zugeordnet werden.")}
         </p>
       </header>
@@ -120,7 +120,7 @@ export function SubjectsView() {
       {/* Neu laden, wenn ein Upload den Plan veraendert hat: dort koennen neue Parallelstunden entstehen. */}
       <LessonChoicesCard key={planVersion} onSaved={() => void sammlung.reload()} />
 
-      <Card className="border-border/80 bg-card/90">
+      <Card>
         <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
           <div>
             <CardTitle>{t("Meine Fächer")}</CardTitle>
@@ -144,7 +144,7 @@ export function SubjectsView() {
           {formularOffen ? (
             <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
               <div className="flex items-start justify-between gap-3">
-                <p className="text-sm font-semibold">{bearbeitet === null ? t("Neues Fach") : t("Fach bearbeiten")}</p>
+                <p className="text-[15px] font-semibold">{bearbeitet === null ? t("Neues Fach") : t("Fach bearbeiten")}</p>
                 <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label={t("Formular schließen")}>
                   <X aria-hidden="true" />
                 </Button>
@@ -167,7 +167,7 @@ export function SubjectsView() {
                   {(props) => (
                     <div className="flex items-center gap-2">
                       <span
-                        className="size-8 shrink-0 rounded-md border border-border"
+                        className="size-8 shrink-0 rounded-full border border-border"
                         style={{ backgroundColor: FARBE_MUSTER.test(formular.farbe.trim()) ? formular.farbe.trim() : "transparent" }}
                         aria-hidden="true"
                       />
@@ -197,7 +197,7 @@ export function SubjectsView() {
                       disabled={istSpeichern}
                       onClick={() => setFormular((current) => ({ ...current, farbe }))}
                       className={cn(
-                        "size-6 rounded-[4px] border border-border transition-transform hover:scale-110 disabled:opacity-60",
+                        "size-6 rounded-full border border-border transition-transform hover:scale-110 disabled:opacity-60",
                         aktiv && "ring-2 ring-foreground ring-offset-2 ring-offset-background",
                       )}
                       style={{ backgroundColor: farbe }}
@@ -254,9 +254,9 @@ export function SubjectsView() {
           ) : sammlung.items.length === 0 ? (
             <EmptyState icon={BookOpen} title={t("Noch keine Fächer")} description={t("Lege deine Fächer an, damit Aufgaben und Prüfungen sortiert werden.")} />
           ) : (
-            <ul className="space-y-2.5">
+      <ul className="">
               {sammlung.items.map((fach) => (
-                <li key={fach.id} className="flex items-start gap-3 border border-border bg-card/60 p-3.5 transition-colors hover:border-foreground/40">
+                <li key={fach.id} className="flex items-start gap-3 border-b border-border py-3 last:border-b-0">
                   {/*
                     Die Farbe erscheint hier als kleiner Farbwert, nicht als
                     eingefärbte Kachel. Das Design ist durchgehend monochrom -
@@ -266,16 +266,16 @@ export function SubjectsView() {
                   */}
                   <span
                     aria-hidden="true"
-                    className="mt-1 h-5 w-5 shrink-0 border border-border"
+                    className="mt-1 h-5 w-5 shrink-0 rounded-full border border-border"
                     style={{ backgroundColor: fach.color }}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-semibold">{fach.name}</p>
+                      <p className="truncate text-[15px] font-semibold">{fach.name}</p>
                       {fach.source !== "manual" ? <Badge variant="outline">{t("aus dem Portal")}</Badge> : null}
                     </div>
-                    {fach.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{fach.description}</p> : null}
-                    <p className="mt-1.5 text-xs font-semibold text-muted-foreground">
+                    {fach.description ? <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-muted-foreground">{fach.description}</p> : null}
+                    <p className="mt-1.5 text-[13px] font-semibold text-muted-foreground">
                       <span className="font-mono">{fach.color}</span>
                       <span className="text-border"> · </span>
                       {t("angelegt {datum}", { datum: formatDate(fach.created_at, { day: "2-digit", month: "short", year: "numeric" }) })}

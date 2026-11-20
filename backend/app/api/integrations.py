@@ -3,7 +3,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -13,7 +13,7 @@ from app.core import oauth_state
 from app.core.config import require_integration_encryption_key, require_secret
 from app.core.crypto import CredentialDecryptionError, decrypt_credentials, encrypt_credentials
 from app.core.time import utc_now
-from app.db.entities import SyncSource
+from app.db.entities import Document, SyncSource
 from app.schemas.common import MessageResponse
 from app.schemas.integrations import (
     IntegrationAuthorizeRead,
@@ -23,7 +23,7 @@ from app.schemas.integrations import (
     IntegrationTestResult,
     IntegrationUpdate,
 )
-from app.services import calendar_consent, google_calendar
+from app.services import calendar_consent, google_calendar, webdav
 from app.services.calendar_sync import CalendarSyncError
 from app.services.integrations import (
     INTEGRATION_KINDS,
@@ -236,10 +236,17 @@ def update_integration(
 
 
 @router.delete("/{integration_id}", response_model=MessageResponse)
-def delete_integration(integration_id: int, current_user: CurrentUser, db: DatabaseSession) -> MessageResponse:
+def delete_integration(
+    integration_id: int, current_user: CurrentUser, db: DatabaseSession, settings: AppSettings
+) -> MessageResponse:
     source = _owned_integration(db, integration_id, current_user.id)
+    if source.source_type == "webdav":
+        # Der Spiegel gehoert der App, nicht der Person: mit der Verbindung verschwinden Kopien und ihr Index.
+        db.execute(delete(Document).where(Document.sync_source_id == source.id))
     db.delete(source)
     db.commit()
+    if source.source_type == "webdav":
+        webdav.remove_mirror(settings, integration_id)
     return MessageResponse(message="Integration disconnected")
 
 

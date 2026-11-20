@@ -7,34 +7,34 @@
 @custom-variant desktop (&:where([data-desktop], [data-desktop] *));
 
 /*
- * Schwarz-Weiss mit einer Graustufen-Leiter, keine Akzentfarbe.
- *
- * Struktur tragen Haarlinien und Flaechen eine Stufe heller/dunkler als der
- * Grund - keine Schatten, keine Verlaeufe. Zustaende unterscheiden sich ueber
- * Gewicht, Fuellung und deutsche Labels. `--background` ist an drei weiteren
- * Stellen hartkodiert: `app/layout.tsx` (themeColor), `app/providers.tsx` und
- * `desktop/main.js` (Fenstergrund vor dem ersten Rendern).
+ * "Fell und Gesicht": die Palette kommt aus dem Faultier. Der Seitengrund ist
+ * das helle Fell, Flaechen (`--card`) sind das weisse Gesicht, Konturen von
+ * Bedienelementen (`--input`) das Fellgrau, das beim Hover zur Tinte wird.
+ * Weiter keine Akzentfarbe, keine Schatten, keine Verlaeufe.
+ * `--background` ist an drei weiteren Stellen hartkodiert: `app/layout.tsx`
+ * (themeColor), `app/providers.tsx` und `desktop/main.js` (Fenstergrund vor
+ * dem ersten Rendern).
  */
 :root {
-  --background: #ffffff;
+  --background: #f2f2f1;
   --foreground: #0a0a0a;
   --card: #ffffff;
   --card-foreground: #0a0a0a;
   --popover: #ffffff;
   --popover-foreground: #0a0a0a;
-  --sidebar: #fafafa;
+  --sidebar: #f2f2f1;
   --primary: #0a0a0a;
   --primary-foreground: #fafafa;
-  --secondary: #f4f4f4;
+  --secondary: #f2f2f1;
   --secondary-foreground: #0a0a0a;
-  --muted: #f5f5f5;
-  --muted-foreground: #6e6e6e;
-  --accent: #efefef;
+  --muted: #f2f2f1;
+  --muted-foreground: #646464;
+  --accent: #e9e9e9;
   --accent-foreground: #0a0a0a;
   --destructive: #0a0a0a;
   --destructive-foreground: #fafafa;
-  --border: #e7e7e7;
-  --input: #dedede;
+  --border: #e3e3e2;
+  --input: #cdcdcd;
   --ring: #0a0a0a;
   color-scheme: light;
 }
@@ -42,23 +42,23 @@
 .dark {
   --background: #0a0a0a;
   --foreground: #ededed;
-  --card: #0f0f0f;
+  --card: #151515;
   --card-foreground: #ededed;
-  --popover: #141414;
+  --popover: #181818;
   --popover-foreground: #ededed;
-  --sidebar: #0d0d0d;
+  --sidebar: #0a0a0a;
   --primary: #ededed;
   --primary-foreground: #0a0a0a;
-  --secondary: #1a1a1a;
+  --secondary: #1e1e1e;
   --secondary-foreground: #ededed;
-  --muted: #161616;
-  --muted-foreground: #8c8c8c;
-  --accent: #1d1d1d;
+  --muted: #1c1c1c;
+  --muted-foreground: #949494;
+  --accent: #252525;
   --accent-foreground: #ededed;
   --destructive: #ededed;
   --destructive-foreground: #0a0a0a;
-  --border: #222222;
-  --input: #2e2e2e;
+  --border: #262626;
+  --input: #3d3d3d;
   --ring: #ededed;
   color-scheme: dark;
 }
@@ -91,22 +91,23 @@
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", "Cascadia Mono", monospace;
 
-  /* Kleine, ruhige Rundungen. `rounded-xl`/`2xl` bleiben bewusst nah an `md`:
-     aeltere Stellen, die sie noch benutzen, sollen nicht als Pillen auffallen. */
-  --radius: 6px;
-  --radius-xs: 3px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 8px;
-  --radius-2xl: 10px;
-  --radius-3xl: 12px;
-  --radius-4xl: 12px;
+  /* Weiche Rundungen in drei Stufen, wie die Figur: Felder und Zeilen 10px,
+     Flaechen 18px, Knoepfe und Badges ganz rund (`rounded-full`) wie die
+     runden Linienenden des Faultiers. */
+  --radius: 10px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-2xl: 18px;
+  --radius-3xl: 24px;
+  --radius-4xl: 24px;
 
   /* Einheitliche Bewegung. `--default-transition-*` ist der Token, den
      `transition-colors` selbst benutzt, also greift die Aenderung projektweit.
      `--transition-duration-*` erzeugt `duration-fast` und `duration-slow`. */
-  --default-transition-duration: 140ms;
+  --default-transition-duration: 180ms;
   --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   --transition-duration-fast: 100ms;
   --transition-duration-slow: 280ms;
@@ -130,8 +131,8 @@
     background: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
-    font-size: 14px;
-    line-height: 1.5;
+    font-size: 16px;
+    line-height: 1.55;
     text-rendering: optimizeLegibility;
   }
 

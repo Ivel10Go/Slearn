@@ -76,9 +76,9 @@ const MAX_OFFEN = 100;
 function Kennzahl({ titel, wert, zusatz }: { titel: string; wert: string; zusatz: string }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] font-medium text-muted-foreground">{titel}</p>
+      <p className="text-[13px] font-medium text-muted-foreground">{titel}</p>
       <p className="mt-1 truncate text-base font-semibold tracking-tight">{wert}</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">{zusatz}</p>
+      <p className="mt-0.5 text-[13px] text-muted-foreground">{zusatz}</p>
     </div>
   );
 }
@@ -172,14 +172,14 @@ function FachZeile({ name, average, count, passed, gewicht }: { name: string; av
       <div className="min-w-0">
         {/* Die Unterstreichung ist das einzige Warnzeichen der Karte - kein
             Rot, kein Symbol. Genau so unterscheidet das Projekt Zustände. */}
-        <p className={cn("truncate text-sm font-semibold", !passed && "underline underline-offset-4")}>{name}</p>
-        <p className="text-[11px] text-muted-foreground">
+        <p className={cn("truncate text-[15px] font-semibold", !passed && "underline underline-offset-4")}>{name}</p>
+        <p className="text-[13px] text-muted-foreground">
           {notenAnzahl(count)}
           {gewicht === count ? "" : ` · Gewicht ${gewicht}`}
         </p>
       </div>
       <p className="flex shrink-0 items-baseline gap-2">
-        <span className="text-sm font-semibold tabular-nums">{notenText(average)}</span>
+        <span className="text-[15px] font-semibold tabular-nums">{notenText(average)}</span>
         <Badge variant={passed ? "outline" : "default"}>{bestandenLabel(passed)}</Badge>
       </p>
     </li>
@@ -239,7 +239,7 @@ function NotenFormular({ laeuft, onSchliessen, onSpeichern }: { laeuft: boolean;
   return (
     <form onSubmit={absenden} noValidate className="space-y-4 border border-border p-4">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-semibold">{t("Note eintragen")}</p>
+        <p className="text-[15px] font-semibold">{t("Note eintragen")}</p>
         <Button type="button" size="icon" variant="ghost" onClick={onSchliessen} disabled={laeuft} aria-label={t("Formular schließen")}>
           <X aria-hidden="true" />
         </Button>
@@ -291,7 +291,7 @@ function NotenFormular({ laeuft, onSchliessen, onSpeichern }: { laeuft: boolean;
           {t("Abbrechen")}
         </Button>
       </div>
-      <p className="text-xs leading-5 text-muted-foreground">
+      <p className="text-[13px] leading-5 text-muted-foreground">
         {t("Die Note geht in den Schnitt ihres Faches ein. Steht das Fach über der Bestehensgrenze, hebt sie dort die Priorität der Lernaufgaben an.")}
       </p>
     </form>
@@ -352,7 +352,7 @@ function NotenImport({ laeuft, onGeaendert }: { laeuft: boolean; onGeaendert: ()
   return (
     <div className="space-y-4 border border-border p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm font-semibold">{t("Aus einem Dokument übernehmen")}</p>
+        <p className="text-[15px] font-semibold">{t("Aus einem Dokument übernehmen")}</p>
         <Badge variant="secondary">{t("erst ansehen, dann anlegen")}</Badge>
       </div>
 
@@ -425,14 +425,14 @@ function NotenImport({ laeuft, onGeaendert }: { laeuft: boolean; onGeaendert: ()
       <FormError message={vorschau.error ?? ergebnis.error} />
 
       {ergebnis.result ? (
-        <p className="border border-foreground/20 bg-foreground/5 px-3 py-2 text-sm font-semibold" role="status">
+        <p className="border border-foreground/20 bg-foreground/5 px-3 py-2 text-[15px] font-semibold" role="status">
           {ergebnis.result.created} {ergebnis.result.created === 1 ? t("Note") : t("Noten")} {t("angelegt")}
           {ergebnis.result.skipped > 0 ? `, ${ergebnis.result.skipped} waren schon da` : ""}.
         </p>
       ) : null}
 
       {dokumente.status === "ready" && dokumente.items.length === 0 ? (
-        <p className="border border-dashed border-border px-3 py-2 text-xs leading-5 text-muted-foreground">
+        <p className="border border-dashed border-border px-3 py-2 text-[13px] leading-5 text-muted-foreground">
           {tSplit("Es ist noch kein Dokument vorhanden. Lade unter {link} eine Textdatei mit deinem Notenspiegel hoch.")[0]}<span className="font-semibold">{t("Dokumente")}</span>{tSplit("Es ist noch kein Dokument vorhanden. Lade unter {link} eine Textdatei mit deinem Notenspiegel hoch.")[1]}
         </p>
       ) : null}
@@ -445,11 +445,11 @@ function NotenImport({ laeuft, onGeaendert }: { laeuft: boolean; onGeaendert: ()
             description={t("In diesem Dokument steht keine Zeile mit einer Zahl zwischen 1,0 und 6,0. Was nicht erkannt wird, wird nicht geraten.")}
           />
         ) : (
-          <ul className="space-y-2">
+     <ul className="">
             {vorschau.result.entries.map((zeile) => {
               const gewaehlt = bestaetigt?.includes(zeile.key) ?? false;
               return (
-                <li key={zeile.key} className="flex items-start gap-3 border border-border bg-card/60 px-3 py-2.5">
+                <li key={zeile.key} className="flex items-start gap-3 border-b border-border py-3 last:border-b-0">
                   <input
                     type="checkbox"
                     id={`import-zeile-${zeile.key}`}
@@ -469,15 +469,15 @@ function NotenImport({ laeuft, onGeaendert }: { laeuft: boolean; onGeaendert: ()
                     }
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">
+                    <p className="truncate text-[15px] font-semibold">
                       {notenText(zeile.value)} · {zeile.subject_name ?? t("Fach nicht erkannt")}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-[13px] text-muted-foreground">
                       {GRADE_ART[zeile.kind]} · {formatDate(zeile.graded_on)}
                       {zeile.subject_recognized ? "" : t(" · Vorgabefach")}
                       {zeile.already_imported ? t(" · schon importiert") : ""}
                     </p>
-                    {zeile.comment ? <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{zeile.comment}</p> : null}
+                    {zeile.comment ? <p className="mt-1 line-clamp-2 text-[13px] text-muted-foreground">{zeile.comment}</p> : null}
                   </div>
                   <label htmlFor={`import-zeile-${zeile.key}`} className="sr-only">
                     {t("Zeile {n} übernehmen: {text}", { n: zeile.line_number, text: zeile.line })}
@@ -508,13 +508,13 @@ function FreigabeSchalter({ sharing, laeuft, onAendern }: { sharing: GradeSharin
   return (
     <div className="border border-border bg-muted/30 p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="flex items-center gap-2 text-xs font-semibold">
+        <p className="flex items-center gap-2 text-[13px] font-semibold">
           <ShieldAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
           {t("Noten an den KI-Dienst senden")}
         </p>
         <Badge variant={aktiv ? "default" : "outline"}>{aktiv ? t("Ja, ausdrücklich") : t("Nein")}</Badge>
       </div>
-      <p className="mt-2 text-xs leading-5 text-muted-foreground">
+      <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
         {aktiv
           ? orte
             ? t("Deine Noten gehen an den Assistenten und stehen im Willkommenssatz: {orte}. Ohne verbundenen Provider wird nichts verschickt.", { orte })
@@ -595,7 +595,7 @@ export function GradesCard() {
 
       <CardContent className="space-y-4">
         {noten.error ? (
-          <p className="border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+          <p className="border border-destructive/20 bg-destructive/10 px-3 py-2 text-[15px] text-destructive" role="alert">
             {noten.error}
           </p>
         ) : null}
@@ -621,16 +621,16 @@ export function GradesCard() {
 
             <div>
               <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="text-xs font-medium text-muted-foreground">{t("Verlauf des Schnitts")}</h3>
-                <p className="text-xs text-muted-foreground">{verlaufBeschriftung(zusammenfassung.trend) ?? t("noch kein Verlauf")}</p>
+                <h3 className="text-[13px] font-medium text-muted-foreground">{t("Verlauf des Schnitts")}</h3>
+                <p className="text-[13px] text-muted-foreground">{verlaufBeschriftung(zusammenfassung.trend) ?? t("noch kein Verlauf")}</p>
               </div>
               <VerlaufLinie trend={zusammenfassung.trend} passingGrade={zusammenfassung.passing_grade} />
-              <p className="mt-1.5 text-[11px] text-muted-foreground">{grenzLabel(zusammenfassung.passing_grade)}</p>
+              <p className="mt-1.5 text-[13px] text-muted-foreground">{grenzLabel(zusammenfassung.passing_grade)}</p>
             </div>
 
             {zusammenfassung.by_subject.length > 0 ? (
               <div>
-                <h3 className="mb-3 text-xs font-medium text-muted-foreground">{t("Schnitt je Fach")}</h3>
+                <h3 className="mb-3 text-[13px] font-medium text-muted-foreground">{t("Schnitt je Fach")}</h3>
                 <ul className="space-y-2.5">
                   {zusammenfassung.by_subject.map((fach) => (
                     <FachZeile
@@ -655,7 +655,7 @@ export function GradesCard() {
               Raten, nicht Rechnen.
             */}
             <div>
-              <h3 className="mb-3 text-xs font-medium text-muted-foreground">{t("Hochrechnung")}</h3>
+              <h3 className="mb-3 text-[13px] font-medium text-muted-foreground">{t("Hochrechnung")}</h3>
               <form onSubmit={hochrechnungBerechnen} noValidate className="flex flex-wrap items-end gap-3">
                 <Field id="noten-offen" label={t("Noch offen")} hint={t("Gewichtung der Leistungen, die noch kommen.")} className="w-44">
                   {(props) => <Input {...props} type="number" min={0} max={MAX_OFFEN} value={offen} onChange={(event) => setOffen(event.target.value)} disabled={noten.status === "loading"} />}
@@ -666,9 +666,9 @@ export function GradesCard() {
                 </Button>
               </form>
               {hochrechnung ? (
-                <p className="mt-3 border border-border bg-muted/30 px-3 py-2 text-sm">{hochrechnung}</p>
+                <p className="mt-3 border border-border bg-muted/30 px-3 py-2 text-[15px]">{hochrechnung}</p>
               ) : (
-                <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                <p className="mt-3 text-[13px] leading-5 text-muted-foreground">
                   {t("Trage oben ein, was noch aussteht — die Karte nennt dann den Schnitt, der ab jetzt nötig wäre.")}
                 </p>
               )}
@@ -676,25 +676,25 @@ export function GradesCard() {
 
             <div>
               <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="text-xs font-medium text-muted-foreground">{t("Zuletzt notiert")}</h3>
-                <p className="text-xs text-muted-foreground">{notenAnzahl(zusammenfassung.total_count)}</p>
+                <h3 className="text-[13px] font-medium text-muted-foreground">{t("Zuletzt notiert")}</h3>
+                <p className="text-[13px] text-muted-foreground">{notenAnzahl(zusammenfassung.total_count)}</p>
               </div>
               {noten.grades.length === 0 ? (
-                <p className="text-xs text-muted-foreground">{t("Die Liste konnte nicht geladen werden.")}</p>
+                <p className="text-[13px] text-muted-foreground">{t("Die Liste konnte nicht geladen werden.")}</p>
               ) : (
-                <ul className="max-h-72 space-y-2 overflow-y-auto pr-1">
+        <ul className="max-h-72 overflow-y-auto pr-1">
                   {noten.grades.map((note) => (
-                    <li key={note.id} className="flex items-start gap-3 border border-border bg-card/60 px-3 py-2.5">
+                    <li key={note.id} className="flex items-start gap-3 border-b border-border py-3 last:border-b-0">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold">
+                        <p className="truncate text-[15px] font-semibold">
                           {notenText(note.grade_value)} · {note.subject_name ?? t("Ohne Fach")}
                         </p>
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="text-[13px] text-muted-foreground">
                           {GRADE_ART[note.kind]} · {formatDate(note.graded_on)}
                           {gewichtText(note.weight) ? ` · ${gewichtText(note.weight)}` : ""}
                           {note.source !== "manual" ? t(" · aus dem Dokument") : ""}
                         </p>
-                        {note.comment ? <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{note.comment}</p> : null}
+                        {note.comment ? <p className="mt-1 line-clamp-2 text-[13px] text-muted-foreground">{note.comment}</p> : null}
                       </div>
                       <Button
                         type="button"

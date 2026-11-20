@@ -133,15 +133,15 @@ export function DocumentsView() {
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">{t("Dokumente")}</h1>
-        <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">
+        <h1 className="text-[26px] font-semibold leading-9 tracking-tight">{t("Dokumente")}</h1>
+        <p className="sr-only">
           {t("Lade Unterlagen hoch und durchsuche sie; Fragen dazu beantwortet der Assistent. Ohne verbundenen KI-Dienst wird aus den Treffern zitiert.")}
         </p>
       </header>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
         <div className="space-y-4">
-          <Card className="border-border/80 bg-card/90">
+          <Card>
             <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
               <div>
                 <CardTitle>{t("Bibliothek")}</CardTitle>
@@ -182,7 +182,7 @@ export function DocumentsView() {
                   </Button>
                 </div>
                 <FormError message={uploadHinweis ?? upload.error} />
-                <p className="text-xs leading-5 text-muted-foreground">
+                <p className="text-[13px] leading-5 text-muted-foreground">
                   {tSplit("Text, PDF und Fotos (JPG, PNG, WebP). Fotos und Scans – auch handschriftliche Aufschriebe – schreibt das Bildmodell im Hintergrund ab; die Art (Aufschrieb, Arbeitsblatt, Lösung) erkennt Slearn selbst, und du kannst sie korrigieren. Ein ganzer Ordner lässt sich unter {link} über eine Dokumentverbindung indexieren.")[0]}<span className="font-semibold">{t("Einstellungen")}</span>{tSplit("Text, PDF und Fotos (JPG, PNG, WebP). Fotos und Scans – auch handschriftliche Aufschriebe – schreibt das Bildmodell im Hintergrund ab; die Art (Aufschrieb, Arbeitsblatt, Lösung) erkennt Slearn selbst, und du kannst sie korrigieren. Ein ganzer Ordner lässt sich unter {link} über eine Dokumentverbindung indexieren.")[1]}
                 </p>
               </form>
@@ -195,20 +195,20 @@ export function DocumentsView() {
               ) : sammlung.items.length === 0 ? (
                 <EmptyState icon={FolderTree} title={t("Noch keine Dokumente")} description={t("Lade eine Datei hoch oder verbinde unter den Einstellungen einen Dokumentordner.")} />
               ) : (
-                <ul className="space-y-2.5">
+        <ul className="">
                   {artFehler ? (
                     <li>
                       <FormError message={artFehler} />
                     </li>
                   ) : null}
                   {sammlung.items.map((dokument) => (
-                    <li key={dokument.id} className="flex items-start gap-3 border border-border bg-card/60 p-3.5">
+                    <li key={dokument.id} className="flex items-start gap-3 border-b border-border py-3 last:border-b-0">
                       <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center bg-muted">
                         <FileText className="h-4 w-4" aria-hidden="true" />
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="truncate text-sm font-semibold">{dokument.filename}</p>
+                          <p className="truncate text-[15px] font-semibold">{dokument.filename}</p>
                           <Badge variant={dokument.status === "error" || dokument.status === "failed" ? "warning" : "secondary"}>
                             {statusLabel(dokument.status)}
                           </Badge>
@@ -216,7 +216,7 @@ export function DocumentsView() {
                             aria-label={t("Art von {datei}", { datei: dokument.filename })}
                             value={dokument.material_kind ?? ""}
                             onChange={(event) => void artSetzen(dokument.id, event.target.value as MaterialKind)}
-                            className="h-6 rounded-[5px] border border-border bg-background px-1.5 text-xs"
+                            className="h-6 rounded-full border border-input bg-card px-2 text-[13px]"
                           >
                             {dokument.material_kind ? null : <option value="">{t("Art …")}</option>}
                             {(Object.keys(ART_LABEL) as MaterialKind[]).map((art) => (
@@ -227,30 +227,30 @@ export function DocumentsView() {
                           </select>
                         </div>
                         {dokument.material_topic || dokument.material_date ? (
-                          <p className="mt-1 text-[13px]">
+                          <p className="mt-1 text-[15px]">
                             {dokument.material_topic}
                             {dokument.material_topic && dokument.material_date ? <span className="text-muted-foreground"> · </span> : null}
                             {dokument.material_date ? <span className="text-muted-foreground">{formatDatum(dokument.material_date)}</span> : null}
                           </p>
                         ) : null}
                         {dokument.status === "needs_model" ? (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {tSplit("Für Fotos und Scans lädst du unter {link} das Bildmodell Qwen2.5-VL. Danach wird es automatisch abgeschrieben.")[0]}
+                          <p className="mt-1 text-[13px] text-muted-foreground">
+                            {tSplit("Für Fotos und Scans lädst du unter {link} das Bildmodell Qwen3.5 4B. Danach wird es automatisch abgeschrieben.")[0]}
                             <Link href="/ki" className="underline underline-offset-2">
                               {t("KI & Modelle")}
                             </Link>
-                            {tSplit("Für Fotos und Scans lädst du unter {link} das Bildmodell Qwen2.5-VL. Danach wird es automatisch abgeschrieben.")[1]}
+                            {tSplit("Für Fotos und Scans lädst du unter {link} das Bildmodell Qwen3.5 4B. Danach wird es automatisch abgeschrieben.")[1]}
                           </p>
                         ) : null}
-                        <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                        <p className="mt-1 text-[13px] font-semibold text-muted-foreground">
                           {dokument.source === "upload" ? "hochgeladen" : `aus ${dokument.source}`}
                           <span className="text-border"> · </span>
                           {dokument.processed_at ? `verarbeitet ${formatDateTime(dokument.processed_at)}` : `angelegt ${formatDateTime(dokument.created_at)}`}
                         </p>
                         {dokument.text_source ? (
-                          <p className="mt-0.5 text-xs text-muted-foreground">{QUELLE_LABEL[dokument.text_source] ?? dokument.text_source}</p>
+                          <p className="mt-0.5 text-[13px] text-muted-foreground">{QUELLE_LABEL[dokument.text_source] ?? dokument.text_source}</p>
                         ) : dokument.mime_type ? (
-                          <p className="mt-0.5 text-xs text-muted-foreground">{dokument.mime_type}</p>
+                          <p className="mt-0.5 text-[13px] text-muted-foreground">{dokument.mime_type}</p>
                         ) : null}
                       </div>
                     </li>
@@ -260,7 +260,7 @@ export function DocumentsView() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/80 bg-card/90">
+          <Card>
             <CardHeader>
               <CardTitle>{t("Durchsuchen")}</CardTitle>
               <CardDescription className="mt-1">{t("Findet Textstellen, ohne ein Modell zu befragen.")}</CardDescription>
@@ -289,23 +289,23 @@ export function DocumentsView() {
 
               {suche.result ? (
                 <div className="space-y-2.5">
-                  <p className="text-xs font-medium text-muted-foreground">
+                  <p className="text-[13px] font-medium text-muted-foreground">
                     {t("{n} Treffer zu „{suche}“", { n: suche.result.hits.length, suche: suche.result.query })}
                   </p>
                   {suche.result.hits.length === 0 ? (
                     <EmptyState icon={Search} title={t("Nichts gefunden")} description={t("Für diese Formulierung gibt es keinen Treffer in deinen Dokumenten.")} />
                   ) : (
-                    <ul className="space-y-2.5">
+          <ul className="">
                       {suche.result.hits.map((treffer) => (
-                        <li key={`${treffer.document_id}-${treffer.chunk_index}`} className="border border-border bg-card/60 p-3">
-                          <p className="text-xs font-semibold">
+                        <li key={`${treffer.document_id}-${treffer.chunk_index}`} className="border-b border-border py-3 last:border-b-0">
+                          <p className="text-[13px] font-semibold">
                             {treffer.filename}
                             <span className="ml-2 font-semibold text-muted-foreground">{t("Abschnitt")}{" "}{treffer.chunk_index + 1}</span>
                             {treffer.distance !== null ? (
                               <span className="ml-2 font-mono font-semibold text-muted-foreground">{treffer.distance.toFixed(3)}</span>
                             ) : null}
                           </p>
-                          <p className="mt-1 line-clamp-3 text-xs leading-5 text-muted-foreground">{treffer.content}</p>
+                          <p className="mt-1 line-clamp-3 text-[13px] leading-5 text-muted-foreground">{treffer.content}</p>
                         </li>
                       ))}
                     </ul>
@@ -336,7 +336,7 @@ export function DocumentsView() {
 function DateiAuswahl({ datei, setDatei, disabled }: { datei: File | null; setDatei: (file: File | null) => void; disabled: boolean }) {
   return (
     <div className="space-y-2">
-      <label htmlFor="dokument-datei" className="block text-sm font-semibold">
+      <label htmlFor="dokument-datei" className="block text-[15px] font-semibold">
         {t("Datei")}
       </label>
       <input
@@ -345,10 +345,10 @@ function DateiAuswahl({ datei, setDatei, disabled }: { datei: File | null; setDa
         accept={ERLAUBTE_DATEIEN}
         disabled={disabled}
         onChange={(event) => setDatei(event.target.files?.[0] ?? null)}
-        className="block w-full text-sm text-foreground file:mr-3 file:border file:border-border file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-semibold hover:file:bg-accent disabled:opacity-50"
+        className="block w-full text-[15px] text-foreground file:mr-3 file:border file:border-border file:bg-muted file:px-3 file:py-1.5 file:text-[15px] file:font-semibold hover:file:bg-accent disabled:opacity-50"
       />
       {datei ? (
-        <p className="text-xs font-semibold text-muted-foreground">
+        <p className="text-[13px] font-semibold text-muted-foreground">
           {t("Gewählt: {name} · {kb} KB", { name: datei.name, kb: (datei.size / 1024).toFixed(0) })}
         </p>
       ) : null}

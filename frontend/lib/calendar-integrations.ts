@@ -20,6 +20,7 @@ import { t } from "./i18n";
 export const SYNC_LABELS: Record<string, string> = {
   webuntis: t("Stundenplan aktualisieren"),
   documents: t("Dokumente indexieren"),
+  webdav: t("Material holen"),
   ical: t("Termine holen"),
   google_calendar: t("Termine abgleichen"),
   caldav: t("Termine abgleichen"),
@@ -31,7 +32,7 @@ export const SYNC_LABELS: Record<string, string> = {
  * „Stundenplan aktualisieren" wäre bei einem Kalender eine Lüge, und ein Knopf,
  * der immer sichtbar ist und dann nichts tut, ist schlechter als keiner.
  */
-export const SYNC_KINDS: readonly string[] = ["webuntis", "documents", "ical", "google_calendar", "caldav"];
+export const SYNC_KINDS: readonly string[] = ["webuntis", "documents", "webdav", "ical", "google_calendar", "caldav"];
 
 export function syncLabelFor(kind: string): string {
   return SYNC_LABELS[kind] ?? "Aktualisieren";

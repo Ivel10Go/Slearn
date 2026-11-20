@@ -65,7 +65,7 @@ export function StudyPlansCard({ plans, status, error, actionError, pending, onR
   }
 
   return (
-    <Card className="border-border/80 bg-card/90">
+    <Card>
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
           <CardTitle>{t("Lernpläne")}</CardTitle>
@@ -133,7 +133,7 @@ export function StudyPlansCard({ plans, status, error, actionError, pending, onR
             description={t("Lege einen Lernplan an – darin liegen danach alle Lernaufgaben, Serien und Prüfungsvorbereitungen.")}
           />
         ) : (
-          <ul className="space-y-2.5">
+     <ul className="">
             {plans.map((plan) => (
               <PlanZeile
                 key={plan.id}
@@ -166,7 +166,7 @@ function PlanZeile({ plan, busy, onRename, onDelete }: { plan: StudyPlan; busy: 
   }
 
   return (
-    <li className="flex items-start gap-3 border border-border bg-card/60 p-3.5 transition-colors hover:border-foreground/40">
+    <li className="flex items-start gap-3 border-b border-border py-3 last:border-b-0">
       <div className="min-w-0 flex-1">
         {umbenennen ? (
           <form onSubmit={speichern} className="flex flex-wrap items-center gap-2">
@@ -198,11 +198,11 @@ function PlanZeile({ plan, busy, onRename, onDelete }: { plan: StudyPlan; busy: 
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-2">
-              <p className="truncate text-sm font-semibold">{plan.title}</p>
+              <p className="truncate text-[15px] font-semibold">{plan.title}</p>
               <Badge variant={plan.status === "active" ? "success" : "outline"}>{STATUS_LABEL[plan.status]}</Badge>
             </div>
-            {plan.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{plan.description}</p> : null}
-            <p className="mt-1.5 text-xs font-semibold text-muted-foreground">
+            {plan.description ? <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-muted-foreground">{plan.description}</p> : null}
+            <p className="mt-1.5 text-[13px] font-semibold text-muted-foreground">
               {t("{offen} von {gesamt} Aufgaben offen", { offen: plan.open_task_count, gesamt: plan.task_count })}
               {plan.starts_on ? (
                 <>

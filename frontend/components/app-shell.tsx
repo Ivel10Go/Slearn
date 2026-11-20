@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -8,7 +8,9 @@ import {
   Bot,
   FileText,
   Home,
+  MoreHorizontal,
   ListChecks,
+  NotebookPen,
   MessageSquareText,
   Settings,
   TrendingUp,
@@ -50,28 +52,34 @@ interface NavItem {
 const navigationGroups: { label: string | null; items: NavItem[] }[] = [
   {
     label: null,
-    items: [{ label: t("Übersicht"), mobile: t("Start"), href: "/", icon: Home }],
+    items: [
+      { label: t("Übersicht"), mobile: t("Übersicht"), href: "/", icon: Home },
+      { label: t("Lernen"), mobile: t("Lernen"), href: "/lernen", icon: ListChecks },
+      { label: t("Klassenarbeiten"), mobile: t("Arbeiten"), href: "/klassenarbeiten", icon: NotebookPen },
+      { label: t("Assistent"), mobile: t("Assistent"), href: "/assistent", icon: MessageSquareText },
+    ],
   },
   {
     label: t("Bibliothek"),
     items: [
-      { label: t("Lernplan"), mobile: t("Lernen"), href: "/lernen", icon: ListChecks },
       { label: t("Fächer"), mobile: t("Fächer"), href: "/faecher", icon: BookOpen },
       { label: t("Dokumente"), mobile: t("Dokumente"), href: "/dokumente", icon: FileText },
       { label: t("Fortschritt"), mobile: t("Fortschritt"), href: "/fortschritt", icon: TrendingUp },
-    ],
-  },
-  {
-    label: t("Werkzeuge"),
-    items: [
-      { label: t("Assistent"), mobile: t("Assistent"), href: "/assistent", icon: MessageSquareText },
-      { label: t("KI & Modelle"), mobile: t("KI"), href: "/ki", icon: Bot },
+      { label: t("KI & Modelle"), mobile: t("KI & Modelle"), href: "/ki", icon: Bot },
     ],
   },
 ];
 
-const settingsItem: NavItem = { label: t("Einstellungen"), mobile: t("Mehr"), href: "/settings", icon: Settings };
-const mobileNavigation = [...navigationGroups.flatMap((group) => group.items), settingsItem];
+const settingsItem: NavItem = { label: t("Einstellungen"), mobile: t("Einstellungen"), href: "/settings", icon: Settings };
+
+/*
+ * Mobil vier feste Ziele plus "Mehr". Vorher standen alle neun Eintraege
+ * nebeneinander, 10 px klein und seitlich scrollbar - Fortschritt, Assistent
+ * und KI lagen ausserhalb des Bildes, samt ihrem Aktivzustand. Die vier sind
+ * genau die erste Gruppe der Seitenleiste: was man taeglich oeffnet.
+ */
+const mobileTabs = navigationGroups[0].items;
+const mobileMore = [...navigationGroups.slice(1).flatMap((group) => group.items), settingsItem];
 
 /**
  * Aktiv ist ein Eintrag allein ueber den Pfad. Der Hash zaehlt nicht mehr:
@@ -91,7 +99,7 @@ export function BrandMark({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 120 120"
-      className={cn("h-6 w-6 shrink-0 rounded-[6px] ring-1 ring-foreground/15", className)}
+      className={cn("h-6 w-6 shrink-0 rounded-full ring-1 ring-foreground/15", className)}
       aria-hidden="true"
       focusable="false"
     >
@@ -108,8 +116,9 @@ function SidebarLink({ item, active }: { item: NavItem; active: boolean }) {
       href={item.href}
       aria-current={active ? "location" : undefined}
       className={cn(
-        "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[13px] transition-colors",
-        active ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+        "flex h-9 items-center gap-2.5 rounded-full px-3 text-[15px] transition-colors",
+        // Aktiv = ein Stueck Gesicht auf dem Fell, wie die Karten.
+        active ? "bg-card font-medium text-foreground ring-1 ring-border" : "text-muted-foreground hover:bg-card/60 hover:text-foreground",
       )}
     >
       <Icon className="h-4 w-4 shrink-0" strokeWidth={active ? 2 : 1.75} aria-hidden="true" />
@@ -126,12 +135,12 @@ export function AppShell({ children, user }: AppShellProps) {
     <div className="app-surface min-h-screen bg-background text-foreground">
       <a
         href="#main-content"
-        className="sr-only z-50 focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:rounded-md focus:border focus:border-border focus:bg-card focus:px-3 focus:py-2 focus:text-[13px] focus:font-medium"
+        className="sr-only z-50 focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:rounded-md focus:border focus:border-border focus:bg-card focus:px-3 focus:py-2 focus:text-[15px] focus:font-medium"
       >
         {t("Zum Inhalt springen")}
       </a>
 
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[232px] flex-col border-r border-border bg-sidebar lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[232px] flex-col bg-sidebar lg:flex">
         {/*
           Die Kopfzeile der Seitenleiste ist in der Desktop-App die Fensterleiste:
           man zieht das Fenster daran.
@@ -139,14 +148,14 @@ export function AppShell({ children, user }: AppShellProps) {
         <div className="app-drag flex h-12 shrink-0 items-center px-4">
           <Link href="/" className="app-no-drag flex items-center gap-2 rounded-md px-1 py-1" aria-label={t("Slearn Startseite")}>
             <BrandMark />
-            <span className="text-[13px] font-semibold tracking-tight">{t("Slearn")}</span>
+            <span className="text-[15px] font-semibold tracking-tight">{t("Slearn")}</span>
           </Link>
         </div>
 
         <nav className="flex-1 space-y-4 overflow-y-auto px-2.5 pb-4 pt-2" aria-label={t("Hauptnavigation")}>
           {navigationGroups.map((group) => (
             <div key={group.label ?? "start"}>
-              {group.label ? <p className="mb-1 px-2.5 text-[11px] font-medium text-muted-foreground/80">{group.label}</p> : null}
+              {group.label ? <p className="mb-1 px-3 text-[13px] text-muted-foreground">{group.label}</p> : null}
               <div className="space-y-px">
                 {group.items.map((item) => (
                   <SidebarLink key={item.href} item={item} active={isActive(pathname, item.href)} />
@@ -156,13 +165,13 @@ export function AppShell({ children, user }: AppShellProps) {
           ))}
         </nav>
 
-        <div className="space-y-px border-t border-border px-2.5 py-2.5">
+        <div className="space-y-px px-2.5 py-2.5">
           <SidebarLink item={settingsItem} active={isActive(pathname, settingsItem.href)} />
-          <div className="flex items-center gap-2.5 px-2.5 pt-1.5">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-secondary text-[10px] font-semibold text-secondary-foreground">
+          <div className="flex items-center gap-2.5 px-3 pt-1.5">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-card text-xs font-semibold text-foreground ring-1 ring-border">
               {getInitials(displayName)}
             </span>
-            <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{displayName}</span>
+            <span className="min-w-0 flex-1 truncate text-[15px] font-medium">{displayName}</span>
             <ThemeToggle />
           </div>
         </div>
@@ -174,7 +183,7 @@ export function AppShell({ children, user }: AppShellProps) {
         <header className="sticky top-0 z-30 flex h-[calc(3rem+env(safe-area-inset-top))] items-center justify-between border-b border-border bg-background px-4 pt-[env(safe-area-inset-top)] sm:px-6 lg:hidden">
           <Link href="/" className="flex items-center gap-2" aria-label={t("Slearn Startseite")}>
             <BrandMark />
-            <span className="text-[13px] font-semibold tracking-tight">{t("Slearn")}</span>
+            <span className="text-[15px] font-semibold tracking-tight">{t("Slearn")}</span>
           </Link>
           <div className="flex items-center gap-1">
             <ThemeToggle />
@@ -199,36 +208,68 @@ export function AppShell({ children, user }: AppShellProps) {
         </main>
       </div>
 
-      {/*
-        Acht Eintraege passen nicht in ein Raster auf 375px. Deshalb waagerecht
-        scrollbar mit fester Mindestbreite je Eintrag - man sieht, dass es
-        weitergeht, statt dass ein Teil der Navigation fehlt.
-      */}
-      <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background px-2 pb-[max(0.375rem,env(safe-area-inset-bottom))] pt-1.5 lg:hidden"
-        aria-label={t("Mobile Navigation")}
-      >
-        <div className="mx-auto flex max-w-lg snap-x gap-0.5 overflow-x-auto">
-          {mobileNavigation.map((item) => {
-            const Icon = item.icon;
-            const active = isActive(pathname, item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "location" : undefined}
-                className={cn(
-                  "flex min-h-12 min-w-[4.25rem] shrink-0 snap-start flex-col items-center justify-center gap-0.5 rounded-md px-2 text-[10px] transition-colors",
-                  active ? "font-semibold text-foreground" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2 : 1.75} aria-hidden="true" />
-                <span>{item.mobile}</span>
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+      <MobileNavigation pathname={pathname} />
     </div>
+  );
+}
+
+function MobileNavigation({ pathname }: { pathname: string }) {
+  const [open, setOpen] = useState(false);
+  const moreActive = mobileMore.some((item) => isActive(pathname, item.href));
+
+  // Nach einem Seitenwechsel ist "Mehr" wieder zu.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setOpen(false), 0);
+    return () => window.clearTimeout(timer);
+  }, [pathname]);
+
+  const tabClass = (active: boolean) =>
+    cn(
+      "flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-md text-[13px] transition-colors",
+      active ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
+    );
+
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-40 lg:hidden" aria-label={t("Mobile Navigation")}>
+      {open ? (
+        <>
+          <button type="button" className="fixed inset-0 -z-10 cursor-default bg-background/60" aria-label={t("Menü schließen")} onClick={() => setOpen(false)} />
+          <ul id="mobile-more" className="mx-2 mb-1 rounded-xl border border-border bg-card p-1.5">
+            {mobileMore.map((item) => {
+              const Icon = item.icon;
+              const active = isActive(pathname, item.href);
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    aria-current={active ? "location" : undefined}
+                    className={cn("flex h-11 items-center gap-3 rounded-full px-3 text-base", active ? "bg-muted font-medium" : "hover:bg-muted")}
+                  >
+                    <Icon className="h-[18px] w-[18px] text-muted-foreground" aria-hidden="true" />
+                    {item.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      ) : null}
+      <div className="flex border-t border-border bg-card px-2 pb-[max(0.375rem,env(safe-area-inset-bottom))] pt-1.5">
+        {mobileTabs.map((item) => {
+          const Icon = item.icon;
+          const active = isActive(pathname, item.href);
+          return (
+            <Link key={item.href} href={item.href} aria-current={active ? "location" : undefined} className={tabClass(active)}>
+              <Icon className="h-5 w-5" strokeWidth={active ? 2 : 1.75} aria-hidden="true" />
+              <span>{item.mobile}</span>
+            </Link>
+          );
+        })}
+        <button type="button" className={tabClass(moreActive || open)} aria-expanded={open} aria-controls="mobile-more" onClick={() => setOpen((value) => !value)}>
+          <MoreHorizontal className="h-5 w-5" strokeWidth={moreActive || open ? 2 : 1.75} aria-hidden="true" />
+          <span>{t("Mehr")}</span>
+        </button>
+      </div>
+    </nav>
   );
 }

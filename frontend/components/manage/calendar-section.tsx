@@ -183,7 +183,7 @@ export function CalendarSection({ reference }: { reference: Date }) {
         {formularOffen ? (
           <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-border bg-muted/40 p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-semibold">{bearbeitet === null ? t("Neuer Termin") : t("Termin bearbeiten")}</p>
+              <p className="text-[15px] font-semibold">{bearbeitet === null ? t("Neuer Termin") : t("Termin bearbeiten")}</p>
               <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label={t("Formular schließen")}>
                 <X aria-hidden="true" />
               </Button>
@@ -241,7 +241,7 @@ export function CalendarSection({ reference }: { reference: Date }) {
               </Field>
             </div>
 
-            <label className="flex items-center gap-2.5 text-sm font-semibold">
+            <label className="flex items-center gap-2.5 text-[15px] font-semibold">
               <input
                 type="checkbox"
                 checked={formular.ganztag}
@@ -330,20 +330,20 @@ function TerminZeile({
         )}
         aria-hidden="true"
       >
-        <span className={cn("text-[10px] leading-3", heute ? "text-background/70" : "text-muted-foreground")}>
+        <span className={cn("text-xs leading-3", heute ? "text-background/70" : "text-muted-foreground")}>
           {formatDate(termin.start_time, { month: "short" })}
         </span>
-        <span className="text-[15px] font-semibold leading-5 tabular-nums">{formatDate(termin.start_time, { day: "2-digit" })}</span>
+        <span className="text-[17px] font-semibold leading-5 tabular-nums">{formatDate(termin.start_time, { day: "2-digit" })}</span>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium">{termin.title}</p>
-        <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+        <p className="truncate text-[15px] font-medium">{termin.title}</p>
+        <p className="mt-0.5 flex items-center gap-1 text-[13px] text-muted-foreground">
           <Clock3 className="h-3 w-3" aria-hidden="true" />
           <span className="sr-only">{formatDate(termin.start_time, { weekday: "long", day: "2-digit", month: "long" })},</span>
           {heute ? t("Heute · ") : null}
           {termin.all_day ? t("Ganztägig") : `${formatTime(termin.start_time)} – ${formatTime(termin.end_time)}`}
         </p>
-        {termin.description ? <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-muted-foreground">{termin.description}</p> : null}
+        {termin.description ? <p className="mt-0.5 line-clamp-1 text-[13px] leading-5 text-muted-foreground">{termin.description}</p> : null}
       </div>
       <RowActions label={termin.title} onEdit={onEdit} onDelete={onDelete} busy={busy} />
     </li>

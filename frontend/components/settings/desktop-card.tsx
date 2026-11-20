@@ -79,14 +79,14 @@ export function DesktopCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="break-all rounded-md bg-muted px-3 py-2 font-mono text-xs text-muted-foreground">{bridge.dataFolder}</p>
+        <p className="break-all rounded-md bg-muted px-3 py-2 font-mono text-[13px] text-muted-foreground">{bridge.dataFolder}</p>
         <Button type="button" variant="outline" size="sm" onClick={() => void bridge.openDataFolder()}>
           <FolderOpen aria-hidden="true" />
           {t("Ordner öffnen")}
         </Button>
 
         {settings ? (
-          <div className="space-y-2 border-t border-border pt-4 text-[13px]">
+          <div className="space-y-2 border-t border-border pt-4 text-[15px]">
             <label className="flex items-start gap-2">
               <input
                 type="checkbox"
@@ -96,7 +96,7 @@ export function DesktopCard() {
               />
               <span>
                 {t("Beim Anmelden starten")}
-                <span className="block text-xs text-muted-foreground">
+                <span className="block text-[13px] text-muted-foreground">
                   {mac
                     ? t("Ohne Fenster, nur in der Menüleiste - damit Erinnerungen auch ohne geöffnete App kommen.")
                     : t("Ohne Fenster, nur im Infobereich - damit Erinnerungen auch ohne geöffnete App kommen.")}
@@ -113,7 +113,7 @@ export function DesktopCard() {
                 />
                 <span>
                   {t("Beim Schließen im Infobereich weiterlaufen")}
-                  <span className="block text-xs text-muted-foreground">{t("Beenden dann über das Symbol im Infobereich.")}</span>
+                  <span className="block text-[13px] text-muted-foreground">{t("Beenden dann über das Symbol im Infobereich.")}</span>
                 </span>
               </label>
             )}
@@ -121,7 +121,7 @@ export function DesktopCard() {
         ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-          <div className="text-xs text-muted-foreground">
+          <div className="text-[13px] text-muted-foreground">
             {bridge.version ? <span>{t("Version {n}", { n: bridge.version })}</span> : null}
             {updateText ? <span className="block">{updateText}</span> : null}
           </div>

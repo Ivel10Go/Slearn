@@ -17,7 +17,7 @@ from app.schemas.greeting import GreetingRead
 from app.services import ai_routing
 from app.services import grades as grades_service
 from app.services.dashboard import serialize_dashboard
-from app.services.greeting import greeting_cache_is_fresh, render_greeting
+from app.services.greeting import build_fallback_greeting, greeting_cache_is_fresh, render_greeting
 
 router = APIRouter(prefix="/api/v1/greeting", tags=["greeting"])
 
@@ -57,12 +57,17 @@ def read_greeting(
         GreetingCache.user_id == current_user.id,
         GreetingCache.generated_on == heute,
     ).one_or_none()
-    if stored is not None and greeting_cache_is_fresh(stored.generated_on, heute) and stored.language == language:
+    cached = stored is not None and greeting_cache_is_fresh(stored.generated_on, heute) and stored.language == language
+    if stored is not None and cached and ai_routing.normalize_source(stored.source) != "fallback":
         return _read(stored.sentence, stored.source, stored.model, stored.generated_at)
 
     data: DashboardResponse = serialize_dashboard(
         db, current_user.id, settings, now=now, user_timezone=current_user.timezone
     )
+    if cached:
+        # Der Ersatzsatz kostet keinen Modelllauf; aus dem Cache waere er nach der
+        # ersten neuen Hausaufgabe des Tages falsch ("nichts eingetragen").
+        return _read(build_fallback_greeting(data, now, zone, language), "fallback", None, now)
     outcome = render_greeting(
         db,
         current_user.id,

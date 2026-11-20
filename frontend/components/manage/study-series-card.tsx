@@ -189,7 +189,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
   }
 
   return (
-    <Card className="border-border/80 bg-card/90">
+    <Card>
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
           <CardTitle>{t("Wiederkehrende Serien")}</CardTitle>
@@ -211,7 +211,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
         <SectionBanner error={sammlung.error} actionError={sammlung.actionError} onRetry={() => void sammlung.reload()} />
 
         {plans.length === 0 ? (
-          <p className="border border-dashed border-border bg-muted/30 px-4 py-3 text-xs leading-5 text-muted-foreground">
+          <p className="border border-dashed border-border bg-muted/30 px-4 py-3 text-[13px] leading-5 text-muted-foreground">
             {t("Eine Serie gehört zu einem Lernplan. Lege oben zuerst einen Plan an.")}
           </p>
         ) : null}
@@ -219,7 +219,7 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
         {formularOffen && plans.length > 0 ? (
           <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-semibold">{bearbeitet === null ? t("Neue Serie") : t("Serie bearbeiten")}</p>
+              <p className="text-[15px] font-semibold">{bearbeitet === null ? t("Neue Serie") : t("Serie bearbeiten")}</p>
               <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label={t("Formular schließen")}>
                 <X aria-hidden="true" />
               </Button>
@@ -382,17 +382,17 @@ export function StudySeriesCard({ plans, onChanged, refreshKey = 0 }: { plans: S
         ) : sammlung.items.length === 0 ? (
           <EmptyState icon={Repeat} title={t("Keine Serien")} description={t("Eine Serie erzeugt aus einer Vorlage mehrere Aufgaben – etwa tägliche Vokabelübungen.")} />
         ) : (
-          <ul className="space-y-2.5">
+     <ul className="">
             {sammlung.items.map((serie) => (
-              <li key={serie.id} className="flex items-start gap-3 border border-border bg-card/60 p-3.5 transition-colors hover:border-foreground/40">
+              <li key={serie.id} className="flex items-start gap-3 border-b border-border py-3 last:border-b-0">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className={cn("truncate text-sm font-semibold", serie.status !== "active" && "text-muted-foreground")}>{serie.title}</p>
+                    <p className={cn("truncate text-[15px] font-semibold", serie.status !== "active" && "text-muted-foreground")}>{serie.title}</p>
                     <Badge variant="outline">{WIEDERHOLUNG_LABEL[serie.recurrence]}</Badge>
                     {serie.status !== "active" ? <Badge variant="secondary">{serie.status === "finished" ? t("Beendet") : t("Storniert")}</Badge> : null}
                   </div>
-                  {serie.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{serie.description}</p> : null}
-                  <p className="mt-1.5 text-xs font-semibold text-muted-foreground">
+                  {serie.description ? <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-muted-foreground">{serie.description}</p> : null}
+                  <p className="mt-1.5 text-[13px] font-semibold text-muted-foreground">
                     {formatDuration(serie.duration_minutes)}
                     <span className="text-border"> · </span>
                     {t("Priorität {n}", { n: serie.priority })}

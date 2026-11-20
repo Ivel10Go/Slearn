@@ -67,7 +67,11 @@ export function getCountdown(target: string | Date, now = new Date()) {
   }
   const totalMs = targetDate.getTime() - now.getTime();
   const absoluteMs = Math.abs(totalMs);
-  const days = Math.floor(absoluteMs / 86_400_000);
+  // Kalendertage in Ortszeit, nicht volle 24 Stunden: eine Klausur naechsten
+  // Donnerstag um 8 Uhr ist am Donnerstag abends davor „in 7 Tagen“, wie im
+  // Klassenarbeiten-Bereich (`days_until` vom Backend), nicht „in 6 Tagen“.
+  const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const days = Math.abs(Math.round((startOfDay(targetDate) - startOfDay(now)) / 86_400_000));
   const hours = Math.floor((absoluteMs % 86_400_000) / 3_600_000);
   const minutes = Math.floor((absoluteMs % 3_600_000) / 60_000);
   const isOverdue = totalMs < 0;

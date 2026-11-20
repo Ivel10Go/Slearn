@@ -40,7 +40,7 @@ export function Field({ id, label, hint, error, required, className, children }:
 
   return (
     <div className={cn("space-y-1.5", className)}>
-      <label htmlFor={controlId} className="block text-[13px] font-medium">
+      <label htmlFor={controlId} className="block text-[15px] font-medium">
         {label}
         {required ? (
           <span className="ml-1 text-destructive" aria-hidden="true">
@@ -50,12 +50,12 @@ export function Field({ id, label, hint, error, required, className, children }:
       </label>
       {children({ id: controlId, "aria-invalid": error ? true : undefined, "aria-describedby": describedBy, required: required || undefined })}
       {hint ? (
-        <p id={hintId} className="text-xs leading-5 text-muted-foreground">
+        <p id={hintId} className="text-[13px] leading-5 text-muted-foreground">
           {hint}
         </p>
       ) : null}
       {error ? (
-        <p id={errorId} className="text-xs font-medium text-foreground underline decoration-foreground/40 underline-offset-2">
+        <p id={errorId} className="text-[13px] font-medium text-foreground underline decoration-foreground/40 underline-offset-2">
           {error}
         </p>
       ) : null}
@@ -74,7 +74,7 @@ export function FormError({ id, message }: { id?: string; message: string | null
     return null;
   }
   return (
-    <p id={id} className="rounded-md border border-foreground/30 bg-muted px-3 py-2.5 text-[13px] font-medium text-foreground" role="alert">
+    <p id={id} className="rounded-md border border-foreground/30 bg-muted px-3 py-2.5 text-[15px] font-medium text-foreground" role="alert">
       {message}
     </p>
   );

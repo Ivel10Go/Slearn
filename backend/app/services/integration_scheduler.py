@@ -40,12 +40,14 @@ from app.services.integrations import (
     run_integration_sync,
 )
 from app.services.timetable_import import DEFAULT_SYNC_WEEKS
+from app.services.webdav import SYNC_INTERVAL_SECONDS as WEBDAV_SYNC_INTERVAL_SECONDS
 
 logger = logging.getLogger("school_assistant.integration_scheduler")
 
-#: Nur diese Quelle wird planmäßig geholt. Der Dokumentabruf bleibt beim Knopf,
-#: weil er ein lokales Verzeichnis betrifft und kein Zeitfenster kennt.
+#: Diese Quellen werden planmäßig geholt. Der lokale Dokumentordner bleibt beim Knopf;
+#: ein Cloud-Ordner (WebDAV) dagegen soll ohne Zutun neues Material bringen.
 SCHEDULED_KIND: Final[str] = "webuntis"
+SCHEDULED_KINDS: Final[tuple[str, ...]] = (SCHEDULED_KIND, "webdav")
 
 #: Der erste Lauf wartet nicht das ganze Intervall. Nach einem Neustart soll der
 #: Plan zügig wieder da sein; ``last_sync_at`` verhindert, dass daraus ein
@@ -107,7 +109,7 @@ def active_scheduled_sources(db: Session) -> list[tuple[SyncSource, User]]:
         select(SyncSource, User)
         .join(User, User.id == SyncSource.user_id)
         .where(
-            SyncSource.source_type == SCHEDULED_KIND,
+            SyncSource.source_type.in_(SCHEDULED_KINDS),
             SyncSource.enabled.is_(True),
             User.is_active.is_(True),
         )
@@ -133,7 +135,8 @@ def run_scheduled_integration_syncs(
     interval = settings.webuntis_sync_interval_seconds
     outcomes: list[ScheduledSyncOutcome] = []
     for source, user in active_scheduled_sources(db):
-        outcomes.append(_sync_one(db, settings, source, user, moment=moment, interval=interval, weeks=weeks))
+        due_after = WEBDAV_SYNC_INTERVAL_SECONDS if source.source_type == "webdav" else interval
+        outcomes.append(_sync_one(db, settings, source, user, moment=moment, interval=due_after, weeks=weeks))
     report = ScheduledSyncReport(
         considered=len(outcomes),
         synced=sum(1 for item in outcomes if item.ok and not item.skipped),
@@ -327,14 +330,17 @@ class IntegrationSyncScheduler:
             db.close()
 
     def _loop(self) -> None:
-        delay = min(self._interval, STARTUP_DELAY_SECONDS)
+        # Der Thread wacht so oft auf wie die kuerzeste Quelle es braucht; ob WebUntis dran ist,
+        # entscheidet weiter ``last_sync_at``.
+        wake = min(self._interval, WEBDAV_SYNC_INTERVAL_SECONDS)
+        delay = min(wake, STARTUP_DELAY_SECONDS)
         while not self._stop.is_set():
             if self._stop.wait(delay):
                 break
             self._safe_run_once()
             # Erst danach die volle Intervallzeit, sonst liefe der Abruf im
             # Sekundentakt, solange die erste Wartezeit kurz war.
-            delay = self._interval
+            delay = wake
         log_event(logger, "integration_scheduler_loop_stopped")
 
     def _safe_run_once(self) -> None:

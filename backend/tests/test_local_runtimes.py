@@ -227,7 +227,7 @@ def test_eingebauter_weg_startet_den_server_und_erzeugt_text(
     manager, gestartet = _manager_mit_server(tmp_path, monkeypatch)
     downloads = ModelDownloadManager(tmp_path / "models")
     manager.downloads = downloads
-    _installiere(downloads, "qwen2.5-1.5b-instruct-q4km")
+    _installiere(downloads, "qwen3.5-2b-q4km")
     lr.set_active_manager(manager)
     aufrufe: list[dict[str, Any]] = []
 
@@ -258,22 +258,22 @@ def test_ohne_manager_gibt_es_keinen_eingebauten_weg() -> None:
 
 def test_modellauswahl_wird_gemerkt(tmp_path: Path) -> None:
     downloads = ModelDownloadManager(tmp_path / "models")
-    _installiere(downloads, "qwen2.5-1.5b-instruct-q4km", "llama-3.2-1b-instruct-q4km")
+    _installiere(downloads, "qwen3.5-4b-q4km", "qwen3.5-2b-q4km")
     manager = lr.LocalRuntimeManager(tmp_path / "rt", platform="test-x64", downloads=downloads)
 
     # Ohne Wahl das groesste geladene Modell.
     gewaehlt = manager.preferred_text_model()
-    assert gewaehlt is not None and gewaehlt.id == "qwen2.5-1.5b-instruct-q4km"
-    manager.remember_text_model("llama-3.2-1b-instruct-q4km")
+    assert gewaehlt is not None and gewaehlt.id == "qwen3.5-4b-q4km"
+    manager.remember_text_model("qwen3.5-2b-q4km")
     gewaehlt = manager.preferred_text_model()
-    assert gewaehlt is not None and gewaehlt.id == "llama-3.2-1b-instruct-q4km"
+    assert gewaehlt is not None and gewaehlt.id == "qwen3.5-2b-q4km"
 
 
 def test_sprachdienst_meldet_eingebaute_spracherkennung_als_bereit(tmp_path: Path) -> None:
     from app.services.speech import SpeechService
 
     downloads = ModelDownloadManager(tmp_path / "models")
-    _installiere(downloads, "whisper-tiny-ggml")
+    _installiere(downloads, "whisper-small-q5_1-ggml")
     runtimes = lr.LocalRuntimeManager(tmp_path / "rt", platform="windows-x64", downloads=downloads)
     ohne = SpeechService(downloads=downloads, transcriber=None, synthesizer=None)
     mit = SpeechService(downloads=downloads, transcriber=None, synthesizer=None, runtimes=runtimes)
