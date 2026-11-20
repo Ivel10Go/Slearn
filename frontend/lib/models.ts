@@ -243,6 +243,52 @@ export function describeModelTask(task: string): string {
   }
 }
 
+export interface RecommendedItem {
+  kind: "model" | "voice";
+  id: string;
+  label: string;
+  purpose: string;
+  size_bytes: number;
+  status: ModelStatusPayload;
+}
+
+export interface ModelRecommendation {
+  hardware: string;
+  items: RecommendedItem[];
+}
+
+/** `GET /api/v1/models/recommendation` - Eintraege ohne Id oder Art fallen weg. */
+export function parseRecommendation(payload: unknown): ModelRecommendation | null {
+  const root = asRecord(payload);
+  if (!root) {
+    return null;
+  }
+  const items = (Array.isArray(root.items) ? root.items : []).flatMap((entry): RecommendedItem[] => {
+    const row = asRecord(entry);
+    const id = asText(row?.id);
+    const kind = row?.kind === "model" || row?.kind === "voice" ? row.kind : null;
+    if (!row || !id || !kind) {
+      return [];
+    }
+    return [
+      {
+        kind,
+        id,
+        label: asText(row.label) ?? id,
+        purpose: asText(row.purpose) ?? "",
+        size_bytes: asNumber(row.size_bytes) ?? 0,
+        status: asStatus(row.status),
+      },
+    ];
+  });
+  return { hardware: asText(root.hardware) ?? "", items };
+}
+
+/** Was fuer "Alles herunterladen" noch fehlt: weder geladen noch gerade im Download. */
+export function missingItems(items: RecommendedItem[]): RecommendedItem[] {
+  return items.filter((item) => item.status.status !== "installed" && item.status.status !== "downloading");
+}
+
 /** Passt das Modell auf den freien Speicher? Die RAM-Zahl ist eine Schaetzung. */
 export function modelFitsFreeSpace(bytes: number, freeBytes: number | null): boolean | null {
   if (freeBytes === null || freeBytes === undefined || freeBytes <= 0) {

@@ -1,24 +1,12 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  BookOpen,
-  Bot,
-  FileText,
-  Home,
-  MoreHorizontal,
-  ListChecks,
-  NotebookPen,
-  MessageSquareText,
-  Settings,
-  TrendingUp,
-  type LucideIcon,
-} from "lucide-react";
+import { FileText, Home, ListChecks, MessageSquareText, Settings, type LucideIcon } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getInitials } from "@/lib/format";
-import { isNavigationHrefActive } from "@/lib/navigation";
+import { isSectionActive, sectionOf } from "@/lib/navigation";
 import type { UserResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
@@ -37,57 +25,55 @@ interface NavItem {
 }
 
 /**
- * Die Navigation: die Uebersicht, dann die eigenen Seiten.
- *
- * Die frueheren Eintraege "Stundenplan", "Hausaufgaben", "Pruefungen" und
- * "Termine" waren nur Anker im Dashboard - vier Punkte, die alle auf dieselbe
- * Seite fuehrten. Sie sind entfallen; das Dashboard zeigt alles auf einen Blick.
- * "Bibliothek" sind die eigenen Seiten, auf denen angelegt und verwaltet wird.
- * Die Einstellungen stehen getrennt unten, weil sie keine Tagesfrage
- * beantworten. "KI & Modelle" hat eine eigene Seite, weil KI-Dienst, lokale
- * Modelle und Stimmen zusammen eine Entscheidung sind und in den Einstellungen
- * die halbe Seite fuellten. Der fruehere Punkt "Nutzung" ist in die Kennzahlenleiste oben
- * im Dashboard aufgegangen - er zeigte dieselben drei Zahlen ein zweites Mal.
+ * Die Navigation: vier Ziele plus Einstellungen. Vorher waren es acht plus
+ * Einstellungen, und Lernen, Klassenarbeiten und Fortschritt beantworteten
+ * dieselbe Frage. Jetzt gehoeren sie zu einem Bereich mit Reitern oben auf der
+ * Seite (`NAV_SECTIONS` in `lib/navigation.ts`); keine Seite ist weggefallen.
+ * Mobil sind die vier genau die untere Leiste - kein "Mehr"-Menue mehr, die
+ * Einstellungen stehen im Kopf.
  */
-const navigationGroups: { label: string | null; items: NavItem[] }[] = [
-  {
-    label: null,
-    items: [
-      { label: t("Übersicht"), mobile: t("Übersicht"), href: "/", icon: Home },
-      { label: t("Lernen"), mobile: t("Lernen"), href: "/lernen", icon: ListChecks },
-      { label: t("Klassenarbeiten"), mobile: t("Arbeiten"), href: "/klassenarbeiten", icon: NotebookPen },
-      { label: t("Assistent"), mobile: t("Assistent"), href: "/assistent", icon: MessageSquareText },
-    ],
-  },
-  {
-    label: t("Bibliothek"),
-    items: [
-      { label: t("Fächer"), mobile: t("Fächer"), href: "/faecher", icon: BookOpen },
-      { label: t("Dokumente"), mobile: t("Dokumente"), href: "/dokumente", icon: FileText },
-      { label: t("Fortschritt"), mobile: t("Fortschritt"), href: "/fortschritt", icon: TrendingUp },
-      { label: t("KI & Modelle"), mobile: t("KI & Modelle"), href: "/ki", icon: Bot },
-    ],
-  },
+const navigationItems: NavItem[] = [
+  { label: t("Übersicht"), mobile: t("Übersicht"), href: "/", icon: Home },
+  { label: t("Lernen"), mobile: t("Lernen"), href: "/lernen", icon: ListChecks },
+  { label: t("Assistent"), mobile: t("Assistent"), href: "/assistent", icon: MessageSquareText },
+  { label: t("Unterlagen"), mobile: t("Unterlagen"), href: "/dokumente", icon: FileText },
 ];
 
 const settingsItem: NavItem = { label: t("Einstellungen"), mobile: t("Einstellungen"), href: "/settings", icon: Settings };
 
-/*
- * Mobil vier feste Ziele plus "Mehr". Vorher standen alle neun Eintraege
- * nebeneinander, 10 px klein und seitlich scrollbar - Fortschritt, Assistent
- * und KI lagen ausserhalb des Bildes, samt ihrem Aktivzustand. Die vier sind
- * genau die erste Gruppe der Seitenleiste: was man taeglich oeffnet.
- */
-const mobileTabs = navigationGroups[0].items;
-const mobileMore = [...navigationGroups.slice(1).flatMap((group) => group.items), settingsItem];
-
 /**
- * Aktiv ist ein Eintrag allein ueber den Pfad. Der Hash zaehlt nicht mehr:
- * Links wie `/#study-tasks` aus den Benachrichtigungen springen nur innerhalb
- * der Uebersicht, und die soll dabei markiert bleiben.
+ * Aktiv ist ein Eintrag allein ueber den Pfad - auf seiner Seite und auf jedem
+ * Reiter seines Bereichs. Der Hash zaehlt nicht: Links wie `/#study-tasks` aus
+ * den Benachrichtigungen springen nur innerhalb der Uebersicht.
  */
 function isActive(pathname: string, href: string) {
-  return isNavigationHrefActive(pathname, href, "");
+  return isSectionActive(pathname, href);
+}
+
+/** Reiter eines Bereichs, oben auf jeder seiner Seiten. Ohne Bereich nichts. */
+function SectionTabs({ pathname }: { pathname: string }) {
+  const section = sectionOf(pathname);
+  if (!section) return null;
+  return (
+    <nav className="mb-5 flex gap-1 overflow-x-auto" aria-label={t("Bereich")}>
+      {section.tabs.map((tab) => {
+        const active = tab.href === pathname;
+        return (
+          <Link
+            key={tab.href}
+            href={tab.href}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "shrink-0 rounded-full px-3.5 py-1.5 text-[15px] transition-colors",
+              active ? "bg-card font-medium text-foreground ring-1 ring-border" : "text-muted-foreground hover:bg-card/60 hover:text-foreground",
+            )}
+          >
+            {tab.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
 }
 
 /**
@@ -152,16 +138,9 @@ export function AppShell({ children, user }: AppShellProps) {
           </Link>
         </div>
 
-        <nav className="flex-1 space-y-4 overflow-y-auto px-2.5 pb-4 pt-2" aria-label={t("Hauptnavigation")}>
-          {navigationGroups.map((group) => (
-            <div key={group.label ?? "start"}>
-              {group.label ? <p className="mb-1 px-3 text-[13px] text-muted-foreground">{group.label}</p> : null}
-              <div className="space-y-px">
-                {group.items.map((item) => (
-                  <SidebarLink key={item.href} item={item} active={isActive(pathname, item.href)} />
-                ))}
-              </div>
-            </div>
+        <nav className="flex-1 space-y-px overflow-y-auto px-2.5 pb-4 pt-2" aria-label={t("Hauptnavigation")}>
+          {navigationItems.map((item) => (
+            <SidebarLink key={item.href} item={item} active={isActive(pathname, item.href)} />
           ))}
         </nav>
 
@@ -204,6 +183,7 @@ export function AppShell({ children, user }: AppShellProps) {
           tabIndex={-1}
           className="mx-auto w-full max-w-[1440px] scroll-mt-16 px-4 pb-28 pt-5 outline-none sm:px-6 lg:px-8 lg:pb-10 lg:pt-6 desktop:lg:pt-4"
         >
+          <SectionTabs pathname={pathname} />
           {children}
         </main>
       </div>
@@ -214,15 +194,6 @@ export function AppShell({ children, user }: AppShellProps) {
 }
 
 function MobileNavigation({ pathname }: { pathname: string }) {
-  const [open, setOpen] = useState(false);
-  const moreActive = mobileMore.some((item) => isActive(pathname, item.href));
-
-  // Nach einem Seitenwechsel ist "Mehr" wieder zu.
-  useEffect(() => {
-    const timer = window.setTimeout(() => setOpen(false), 0);
-    return () => window.clearTimeout(timer);
-  }, [pathname]);
-
   const tabClass = (active: boolean) =>
     cn(
       "flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-md text-[13px] transition-colors",
@@ -231,31 +202,8 @@ function MobileNavigation({ pathname }: { pathname: string }) {
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 lg:hidden" aria-label={t("Mobile Navigation")}>
-      {open ? (
-        <>
-          <button type="button" className="fixed inset-0 -z-10 cursor-default bg-background/60" aria-label={t("Menü schließen")} onClick={() => setOpen(false)} />
-          <ul id="mobile-more" className="mx-2 mb-1 rounded-xl border border-border bg-card p-1.5">
-            {mobileMore.map((item) => {
-              const Icon = item.icon;
-              const active = isActive(pathname, item.href);
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    aria-current={active ? "location" : undefined}
-                    className={cn("flex h-11 items-center gap-3 rounded-full px-3 text-base", active ? "bg-muted font-medium" : "hover:bg-muted")}
-                  >
-                    <Icon className="h-[18px] w-[18px] text-muted-foreground" aria-hidden="true" />
-                    {item.label}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      ) : null}
       <div className="flex border-t border-border bg-card px-2 pb-[max(0.375rem,env(safe-area-inset-bottom))] pt-1.5">
-        {mobileTabs.map((item) => {
+        {navigationItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(pathname, item.href);
           return (
@@ -265,10 +213,6 @@ function MobileNavigation({ pathname }: { pathname: string }) {
             </Link>
           );
         })}
-        <button type="button" className={tabClass(moreActive || open)} aria-expanded={open} aria-controls="mobile-more" onClick={() => setOpen((value) => !value)}>
-          <MoreHorizontal className="h-5 w-5" strokeWidth={moreActive || open ? 2 : 1.75} aria-hidden="true" />
-          <span>{t("Mehr")}</span>
-        </button>
       </div>
     </nav>
   );

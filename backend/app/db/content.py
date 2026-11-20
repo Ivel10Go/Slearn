@@ -90,6 +90,14 @@ class Document(Base):
     topics: Mapped[list[Topic]] = relationship(secondary="topic_documents", back_populates="documents")
     chunks: Mapped[list[DocumentChunk]] = relationship(back_populates="document", cascade="all, delete-orphan")
 
+    @property
+    def ai_review_fields(self) -> list[str]:
+        """Von der KI eingeordnete Felder, die noch niemand bestaetigt hat (``materials.ai_classify``)."""
+        entry = (self.extra_data or {}).get("ai_classified")
+        if not isinstance(entry, dict) or not entry.get("review"):
+            return []
+        return [str(field) for field in entry.get("fields", [])]
+
 
 class DocumentChunk(Base):
     __tablename__ = "document_chunks"

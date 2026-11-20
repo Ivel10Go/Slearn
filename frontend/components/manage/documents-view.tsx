@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { FileText, FolderTree, LoaderCircle, MessageSquareText, RefreshCw, Search, Upload } from "lucide-react";
+import { Check, FileText, FolderTree, LoaderCircle, MessageSquareText, RefreshCw, Search, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,11 +11,19 @@ import { FormError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SectionBanner } from "@/components/manage/row-actions";
-import { getDocuments, searchDocuments, updateDocumentMaterial, uploadFile, type DocumentSearchInput } from "@/lib/api";
+import {
+  getDocuments,
+  getSubjects,
+  searchDocuments,
+  updateDocumentMaterial,
+  uploadFile,
+  type DocumentMaterialInput,
+  type DocumentSearchInput,
+} from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { useAction, useList } from "@/lib/use-collection";
 import { cn } from "@/lib/utils";
-import type { DocumentRecord, DocumentSearchResult, FileUploadResult, MaterialKind } from "@/lib/types";
+import type { DocumentRecord, DocumentSearchResult, FileUploadResult, MaterialKind, Subject } from "@/lib/types";
 import { t, tSplit } from "@/lib/i18n";
 
 /** `POST /v1/files` nimmt eine Datei entgegen. Das Backend kennt keine Größengrenze über HTTP. */
@@ -72,6 +80,12 @@ function useDocuments() {
 
 export function DocumentsView() {
   const sammlung = useDocuments();
+  const [faecher, setFaecher] = useState<Subject[]>([]);
+  useEffect(() => {
+    getSubjects()
+      .then(setFaecher)
+      .catch(() => undefined);
+  }, []);
   const suche = useAction<DocumentSearchResult>();
   const upload = useAction<FileUploadResult>();
 
@@ -91,12 +105,17 @@ export function DocumentsView() {
   }, [wartet, reload]);
 
   async function artSetzen(id: number, art: MaterialKind) {
+    await korrigieren(id, { material_kind: art });
+  }
+
+  /** Auch ein leerer Rumpf zählt: er bestätigt die Einordnung der KI. */
+  async function korrigieren(id: number, eingabe: DocumentMaterialInput) {
     try {
-      await updateDocumentMaterial(id, { material_kind: art });
+      await updateDocumentMaterial(id, eingabe);
       setArtFehler(null);
       await reload();
     } catch {
-      setArtFehler(t("Die Art ließ sich nicht speichern."));
+      setArtFehler(t("Die Einordnung ließ sich nicht speichern."));
     }
   }
 
@@ -233,6 +252,9 @@ export function DocumentsView() {
                             {dokument.material_date ? <span className="text-muted-foreground">{formatDatum(dokument.material_date)}</span> : null}
                           </p>
                         ) : null}
+                        {dokument.ai_review_fields.length > 0 ? (
+                          <KiVorschlag dokument={dokument} faecher={faecher} onKorrigieren={(eingabe) => void korrigieren(dokument.id, eingabe)} />
+                        ) : null}
                         {dokument.status === "needs_model" ? (
                           <p className="mt-1 text-[13px] text-muted-foreground">
                             {tSplit("Für Fotos und Scans lädst du unter {link} das Bildmodell Qwen3.5 4B. Danach wird es automatisch abgeschrieben.")[0]}
@@ -329,6 +351,46 @@ export function DocumentsView() {
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+/** "Eingeordnet als Physik · Arbeitsblatt – stimmt das?" Bestätigen oder das Fach direkt ändern. */
+function KiVorschlag({
+  dokument,
+  faecher,
+  onKorrigieren,
+}: {
+  dokument: DocumentRecord;
+  faecher: Subject[];
+  onKorrigieren: (eingabe: DocumentMaterialInput) => void;
+}) {
+  const fach = faecher.find((eintrag) => eintrag.id === dokument.subject_id);
+  const teile = [
+    fach?.name,
+    dokument.material_kind ? ART_LABEL[dokument.material_kind] : null,
+    dokument.material_topic,
+  ].filter(Boolean);
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-[13px]">
+      <span>{t("Von der KI eingeordnet als {was}. Stimmt das?", { was: teile.join(" · ") })}</span>
+      <Button type="button" size="sm" variant="outline" className="h-7" onClick={() => onKorrigieren({})}>
+        <Check aria-hidden="true" />
+        {t("Stimmt")}
+      </Button>
+      <select
+        aria-label={t("Fach von {datei}", { datei: dokument.filename })}
+        value={dokument.subject_id ?? ""}
+        onChange={(event) => onKorrigieren({ subject_id: event.target.value ? Number(event.target.value) : null })}
+        className="h-7 rounded-full border border-input bg-card px-2 text-[13px]"
+      >
+        <option value="">{t("Ohne Fach")}</option>
+        {faecher.map((eintrag) => (
+          <option key={eintrag.id} value={eintrag.id}>
+            {eintrag.name}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

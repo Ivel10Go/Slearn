@@ -1,8 +1,10 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { ModelCatalogCard } from "@/components/settings/model-catalog-card";
+import { RecommendedModelsCard } from "@/components/settings/recommended-models-card";
 import { IntegrationsCard } from "@/components/settings/settings-view";
 import { TrainingCard } from "@/components/settings/training-card";
 import { VoiceCatalogCard } from "@/components/settings/voice-catalog-card";
@@ -17,32 +19,26 @@ import { t } from "@/lib/i18n";
 /** Die Art einer KI-Verbindung im Integrationskatalog. */
 const AI_KIND = "ai_provider";
 
-const ABSCHNITTE = [
-  { id: "ki-dienst", label: t("KI-Dienst") },
-  { id: "ki-modelle", label: t("Lokale Modelle") },
-  { id: "ki-stimmen", label: t("Stimmen") },
-  { id: "ki-training", label: t("Training") },
-] as const;
-
-/**
- * Springt zu einem Abschnitt, ohne den Hash zu setzen.
- *
- * Die Shell liest den Hash fuer den Aktivzustand der Navigation; `#ki-modelle`
- * liesse "KI & Modelle" in der Seitenleiste erloeschen.
- */
-function springen(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+/** Ein zugeklappter Abschnitt. Nativ, damit Tastatur und Screenreader ohne eigenen Code stimmen. */
+function Aufklapper({ titel, children }: { titel: string; children: ReactNode }) {
+  return (
+    <details className="group">
+      <summary className="cursor-pointer select-none rounded-full px-3 py-1.5 text-[15px] text-muted-foreground hover:text-foreground">
+        {titel}
+      </summary>
+      <div className="mt-3 space-y-4">{children}</div>
+    </details>
+  );
 }
 
 /**
- * Alles, was mit KI zu tun hat, auf einer Seite: die Verbindung zu einem
- * KI-Server, die Modelle, die Slearn selbst laedt, und die Stimmen fuer
- * die Sprachausgabe.
+ * Alles, was mit KI zu tun hat - aber zuerst nur das, was man braucht.
  *
- * Vorher lag das in den Einstellungen - die Verbindung in der Integrationsliste,
- * Modelle und Stimmen als zwei endlose Karten in der schmalen rechten Spalte.
- * Die drei gehoeren zusammen, weil sie eine Frage beantworten: woher kommt eine
- * Antwort, und bleibt sie auf diesem Rechner?
+ * Oben steht die Empfehlung fuer diesen Rechner mit einem Knopf. Vorher standen
+ * hier KI-Dienst, Modellkatalog, Stimmen und Training untereinander, und wer nur
+ * "die KI soll gehen" wollte, musste zwischen sieben Modellen waehlen.
+ * Alles Einzelne bleibt erreichbar: "Erweitert" fuer Modelle, Stimmen und einen
+ * eigenen KI-Dienst, "Für Entwickler" fuer Antwortwege und Training.
  *
  * Die Verbindungsliste nutzt dieselbe Karte wie die Einstellungen, nur auf die
  * KI-Art beschraenkt - eine zweite Fassung desselben Formulars waere eine
@@ -57,21 +53,14 @@ function KiBereich() {
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-[26px] font-semibold leading-9 tracking-tight">{t("KI & Modelle")}</h1>
-          <p className="sr-only">
-            {t("Woher Antworten, Tagessatz und Vorschläge kommen: ein KI-Server, Modelle auf diesem Rechner und Stimmen zum Vorlesen.")}
-          </p>
-        </div>
-        <nav aria-label={t("Abschnitte")} className="flex flex-wrap gap-1">
-          {ABSCHNITTE.map((abschnitt) => (
-            <Button key={abschnitt.id} type="button" size="sm" variant="ghost" onClick={() => springen(abschnitt.id)}>
-              {abschnitt.label}
-            </Button>
-          ))}
-        </nav>
+      <header>
+        <h1 className="text-[26px] font-semibold leading-9 tracking-tight">{t("KI & Modelle")}</h1>
+        <p className="sr-only">
+          {t("Woher Antworten, Tagessatz und Vorschläge kommen: ein KI-Server, Modelle auf diesem Rechner und Stimmen zum Vorlesen.")}
+        </p>
       </header>
+
+      <RecommendedModelsCard />
 
       {ki.error ? (
         <div className="flex flex-col gap-3 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-[15px] text-destructive sm:flex-row sm:items-center sm:justify-between" role="alert">
@@ -89,7 +78,13 @@ function KiBereich() {
         </p>
       ) : null}
 
-      <div id="ki-dienst" className="grid scroll-mt-20 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,340px)]">
+      <Aufklapper titel={t("Erweitert: einzelne Modelle, Stimmen und eigener KI-Dienst")}>
+        <ModelCatalogCard />
+        {/*
+          Die Stimmen stehen unter den Modellen und nicht darin: eine Stimme ist
+          eine Stimme *in einer* Sprache, ein Whisper-Modell kennt viele.
+        */}
+        <VoiceCatalogCard />
         {laedt ? (
           <Skeleton className="h-48 w-full rounded-md" />
         ) : (
@@ -115,7 +110,9 @@ function KiBereich() {
             onDelete={(integration) => void ki.removeIntegration(integration.id)}
           />
         )}
+      </Aufklapper>
 
+      <Aufklapper titel={t("Für Entwickler: Antwortwege und persönliches Training")}>
         {/*
           Die Reihenfolge der Wege steht neben der Verbindung und nicht in jeder
           Zeile: sie gilt fuer alle zusammen. Der Text kommt vom Backend
@@ -143,25 +140,8 @@ function KiBereich() {
             )}
           </CardContent>
         </Card>
-      </div>
-
-      <div id="ki-modelle" className="scroll-mt-20">
-        <ModelCatalogCard />
-      </div>
-
-      {/*
-        Die Stimmen stehen unter den Modellen und nicht darin: eine Stimme ist
-        eine Stimme *in einer* Sprache, ein Whisper-Modell kennt viele.
-        Zusammengelegt waere genau die Entscheidung unsichtbar, die man hier
-        treffen muss.
-      */}
-      <div id="ki-stimmen" className="scroll-mt-20">
-        <VoiceCatalogCard />
-      </div>
-
-      <div id="ki-training" className="scroll-mt-20">
         <TrainingCard />
-      </div>
+      </Aufklapper>
     </div>
   );
 }

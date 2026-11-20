@@ -47,6 +47,9 @@ def update_document_material(
         setattr(document, field, value)
     extra = dict(document.extra_data or {})
     extra["manual_fields"] = sorted(set(extra.get("manual_fields", [])) | set(changes))
+    if isinstance(extra.get("ai_classified"), dict):
+        # Durchgesehen: bestaetigt oder korrigiert - der Hinweis "stimmt das?" verschwindet.
+        extra["ai_classified"] = {**extra["ai_classified"], "review": False}
     document.extra_data = extra
     db.commit()
     db.refresh(document)

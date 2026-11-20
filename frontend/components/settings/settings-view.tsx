@@ -1254,9 +1254,12 @@ writing,
 
   return (
     <div className="space-y-4">
-      <header>
+      <header className="flex flex-wrap items-end justify-between gap-3">
         <h1 className="text-[26px] font-semibold leading-9 tracking-tight">{t("Einstellungen")}</h1>
-        </header>
+        <a href="/einrichtung" className="text-[15px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+          {t("Einrichtung noch einmal durchgehen")}
+        </a>
+      </header>
 
       {error ? (
         <div className="flex flex-col gap-3 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-[15px] text-destructive sm:flex-row sm:items-center sm:justify-between" role="alert">

@@ -149,6 +149,7 @@ export const documentReadSchema = z.object({
   material_date: z.string().nullable().optional(),
   subject_id: z.number().int().nullable().optional(),
   text_source: z.string().nullable().optional(),
+  ai_review_fields: z.array(z.string()).default([]),
 });
 
 export const documentSourceSchema = z.object({
@@ -193,6 +194,7 @@ export function parseDocumentArray(payload: unknown) {
     material_date: entry.material_date ?? null,
     subject_id: entry.subject_id ?? null,
     text_source: entry.text_source ?? null,
+    ai_review_fields: entry.ai_review_fields,
   }));
 }
 

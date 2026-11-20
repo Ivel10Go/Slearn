@@ -81,17 +81,12 @@ function DashboardSkeleton() {
         <Skeleton className="h-7 w-[28rem] max-w-full" />
       </div>
       <Skeleton className="h-[74px] w-full" />
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
-        <div className="space-y-4">
-          <Skeleton className="h-80 w-full" />
-          <Skeleton className="h-32 w-full" />
-        </div>
-        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-1">
-          <Skeleton className="h-28 w-full" />
-          <Skeleton className="h-40 w-full" />
-          <Skeleton className="h-40 w-full" />
-          <Skeleton className="h-28 w-full" />
-        </div>
+      <Skeleton className="h-64 w-full" />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-40 w-full" />
       </div>
     </div>
   );
@@ -384,25 +379,21 @@ export function DashboardView({ data, error, isLoading, onRetry, username }: Das
       <DayBranch data={data} reference={reference} />
 
       {/*
-        Zwei Spalten: links, was den Tag strukturiert - Stundenplan und
-        Lernblöcke, beide brauchen Breite -, rechts das Fällige als schmale
-        Listen. Vorher standen Hausaufgaben und Prüfungen als zwei halbe
-        Karten unter dem Stundenplan, und die rechte Spalte endete nach
-        Kalender und Assistent im Leeren. Zwischen lg und xl läuft die rechte
-        Spalte zweispaltig unter der linken.
+        Der Stundenplan über die ganze Breite (die Woche braucht sie), darunter
+        die vier Listen als 2×2-Raster. Vorher zwei Spalten mit zwei Karten
+        links und drei rechts: die Kanten lagen nie auf einer Höhe, und links
+        unten blieb eine leere Fläche - an Tagen ohne Stunden die halbe Seite.
+        Die Zeilen strecken ihre Karten (kein `items-start`), damit Nachbarn
+        gleich hoch enden.
         Lernfortschritt, Noten und Belohnung stehen auf `/fortschritt`: sie
         beantworten "wie stehe ich?", nicht "was steht heute an?".
       */}
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
-        <div className="space-y-4">
-          <ScheduleCard />
-          <StudyTasksCard tasks={data.studyTasks} />
-        </div>
-        <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-1">
-          <HomeworkSection reference={reference} />
-          <ExamsSection reference={reference} />
-          <CalendarSection reference={reference} />
-        </div>
+      <ScheduleCard />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <StudyTasksCard tasks={data.studyTasks} />
+        <HomeworkSection reference={reference} />
+        <ExamsSection reference={reference} />
+        <CalendarSection reference={reference} />
       </div>
     </div>
   );
