@@ -352,8 +352,8 @@ export function AssistantView() {
     <div className="space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-[22px] font-semibold leading-8 tracking-tight">{t("Assistent")}</h1>
-          <p className="mt-0.5 max-w-2xl text-[13px] leading-5 text-muted-foreground">
+          <h1 className="text-[26px] font-semibold leading-9 tracking-tight">{t("Assistent")}</h1>
+          <p className="sr-only">
             {t("Frag zu deinen Unterlagen, plane deine Woche oder lass Prüfungen, Hausaufgaben und Termine eintragen. Tippen oder sprechen.")}
           </p>
         </div>
@@ -386,7 +386,7 @@ export function AssistantView() {
               {messages.map((message) =>
                 message.role === "user" ? (
                   <div key={message.id} className="flex justify-end">
-                    <p className="max-w-[85%] whitespace-pre-wrap rounded-md bg-foreground px-3 py-2 text-[13px] leading-6 text-background">{message.content}</p>
+                    <p className="max-w-[85%] whitespace-pre-wrap rounded-md bg-foreground px-3 py-2 text-[15px] leading-6 text-background">{message.content}</p>
                   </div>
                 ) : (
                   <AssistentNachricht
@@ -404,7 +404,7 @@ export function AssistantView() {
                 ),
               )}
               {sendet ? (
-                <p className="flex items-center gap-2.5 text-[13px] text-muted-foreground" role="status">
+                <p className="flex items-center gap-2.5 text-[15px] text-muted-foreground" role="status">
                   <Faultier zustand="denken" groesse={28} />
                   {t("Denkt nach … (beim ersten Mal startet das Modell, das dauert ein paar Sekunden)")}
                 </p>
@@ -413,7 +413,7 @@ export function AssistantView() {
             </div>
 
             {fehler ? (
-              <p className="mx-4 rounded-md border border-foreground/30 bg-muted px-3 py-2 text-[13px]" role="alert">
+              <p className="mx-4 rounded-md border border-foreground/30 bg-muted px-3 py-2 text-[15px]" role="alert">
                 {fehler}
               </p>
             ) : null}
@@ -431,11 +431,11 @@ export function AssistantView() {
                   ))}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium">{PHASEN_TEXT[gespraech.phase]}</p>
+                  <p className="text-[15px] font-medium">{PHASEN_TEXT[gespraech.phase]}</p>
                   {gespraech.hinweis ? (
-                    <p className="text-xs text-muted-foreground">{gespraech.hinweis}</p>
+                    <p className="text-[13px] text-muted-foreground">{gespraech.hinweis}</p>
                   ) : gespraech.erkannt ? (
-                    <p className="truncate text-xs text-muted-foreground">{t("Verstanden: „{text}“", { text: gespraech.erkannt })}</p>
+                    <p className="truncate text-[13px] text-muted-foreground">{t("Verstanden: „{text}“", { text: gespraech.erkannt })}</p>
                   ) : null}
                 </div>
                 {gespraech.phase === "antwortet" ? (
@@ -450,7 +450,7 @@ export function AssistantView() {
                 </Button>
               </div>
             ) : gespraech.hinweis ? (
-              <p className="mx-3 text-xs text-muted-foreground" role="status">
+              <p className="mx-3 text-[13px] text-muted-foreground" role="status">
                 {gespraech.hinweis}
               </p>
             ) : null}
@@ -525,7 +525,7 @@ export function AssistantView() {
                     {vorlesen ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}
                     {t("Antworten vorlesen")}
                   </Button>
-                  {laeuftAufnahme ? <span className="text-xs text-muted-foreground">{beschreibeAufnahme(sprache.aufnahmeZustand, sprache.sekunden)}</span> : null}
+                  {laeuftAufnahme ? <span className="text-[13px] text-muted-foreground">{beschreibeAufnahme(sprache.aufnahmeZustand, sprache.sekunden)}</span> : null}
                 </div>
                 <Button type="submit" size="sm" disabled={sendet || !eingabe.trim()}>
                   {sendet ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CornerDownLeft aria-hidden="true" />}
@@ -533,12 +533,12 @@ export function AssistantView() {
                 </Button>
               </div>
               {sprache.fehler ? (
-                <p className="text-xs text-muted-foreground" role="status">
+                <p className="text-[13px] text-muted-foreground" role="status">
                   {sprache.fehler}
                 </p>
               ) : null}
               {!sprache.kannEingabe || !sprache.kannAusgabe ? (
-                <p className="text-[11px] leading-4 text-muted-foreground">
+                <p className="text-[13px] leading-4 text-muted-foreground">
                   {!sprache.kannEingabe ? `${t("Sprechen: {grund}", { grund: sprache.grundEingabe || t("nicht verfügbar") })} ` : ""}
                   {!sprache.kannAusgabe ? `${t("Vorlesen: {grund}", { grund: sprache.grundAusgabe || t("nicht verfügbar") })} ` : ""}
                   {tSplit("Modelle und Stimmen richtest du unter {link} ein.")[0]}
@@ -555,7 +555,7 @@ export function AssistantView() {
         <div className="space-y-4 self-start">
           <div className="hidden flex-col items-center gap-1 pt-2 lg:flex">
             <Faultier zustand={zustand} groesse={132} koerper folgen beschriftung={`Faultier-Assistent: ${FAULTIER_TEXT[zustand]}`} />
-            <p className="text-xs text-muted-foreground">{FAULTIER_TEXT[zustand]}</p>
+            <p className="text-[13px] text-muted-foreground">{FAULTIER_TEXT[zustand]}</p>
           </div>
           <AbfrageCard onErgebnis={() => setProfilStand((stand) => stand + 1)} />
           <LernprofilCard refreshKey={profilStand} />
@@ -576,12 +576,12 @@ function Leer({ ohneModell, zustand, onBeispiel }: { ohneModell: boolean; zustan
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
       <Faultier zustand={zustand} groesse={104} koerper folgen className="mb-1 lg:hidden" />
-      <p className="text-sm font-semibold">{t("Worüber möchtest du reden?")}</p>
-      <p className="max-w-md text-xs leading-5 text-muted-foreground">
+      <p className="text-[15px] font-semibold">{t("Worüber möchtest du reden?")}</p>
+      <p className="max-w-md text-[13px] leading-5 text-muted-foreground">
         {t("Der Assistent kennt deine Dokumente, deinen Stundenplan, Prüfungen, Hausaufgaben und Termine. Was er über dich lernt, siehst du rechts.")}
       </p>
       {ohneModell ? (
-        <p className="max-w-md text-xs leading-5 text-muted-foreground">
+        <p className="max-w-md text-[13px] leading-5 text-muted-foreground">
           {t("Noch kein Modell verbunden – ohne Modell antwortet er nur aus deinen Daten.")}{" "}
           <Link href="/ki" className="underline underline-offset-2 hover:text-foreground">
             {t("Modell verbinden")}
@@ -594,7 +594,7 @@ function Leer({ ohneModell, zustand, onBeispiel }: { ohneModell: boolean; zustan
             key={beispiel}
             type="button"
             onClick={() => onBeispiel(beispiel)}
-            className="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
+            className="rounded-md border border-border px-2.5 py-1 text-[13px] text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
           >
             {beispiel}
           </button>
@@ -624,7 +624,7 @@ function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen
     <div className="flex max-w-[92%] gap-2.5">
       <Faultier zustand={zustand ?? "ruhe"} still={zustand === null} groesse={28} className="mt-0.5" />
       <div className="min-w-0 flex-1 space-y-2">
-        <p className="whitespace-pre-wrap text-[13px] leading-6">{message.content}</p>
+        <p className="whitespace-pre-wrap text-[15px] leading-6">{message.content}</p>
 
         {reply && reply.proposals.length > 0 ? (
           <ul className="space-y-1.5">
@@ -635,14 +635,14 @@ function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen
                 <li key={`${proposal.kind}-${index}`} className={cn("rounded-md border border-border px-3 py-2", state === "verworfen" && "opacity-50")}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-[13px] font-medium">
+                      <p className="text-[15px] font-medium">
                         <span className="text-muted-foreground">{ACTION_LABELS[proposal.kind]}:</span> {proposal.title}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-[13px] text-muted-foreground">
                         {describeProposalTime(proposal)}
                         {proposal.subject_name ? ` · ${proposal.subject_name}${proposal.subject_id === null ? ` ${t("(Fach nicht gefunden)")}` : ""}` : ""}
                       </p>
-                      {proposal.description ? <p className="mt-0.5 text-xs text-muted-foreground">{proposal.description}</p> : null}
+                      {proposal.description ? <p className="mt-0.5 text-[13px] text-muted-foreground">{proposal.description}</p> : null}
                     </div>
                     {state === "eingetragen" ? (
                       <Badge variant="success">
@@ -664,7 +664,7 @@ function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen
                     )}
                   </div>
                   {note && state !== "eingetragen" ? (
-                    <p className="mt-1 text-xs" role="alert">
+                    <p className="mt-1 text-[13px]" role="alert">
                       {note}
                     </p>
                   ) : null}
@@ -675,7 +675,7 @@ function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen
         ) : null}
 
         {reply && reply.memories_added.length > 0 ? (
-          <p className="text-xs text-muted-foreground">{t("Gemerkt:")}{" "}{reply.memories_added.map((memory) => memory.content).join(" · ")}</p>
+          <p className="text-[13px] text-muted-foreground">{t("Gemerkt:")}{" "}{reply.memories_added.map((memory) => memory.content).join(" · ")}</p>
         ) : null}
 
         <div className="flex flex-wrap items-center gap-1.5">
@@ -685,7 +685,7 @@ function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen
             <button
               type="button"
               onClick={spielt ? onStopp : onVorlesen}
-              className="inline-flex items-center gap-1 rounded-[5px] px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="inline-flex items-center gap-1 rounded-[5px] px-1.5 py-0.5 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               {spielt ? <VolumeX className="h-3.5 w-3.5" aria-hidden="true" /> : <Volume2 className="h-3.5 w-3.5" aria-hidden="true" />}
               {spielt ? t("Stopp") : t("Vorlesen")}
@@ -718,14 +718,16 @@ function AssistentNachricht({ message, zustand, kannVorlesen, spielt, onVorlesen
         </div>
 
         {reply && reply.sources.length > 0 ? (
-          <details className="text-xs text-muted-foreground">
+          <details className="text-[13px] text-muted-foreground">
             <summary className="cursor-pointer select-none hover:text-foreground">
               {reply.sources.length} {reply.sources.length === 1 ? t("Quelle") : t("Quellen")} {t("aus deinen Unterlagen")}
             </summary>
             <ul className="mt-1.5 space-y-1.5">
-              {reply.sources.map((source) => (
+              {reply.sources.map((source, index) => (
                 <li key={`${source.document_id}-${source.chunk_index}`} className="rounded-md border border-border px-3 py-2">
                   <p className="font-medium text-foreground">
+                    {/* dieselbe Nummer wie im Prompt (format_excerpt), damit "[2]" in der Antwort hierher zeigt */}
+                    <span className="mr-1.5 tabular-nums text-muted-foreground">[{index + 1}]</span>
                     {source.filename}
                     <span className="ml-2 font-normal text-muted-foreground">{t("Abschnitt {n}", { n: source.chunk_index + 1 })}</span>
                   </p>
@@ -804,17 +806,17 @@ function GedaechtnisCard({ messages }: { messages: ViewMessage[] }) {
           </Button>
         </form>
         {fehler ? (
-          <p className="text-xs" role="alert">
+          <p className="text-[13px]" role="alert">
             {fehler}
           </p>
         ) : null}
         {memories.length === 0 ? (
-          <p className="text-xs leading-5 text-muted-foreground">{t("Noch nichts. Erzähl ihm z. B., wie du am liebsten lernst.")}</p>
+          <p className="text-[13px] leading-5 text-muted-foreground">{t("Noch nichts. Erzähl ihm z. B., wie du am liebsten lernst.")}</p>
         ) : (
           <ul className="divide-y divide-border">
             {memories.map((memory) => (
               <li key={memory.id} className="flex items-start justify-between gap-2 py-1.5">
-                <p className="text-xs leading-5">
+                <p className="text-[13px] leading-5">
                   {memory.content}
                   {memory.source === "manual" ? <span className="ml-1 text-muted-foreground">{t("(von dir)")}</span> : null}
                 </p>

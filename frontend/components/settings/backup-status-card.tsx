@@ -168,7 +168,7 @@ export function BackupStatusCard() {
   const running = Boolean(backup?.enabled && backup.runnerAvailable);
 
   return (
-    <Card className="border-border/80 bg-card/90">
+    <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div>
           <CardTitle>{t("Sicherung")}</CardTitle>
@@ -184,7 +184,7 @@ export function BackupStatusCard() {
 
       <CardContent className="space-y-4">
         {error ? (
-          <div className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert">
+          <div className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-[15px] font-medium text-destructive" role="alert">
             <span className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               {error}
@@ -200,7 +200,7 @@ export function BackupStatusCard() {
         ) : null}
 
         {!error && status && !status.available ? (
-          <p className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-200">
+          <p className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-[15px] font-medium text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-200">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             {status.message}
           </p>
@@ -243,13 +243,13 @@ export function BackupStatusCard() {
             </dl>
 
             {backup.directoryWritable === false ? (
-              <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-200">
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] font-semibold text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-200">
                 {t("Der Worker kann den Sicherungsordner nicht beschreiben. Im Container muss der Backup-Pfad read/write eingebunden sein, sonst schlägt jeder Lauf fehl.")}
               </p>
             ) : null}
 
             {backup.lastError ? (
-              <p className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-xs font-medium text-destructive">
+              <p className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-[13px] font-medium text-destructive">
                 {t("Letzter Lauf fehlgeschlagen: {fehler}", { fehler: backup.lastError })}
               </p>
             ) : null}
@@ -257,7 +257,7 @@ export function BackupStatusCard() {
         ) : null}
 
         {!error && !backup && !isLoading && !status ? (
-          <p className="text-sm text-muted-foreground">{t("Es liegen keine Angaben zum Backup vor.")}</p>
+          <p className="text-[15px] text-muted-foreground">{t("Es liegen keine Angaben zum Backup vor.")}</p>
         ) : null}
       </CardContent>
     </Card>
@@ -272,8 +272,8 @@ interface DetailProps {
 function Detail({ label, value }: DetailProps) {
   return (
     <div className="rounded-md border border-border/70 bg-muted/40 px-3.5 py-3">
-      <dt className="text-[11px] font-medium text-muted-foreground">{label}</dt>
-      <dd className="mt-1 truncate text-sm font-semibold">{value}</dd>
+      <dt className="text-[13px] font-medium text-muted-foreground">{label}</dt>
+      <dd className="mt-1 truncate text-[15px] font-semibold">{value}</dd>
     </div>
   );
 }

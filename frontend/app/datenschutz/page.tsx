@@ -24,8 +24,8 @@ const STAND = "7. Oktober 2026";
 function Abschnitt({ titel, children }: { titel: string; children: ReactNode }) {
   return (
     <section className="space-y-2">
-      <h2 className="text-[15px] font-semibold">{titel}</h2>
-      <div className="space-y-2 text-[13px] leading-6 text-muted-foreground">{children}</div>
+      <h2 className="text-[17px] font-semibold">{titel}</h2>
+      <div className="space-y-2 text-[15px] leading-6 text-muted-foreground">{children}</div>
     </section>
   );
 }
@@ -45,8 +45,8 @@ function PrivacyEnglish() {
   return (
     <article className="max-w-3xl space-y-6">
       <header>
-        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Privacy</h1>
-        <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">Last updated: 7 October 2026</p>
+        <h1 className="text-[26px] font-semibold leading-8 tracking-tight">Privacy</h1>
+        <p className="mt-0.5 text-[15px] leading-5 text-muted-foreground">Last updated: 7 October 2026</p>
       </header>
 
       <Abschnitt titel="In short">
@@ -136,7 +136,7 @@ function PrivacyEnglish() {
         </p>
       </Abschnitt>
 
-      <p className="text-xs text-muted-foreground">If the German and English versions differ, the German version applies.</p>
+      <p className="text-[13px] text-muted-foreground">If the German and English versions differ, the German version applies.</p>
     </article>
   );
 }
@@ -145,8 +145,8 @@ function DatenschutzDeutsch() {
   return (
       <article className="max-w-3xl space-y-6">
         <header>
-          <h1 className="text-[22px] font-semibold leading-8 tracking-tight">Datenschutz</h1>
-          <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">Stand: {STAND}</p>
+          <h1 className="text-[26px] font-semibold leading-8 tracking-tight">Datenschutz</h1>
+          <p className="mt-0.5 text-[15px] leading-5 text-muted-foreground">Stand: {STAND}</p>
         </header>
 
         <Abschnitt titel="Kurz gesagt">

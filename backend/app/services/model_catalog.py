@@ -272,9 +272,9 @@ def _hugging_face_file(repository: str, file_name: str, sha256: str, size_bytes:
 
 
 MODEL_CATALOG: Final[dict[str, ModelSpec]] = {
-    "qwen2.5-1.5b-instruct-q4km": ModelSpec(
-        id="qwen2.5-1.5b-instruct-q4km",
-        label="Qwen2.5 1.5B Instruct (Q4_K_M)",
+    "qwen3.5-2b-q4km": ModelSpec(
+        id="qwen3.5-2b-q4km",
+        label="Qwen3.5 2B (Q4_K_M)",
         task="text_generation",
         family="GGUF für llama.cpp",
         description=(
@@ -282,47 +282,52 @@ MODEL_CATALOG: Final[dict[str, ModelSpec]] = {
             "Die kleinste sinnvolle Wahl für Lernplan und Dokumentenfragen."
         ),
         license="Apache-2.0",
-        source_repository="bartowski/Qwen2.5-1.5B-Instruct-GGUF",
-        source_page="https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF",
-        parameter_count=1543714304,
+        source_repository="bartowski/Qwen_Qwen3.5-2B-GGUF",
+        source_page="https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF",
+        parameter_count=2274069824,
         quantization="Q4_K_M",
-        context_length=32768,
+        context_length=262144,
         files=(
             _hugging_face_file(
-                "bartowski/Qwen2.5-1.5B-Instruct-GGUF",
-                "Qwen2.5-1.5B-Instruct-Q4_K_M.gguf",
-                "1adf0b11065d8ad2e8123ea110d1ec956dab4ab038eab665614adba04b6c3370",
-                986048768,
+                "bartowski/Qwen_Qwen3.5-2B-GGUF",
+                "Qwen_Qwen3.5-2B-Q4_K_M.gguf",
+                "57a1085840f497d764a7fc5d346922dbde961efb54cc792ea81d694fd846a1d8",
+                1396198496,
             ),
         ),
     ),
-    "llama-3.2-1b-instruct-q4km": ModelSpec(
-        id="llama-3.2-1b-instruct-q4km",
-        label="Llama 3.2 1B Instruct (Q4_K_M)",
+    "qwen3.5-4b-q4km": ModelSpec(
+        id="qwen3.5-4b-q4km",
+        label="Qwen3.5 4B (Q4_K_M)",
         task="text_generation",
         family="GGUF für llama.cpp",
-        description="Das kleinste Textmodell im Katalog, wenn der Speicher knapp ist.",
-        license="Llama 3.2 Community License",
-        source_repository="bartowski/Llama-3.2-1B-Instruct-GGUF",
-        source_page="https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF",
-        parameter_count=1235814432,
+        description="Deutlich bessere Antworten als die 2B-Variante, wenn der Rechner mehr RAM hat.",
+        license="Apache-2.0",
+        source_repository="bartowski/Qwen_Qwen3.5-4B-GGUF",
+        source_page="https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF",
+        parameter_count=4659865088,
         quantization="Q4_K_M",
-        context_length=131072,
+        context_length=262144,
         files=(
             _hugging_face_file(
-                "bartowski/Llama-3.2-1B-Instruct-GGUF",
-                "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
-                "6f85a640a97cf2bf5b8e764087b1e83da0fdb51d7c9fab7d0fece9385611df83",
-                807694464,
+                "bartowski/Qwen_Qwen3.5-4B-GGUF",
+                "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
+                "13c16f426047e2de38cd075bdade4a7bcbc8c774384876f677740cda65f8a983",
+                3013027808,
             ),
         ),
     ),
+    # Bleibt nur fuers persoenliche Training: der Trainer kennt bisher nur die
+    # qwen2-Architektur (TRAINABLE_BASES, trainer/lora_gguf.py), Qwen3.5 baut anders auf.
     "qwen2.5-3b-instruct-q4km": ModelSpec(
         id="qwen2.5-3b-instruct-q4km",
         label="Qwen2.5 3B Instruct (Q4_K_M)",
         task="text_generation",
         family="GGUF für llama.cpp",
-        description="Deutlich bessere Antworten als die 1.5B-Variante, wenn der Server mehr RAM hat.",
+        description=(
+            "Älteres Modell. Nur nötig, wenn der Assistent auf diesem Rechner an dir lernen soll – "
+            "das persönliche Training gibt es bisher nur dafür."
+        ),
         license="Apache-2.0",
         source_repository="bartowski/Qwen2.5-3B-Instruct-GGUF",
         source_page="https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF",
@@ -341,33 +346,33 @@ MODEL_CATALOG: Final[dict[str, ModelSpec]] = {
     # Liest Fotos und Scans, auch Handschrift: ohne dieses Modell bleibt ein
     # fotografierter Aufschrieb fuer den Assistenten eine leere Datei. Zwei
     # Dateien - das Sprachmodell und der Bildteil (mmproj) fuer --mmproj.
-    "qwen2.5-vl-3b-instruct-q4km": ModelSpec(
-        id="qwen2.5-vl-3b-instruct-q4km",
-        label="Qwen2.5-VL 3B (Q4_K_M)",
+    "qwen3.5-4b-vision-q4km": ModelSpec(
+        id="qwen3.5-4b-vision-q4km",
+        label="Qwen3.5 4B mit Bildteil (Q4_K_M)",
         task="image_to_text",
         family="GGUF für llama.cpp",
         description=(
             "Liest Fotos, Scans und Handschrift ab, damit Aufschriebe und Arbeitsblätter "
             "durchsuchbar werden. Eine Seite dauert auf dem Prozessor etwa eine Minute."
         ),
-        license="Qwen Research License",
-        source_repository="ggml-org/Qwen2.5-VL-3B-Instruct-GGUF",
-        source_page="https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF",
-        parameter_count=3754622976,
+        license="Apache-2.0",
+        source_repository="bartowski/Qwen_Qwen3.5-4B-GGUF",
+        source_page="https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF",
+        parameter_count=4659865088,
         quantization="Q4_K_M",
-        context_length=32768,
+        context_length=262144,
         files=(
             _hugging_face_file(
-                "ggml-org/Qwen2.5-VL-3B-Instruct-GGUF",
-                "Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf",
-                "d02fe9b69ad8cadbbd228e387667af66612c44bed29ffc8eb1e7caf9ac486c12",
-                1929901056,
+                "bartowski/Qwen_Qwen3.5-4B-GGUF",
+                "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
+                "13c16f426047e2de38cd075bdade4a7bcbc8c774384876f677740cda65f8a983",
+                3013027808,
             ),
             _hugging_face_file(
-                "ggml-org/Qwen2.5-VL-3B-Instruct-GGUF",
-                "mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf",
-                "980c9b2f78c04e6cff93d277ada09e768394f112d75db3b4e9dea8a69f9fb904",
-                844757728,
+                "bartowski/Qwen_Qwen3.5-4B-GGUF",
+                "mmproj-Qwen_Qwen3.5-4B-f16.gguf",
+                "659b59dd44b73b1cd34af6cc424669484b06dc80f4340adf8ea84ad776eef813",
+                672423488,
             ),
         ),
     ),
@@ -394,48 +399,46 @@ MODEL_CATALOG: Final[dict[str, ModelSpec]] = {
             ),
         ),
     ),
-    # Zwei Sprachmodelle, damit das Format nicht als GGUF-Flkost lesbar ist:
-    # whisper.cpp laedt Binaerdateien ohne Quantisierungssuffix und kennt keinen
-    # Kontextpuffer im Sinne von llama.cpp.
-    "whisper-tiny-ggml": ModelSpec(
-        id="whisper-tiny-ggml",
-        label="Whisper tiny (GGML)",
+    # whisper.cpp laedt Binaerdateien ohne Kontextpuffer im Sinne von llama.cpp.
+    "whisper-small-q5_1-ggml": ModelSpec(
+        id="whisper-small-q5_1-ggml",
+        label="Whisper small (GGML, q5_1)",
         task="speech_to_text",
         family="GGML für whisper.cpp",
-        description="Kleinstes Spracherkennungsmodell, mehrsprachig. Reicht für kurze Aufgaben.",
+        description="Kleines Spracherkennungsmodell, mehrsprachig. Schnell, für kurze Aufgaben.",
         license="MIT",
         source_repository="ggerganov/whisper.cpp",
         source_page="https://huggingface.co/ggerganov/whisper.cpp",
         parameter_count=None,
-        quantization="f16",
+        quantization="q5_1",
         context_length=None,
         files=(
             _hugging_face_file(
                 "ggerganov/whisper.cpp",
-                "ggml-tiny.bin",
-                "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
-                77691713,
+                "ggml-small-q5_1.bin",
+                "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+                190085487,
             ),
         ),
     ),
-    "whisper-base-ggml": ModelSpec(
-        id="whisper-base-ggml",
-        label="Whisper base (GGML)",
+    "whisper-large-v3-turbo-q5_0-ggml": ModelSpec(
+        id="whisper-large-v3-turbo-q5_0-ggml",
+        label="Whisper large-v3-turbo (GGML, q5_0)",
         task="speech_to_text",
         family="GGML für whisper.cpp",
-        description="Spracherkennung mit weniger Fehlern als tiny, auf Kosten von RAM und Zeit.",
+        description="Spracherkennung mit deutlich weniger Fehlern im Deutschen, auf Kosten von RAM und Zeit.",
         license="MIT",
         source_repository="ggerganov/whisper.cpp",
         source_page="https://huggingface.co/ggerganov/whisper.cpp",
         parameter_count=None,
-        quantization="f16",
+        quantization="q5_0",
         context_length=None,
         files=(
             _hugging_face_file(
                 "ggerganov/whisper.cpp",
-                "ggml-base.bin",
-                "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
-                147951465,
+                "ggml-large-v3-turbo-q5_0.bin",
+                "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+                574041195,
             ),
         ),
     ),

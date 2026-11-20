@@ -77,7 +77,7 @@ function SegmentedControl<T extends string>({
             onClick={() => onChange(option.id)}
             aria-pressed={active}
             className={cn(
-              "h-7 px-2.5 text-xs font-semibold transition-colors active:opacity-80",
+              "h-7 px-2.5 text-[13px] font-semibold transition-colors active:opacity-80",
               index > 0 && "border-l border-border",
               active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
@@ -121,20 +121,20 @@ function LessonCell({ lesson, reference, detailed }: { lesson: DashboardLesson; 
             der Titel nur, wenn er mehr sagt als das Fach - WebUntis liefert oft
             beides gleich.
           */}
-          <span className={cn("min-w-0 flex-1 truncate text-[13px] font-semibold", lesson.isCancelled && "line-through")}>
+          <span className={cn("min-w-0 flex-1 truncate text-[15px] font-semibold", lesson.isCancelled && "line-through")}>
             {lesson.subject}
             {lesson.title && lesson.title !== lesson.subject ? <span className="font-normal text-muted-foreground"> · {lesson.title}</span> : null}
           </span>
-          <span className="shrink-0 truncate text-xs text-muted-foreground">{[lesson.room, lesson.teacher].filter(Boolean).join(" · ")}</span>
-          {isCurrent ? <span className="shrink-0 text-[11px] font-medium text-foreground">{t("Jetzt")}</span> : null}
-          {lesson.isCancelled ? <span className="shrink-0 text-[11px] font-medium text-destructive">{t("Entfallen")}</span> : null}
+          <span className="shrink-0 truncate text-[13px] text-muted-foreground">{[lesson.room, lesson.teacher].filter(Boolean).join(" · ")}</span>
+          {isCurrent ? <span className="shrink-0 text-[13px] font-medium text-foreground">{t("Jetzt")}</span> : null}
+          {lesson.isCancelled ? <span className="shrink-0 text-[13px] font-medium text-destructive">{t("Entfallen")}</span> : null}
         </>
       ) : (
         <>
-          <span className={cn("truncate text-xs font-semibold", lesson.isCancelled && "line-through")}>
+          <span className={cn("truncate text-[13px] font-semibold", lesson.isCancelled && "line-through")}>
             {lesson.subjectShort ?? lesson.subject}
           </span>
-          <span className="truncate text-[10px] text-muted-foreground">{lesson.room}</span>
+          <span className="truncate text-xs text-muted-foreground">{lesson.room}</span>
           {lesson.isCancelled ? <span className="sr-only">{t("Entfallen")}</span> : null}
         </>
       )}
@@ -271,7 +271,7 @@ export function ScheduleCard() {
       <CardHeader className="gap-2.5 pb-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <CardTitle>{t("Stundenplan")}</CardTitle>
-          <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+          <span className="text-[13px] font-semibold tabular-nums text-muted-foreground">
             {start && end ? `${formatWeekNumber(start)} · ${formatDateRange(start, end)}` : t("lädt …")}
           </span>
           <Badge variant="secondary">{total}</Badge>
@@ -296,7 +296,7 @@ export function ScheduleCard() {
               type="button"
               onClick={() => setOffset(0)}
               disabled={offset === 0}
-              className="h-7 border-x border-border px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:opacity-80 disabled:pointer-events-none disabled:opacity-40"
+              className="h-7 border-x border-border px-2 text-[13px] font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:opacity-80 disabled:pointer-events-none disabled:opacity-40"
             >
               {offset === 0 ? (option.days === 1 ? t("Heute") : t("Aktuell")) : `${offset > 0 ? "+" : ""}${t("{n}T", { n: offset * option.days })}`}
             </button>
@@ -317,7 +317,7 @@ export function ScheduleCard() {
 
       <CardContent>
         {error ? (
-          <p className="mb-4 border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+          <p className="mb-4 border border-destructive/20 bg-destructive/10 px-3 py-2 text-[15px] text-destructive" role="alert">
             {error}
           </p>
         ) : null}
@@ -371,17 +371,17 @@ export function ScheduleCard() {
                         <div className="flex items-baseline justify-between gap-1">
                           <span
                             className={cn(
-                              "text-[11px] font-medium",
+                              "text-[13px] font-medium",
                               istHeute ? "text-foreground underline underline-offset-[5px]" : "text-muted-foreground",
                             )}
                           >
                             {formatDate(day, { weekday: "short" })}
                           </span>
-                          <span className={cn("text-sm font-semibold tabular-nums", istHeute ? "text-foreground" : "text-muted-foreground")}>
+                          <span className={cn("text-[15px] font-semibold tabular-nums", istHeute ? "text-foreground" : "text-muted-foreground")}>
                             {formatDate(day, { day: "2-digit" })}
                           </span>
                         </div>
-                        <p className="mt-0.5 truncate text-[10px] font-medium text-muted-foreground/70">
+                        <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
                           {anzahl === 0
                             ? day.getDay() === 0 || day.getDay() === 6
                               ? t("Wochenende")
@@ -403,7 +403,7 @@ export function ScheduleCard() {
                     >
                       <span
                         className={cn(
-                          "text-[11px] font-semibold tabular-nums",
+                          "text-[13px] font-semibold tabular-nums",
                           row.isNow ? "text-primary underline underline-offset-[3px]" : "text-muted-foreground",
                         )}
                       >

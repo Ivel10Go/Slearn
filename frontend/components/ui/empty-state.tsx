@@ -10,10 +10,11 @@ import type { LucideIcon } from "lucide-react";
  */
 export function EmptyState({ icon: Icon, title, description }: { icon: LucideIcon; title: string; description: string }) {
   return (
-    <div className="flex items-start gap-2 py-1 text-[13px] leading-5 text-muted-foreground">
-      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+    <div className="flex items-center gap-2 py-1 text-[15px] leading-6 text-muted-foreground">
+      <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+      {/* Die Erklaerung bleibt fuer Screenreader; sichtbar reicht der Satz. */}
       <p>
-        <span className="font-medium text-foreground/80">{title}.</span> {description}
+        {title}. <span className="sr-only">{description}</span>
       </p>
     </div>
   );

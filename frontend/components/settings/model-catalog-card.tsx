@@ -74,7 +74,7 @@ function ProgressBar({ model }: { model: ModelPayload }) {
       >
         <div className={cn("h-full bg-foreground", laeuft ? "opacity-70" : "opacity-100")} style={{ width: `${anteil}%` }} />
       </div>
-      <p className="text-[11px] font-semibold text-muted-foreground">
+      <p className="text-[13px] font-semibold text-muted-foreground">
         <span className="tabular-nums">{formatNumber(anteil, 1)} %</span>
         {model.status.bytes_total > 0
           ? ` ${t("von {groesse}", { groesse: formatModelBytes(model.status.bytes_total) })}`
@@ -107,9 +107,9 @@ function ModelRow({
   const zeigeFortschritt = model.status.status !== "not_downloaded";
 
   return (
-    <li className="flex flex-col rounded-md border border-border/70 p-3.5">
+    <li className="flex flex-col border-b border-border py-3 last:border-b-0">
       <div className="flex items-start justify-between gap-3">
-        <p className="min-w-0 text-[13px] font-semibold leading-5">{model.label}</p>
+        <p className="min-w-0 text-[15px] font-semibold leading-5">{model.label}</p>
         <Badge variant={model.status.status === "installed" ? "success" : "secondary"} className="shrink-0">
           {describeModelStatus(model.status.status)}
         </Badge>
@@ -122,7 +122,7 @@ function ModelRow({
         man sie ueber die Kacheln hinweg. Die Herleitung der RAM-Schaetzung
         steht im `title` - sie ist Beleg, nicht Entscheidung.
       */}
-      <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground">
+      <p className="mt-1 flex flex-wrap gap-x-2 text-[13px] text-muted-foreground">
         <span className="tabular-nums">{formatModelBytes(model.size_bytes)}</span>
         <span aria-hidden="true">·</span>
         <span className="tabular-nums" title={model.ram_basis ? t("Gerechnet aus: {basis}.", { basis: model.ram_basis }) : undefined}>
@@ -138,10 +138,10 @@ function ModelRow({
         ) : null}
       </p>
 
-      <p className="mt-2 text-xs leading-5 text-muted-foreground">{translateServerText(model.description)}</p>
+      <p className="mt-2 text-[13px] leading-5 text-muted-foreground">{translateServerText(model.description)}</p>
 
       {passt === false ? (
-        <p className="mt-2 flex items-start gap-2 text-xs font-semibold">
+        <p className="mt-2 flex items-start gap-2 text-[13px] font-semibold">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           {t("Der freie Speicher ist kleiner als dieses Modell. Der Download bricht vorher ab und lässt eine Reserve.")}
         </p>
@@ -160,7 +160,7 @@ function ModelRow({
         mehr sagt.
       */}
       <div className={cn(zeigeFortschritt && model.status.message && "mt-2")} role="status" aria-live="polite">
-        {zeigeFortschritt && model.status.message ? <p className="text-xs leading-5 text-muted-foreground">{translateServerText(model.status.message)}</p> : null}
+        {zeigeFortschritt && model.status.message ? <p className="text-[13px] leading-5 text-muted-foreground">{translateServerText(model.status.message)}</p> : null}
       </div>
 
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-3">
@@ -303,13 +303,13 @@ export function ModelCatalogCard() {
 
       <CardContent className="space-y-4">
         {fehler ? (
-          <p className="border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert">
+          <p className="border border-destructive/20 bg-destructive/10 px-4 py-3 text-[15px] font-medium text-destructive" role="alert">
             {fehler}
           </p>
         ) : null}
 
         {speicher && !speicher.writable ? (
-          <p className="flex items-start gap-2 border border-foreground/25 bg-foreground/10 px-4 py-3 text-sm font-semibold">
+          <p className="flex items-start gap-2 border border-foreground/25 bg-foreground/10 px-4 py-3 text-[15px] font-semibold">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             {speicher.message}
           </p>
@@ -323,7 +323,7 @@ export function ModelCatalogCard() {
         ) : null}
 
         {!laedt && modelle.length === 0 && !fehler ? (
-          <p className="text-sm text-muted-foreground">{t("Der Katalog enthält zurzeit kein Modell.")}</p>
+          <p className="text-[15px] text-muted-foreground">{t("Der Katalog enthält zurzeit kein Modell.")}</p>
         ) : null}
 
         {/*
@@ -333,8 +333,8 @@ export function ModelCatalogCard() {
         */}
         {gruppen.map((gruppe) => (
           <section key={gruppe.task} className="space-y-2" aria-label={describeModelTask(gruppe.task)}>
-            <h4 className="text-xs font-medium text-muted-foreground">{describeModelTask(gruppe.task)}</h4>
-            <ul className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+            <h4 className="text-[13px] font-medium text-muted-foreground">{describeModelTask(gruppe.task)}</h4>
+      <ul className="">
               {gruppe.modelle.map((model) => (
                 <ModelRow
                   key={model.id}
@@ -350,7 +350,7 @@ export function ModelCatalogCard() {
           </section>
         ))}
 
-        {speicher?.message ? <p className="text-[11px] leading-4 text-muted-foreground">{speicher.message}</p> : null}
+        {speicher?.message ? <p className="text-[13px] leading-4 text-muted-foreground">{speicher.message}</p> : null}
       </CardContent>
     </Card>
   );

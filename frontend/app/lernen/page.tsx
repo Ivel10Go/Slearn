@@ -45,8 +45,8 @@ function LernenBereich() {
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">{t("Lernen")}</h1>
-        <p className="mt-1 max-w-2xl text-[13px] leading-5 text-muted-foreground">
+        <h1 className="text-[26px] font-semibold leading-9 tracking-tight">{t("Lernen")}</h1>
+        <p className="sr-only">
           {t("Der Wochenplan verteilt alles Offene auf deine freie Zeit. Lernpläne sammeln Aufgaben zu einem Thema, Serien erzeugen daraus wiederkehrende Aufgaben, und eine Prüfung kann ihre Themen direkt in Aufgaben umsetzen.")}
         </p>
       </header>
@@ -60,8 +60,15 @@ function LernenBereich() {
         }}
       />
 
-      <div className="grid items-start gap-4 xl:grid-cols-2">
-        <div className="space-y-4">
+      <StudyTasksCard plans={plaene.items} onChanged={() => void plaene.reload()} refreshKey={planNeu} />
+
+      {/* Pläne und Serien braucht man selten: der Wochenplan legt beides selbst an.
+          Zugeklappt bleiben sie erreichbar, ohne den Alltag zu füllen. */}
+      <details className="group">
+        <summary className="cursor-pointer select-none rounded-full px-3 py-1.5 text-[15px] text-muted-foreground hover:text-foreground">
+          {t("Erweitert: Lernpläne und wiederkehrende Aufgaben")}
+        </summary>
+        <div className="mt-3 grid items-start gap-4 xl:grid-cols-2">
           <StudyPlansCard
             plans={plaene.items}
             status={plaene.status}
@@ -75,11 +82,7 @@ function LernenBereich() {
           />
           <StudySeriesCard plans={plaene.items} onChanged={() => void plaene.reload()} refreshKey={planNeu} />
         </div>
-
-        <div className="space-y-4">
-          <StudyTasksCard plans={plaene.items} onChanged={() => void plaene.reload()} refreshKey={planNeu} />
-        </div>
-      </div>
+      </details>
     </div>
   );
 }

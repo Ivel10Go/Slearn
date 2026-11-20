@@ -39,7 +39,7 @@ const updates = require("./lib/updates.js");
 const texts = require("./lib/texts.js");
 const { text } = texts;
 
-const BACKGROUND = { light: "#ffffff", dark: "#0a0a0a" };
+const BACKGROUND = { light: "#f2f2f1", dark: "#0a0a0a" };
 const isMac = process.platform === "darwin";
 const repoRoot = path.resolve(__dirname, "..");
 

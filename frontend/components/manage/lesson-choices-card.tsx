@@ -79,7 +79,7 @@ export function LessonChoicesCard({ onSaved }: LessonChoicesCardProps) {
   }
 
   return (
-    <Card className="border-border/80 bg-card/90">
+    <Card>
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
           <CardTitle>{t("Parallele Stunden")}</CardTitle>
@@ -96,11 +96,11 @@ export function LessonChoicesCard({ onSaved }: LessonChoicesCardProps) {
             return (
               <li key={eintrag.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <div className="min-w-0">
-                  <p className="text-[13px] font-medium">
+                  <p className="text-[15px] font-medium">
                     {titel}
-                    {eintrag.decided ? null : <span className="ml-2 text-xs font-normal text-muted-foreground">{t("noch offen")}</span>}
+                    {eintrag.decided ? null : <span className="ml-2 text-[13px] font-normal text-muted-foreground">{t("noch offen")}</span>}
                   </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{eintrag.windows.map(zeitfenster).join(" · ")}</p>
+                  <p className="mt-0.5 text-[13px] text-muted-foreground">{eintrag.windows.map(zeitfenster).join(" · ")}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {speichert === eintrag.id ? (
@@ -117,7 +117,7 @@ export function LessonChoicesCard({ onSaved }: LessonChoicesCardProps) {
                           disabled={speichert !== null}
                           onClick={() => void waehlen(eintrag, option.subject_id)}
                           className={cn(
-                            "h-7 rounded-[4px] px-3 text-[13px] font-medium transition-colors disabled:opacity-60",
+                            "h-7 rounded-[4px] px-3 text-[15px] font-medium transition-colors disabled:opacity-60",
                             aktiv ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
                           )}
                         >
@@ -139,7 +139,7 @@ export function LessonChoicesCard({ onSaved }: LessonChoicesCardProps) {
 
         <FormError message={fehler} />
         {hinweis ? (
-          <p className="text-[13px] text-muted-foreground" role="status">
+          <p className="text-[15px] text-muted-foreground" role="status">
             {hinweis}
           </p>
         ) : null}

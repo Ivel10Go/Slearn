@@ -107,6 +107,13 @@ describe("Datums- und Lernformatierung", () => {
     expect(past.label).toBe("Vor 1 Tag");
   });
 
+  it("zählt Kalendertage statt voller 24 Stunden", () => {
+    const now = new Date(2026, 10, 19, 17, 0);
+    expect(getCountdown(new Date(2026, 10, 26, 8, 0), now).label).toBe("in 7 Tagen");
+    expect(getCountdown(new Date(2026, 10, 20, 8, 0), now).label).toBe("in 1 Tag");
+    expect(getCountdown(new Date(2026, 10, 19, 19, 0), now).label).toBe("in 2 Stunden");
+  });
+
   it("erkennt aktuelle und beendete Lektionen", () => {
     const now = new Date("2026-09-25T10:15:00.000Z");
     const lesson = {

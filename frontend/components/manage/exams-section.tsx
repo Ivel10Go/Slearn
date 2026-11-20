@@ -230,7 +230,7 @@ export function ExamsSection({ reference }: { reference: Date }) {
           Dashboard die Themen nur; jetzt entsteht daraus eine Aufgabe je Thema.
         */}
         {planErgebnis ? (
-          <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-[13px]" role="status">
+          <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-[15px]" role="status">
             {t("{n} Aufgaben angelegt", { n: planErgebnis.created_count })}
             {planErgebnis.skipped_count > 0 ? `, ${tn(planErgebnis.skipped_count, "{n} Thema übersprungen", "{n} Themen übersprungen")}` : ""}
             {planErgebnis.last_due_on ? ` · ${t("bis {datum}", { datum: formatDate(planErgebnis.last_due_on) })}` : ""}{t(". Sie stehen unter")}{" "}
@@ -241,7 +241,7 @@ export function ExamsSection({ reference }: { reference: Date }) {
 
         {zielPruefung !== null ? (
           <div className="space-y-4 rounded-md border border-border bg-muted/40 p-4">
-            <p className="text-sm font-semibold">{t("Lernplan aus den Themen erzeugen")}</p>
+            <p className="text-[15px] font-semibold">{t("Lernplan aus den Themen erzeugen")}</p>
             <div className="grid gap-4 @md:grid-cols-2">
               <Field id="generator-plan" label={t("Lernplan")} required>
                 {(props) => (
@@ -269,7 +269,7 @@ export function ExamsSection({ reference }: { reference: Date }) {
                 )}
               </Field>
             </div>
-            <p className="text-xs leading-5 text-muted-foreground">
+            <p className="text-[13px] leading-5 text-muted-foreground">
               {t("Eine Aufgabe je Thema, verteilt über die Tage vor der Klausur – das schwächste Thema zuerst, weil es am meisten Vorlauf braucht. Die Aufgaben werden in dieser Reihenfolge verkettet, damit der Plan eine Reihenfolge hat. Ein zweiter Klick legt nichts doppelt an.")}
             </p>
             <div className="flex flex-wrap items-center gap-2">
@@ -287,7 +287,7 @@ export function ExamsSection({ reference }: { reference: Date }) {
         {formularOffen ? (
           <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-border bg-muted/40 p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-semibold">{bearbeitet === null ? t("Neue Prüfung") : t("Prüfung bearbeiten")}</p>
+              <p className="text-[15px] font-semibold">{bearbeitet === null ? t("Neue Prüfung") : t("Prüfung bearbeiten")}</p>
               <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label={t("Formular schließen")}>
                 <X aria-hidden="true" />
               </Button>
@@ -382,7 +382,7 @@ export function ExamsSection({ reference }: { reference: Date }) {
                 onToggle={(event) => setVergangenOffen(event.currentTarget.open)}
                 className="border-t border-border first:border-t-0"
               >
-                <summary className="cursor-pointer list-none px-4 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+                <summary className="cursor-pointer list-none px-4 py-2.5 text-[13px] font-medium text-muted-foreground hover:text-foreground">
                   {vergangen.length} {t("vorbei")}
                 </summary>
                 <ul className="divide-y divide-border border-t border-border">{vergangen.map(zeile)}</ul>
@@ -431,13 +431,13 @@ function PruefungsZeile({
         )}
         aria-hidden="true"
       >
-        <span className="text-[10px] leading-3 text-muted-foreground">{formatDate(pruefung.date, { month: "short" })}</span>
-        <span className="text-[15px] font-semibold leading-5 tabular-nums">{formatDate(pruefung.date, { day: "2-digit" })}</span>
+        <span className="text-xs leading-3 text-muted-foreground">{formatDate(pruefung.date, { month: "short" })}</span>
+        <span className="text-[17px] font-semibold leading-5 tabular-nums">{formatDate(pruefung.date, { day: "2-digit" })}</span>
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className={cn("truncate text-[13px] font-medium", countdown.isOverdue && "text-muted-foreground")}>{pruefung.title}</p>
-        <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+        <p className={cn("truncate text-[15px] font-medium", countdown.isOverdue && "text-muted-foreground")}>{pruefung.title}</p>
+        <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-[13px] text-muted-foreground">
           {fachname ? (
             <>
               <span className="font-medium text-foreground/80">{fachname}</span>
@@ -453,7 +453,7 @@ function PruefungsZeile({
             </>
           ) : null}
         </p>
-        {pruefung.description ? <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-muted-foreground">{pruefung.description}</p> : null}
+        {pruefung.description ? <p className="mt-0.5 line-clamp-1 text-[13px] leading-5 text-muted-foreground">{pruefung.description}</p> : null}
       </div>
 
       {/*

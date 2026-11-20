@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { isNavigationHrefActive, normalizeHash } from "./navigation";
+import { isNavigationHrefActive, isSectionActive, normalizeHash, sectionOf } from "./navigation";
+
+describe("Bereiche mit Reitern", () => {
+  it("haelt den Navigationspunkt auf allen Reitern seines Bereichs aktiv", () => {
+    expect(isSectionActive("/klassenarbeiten", "/lernen")).toBe(true);
+    expect(isSectionActive("/fortschritt", "/lernen")).toBe(true);
+    expect(isSectionActive("/faecher", "/dokumente")).toBe(true);
+    expect(isSectionActive("/ki", "/settings")).toBe(true);
+    expect(isSectionActive("/ki", "/lernen")).toBe(false);
+    expect(isSectionActive("/assistent", "/assistent")).toBe(true);
+  });
+
+  it("kennt fuer Seiten ohne Reiter keinen Bereich", () => {
+    expect(sectionOf("/assistent")).toBeUndefined();
+    expect(sectionOf("/")).toBeUndefined();
+  });
+});
 
 describe("Hash-Navigation", () => {
   it("normalisiert Hashwerte", () => {

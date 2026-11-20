@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import Link from "next/link";
 import { useTheme } from "next-themes";
 import {
   AlertTriangle,
@@ -78,6 +77,7 @@ const KIND_ICONS: Record<string, typeof Plug> = {
   webuntis: Cloud,
   ai_provider: Cpu,
   documents: FolderTree,
+  webdav: Cloud,
   ical: CalendarDays,
   google_calendar: CalendarDays,
   caldav: CalendarDays,
@@ -156,9 +156,9 @@ function AccountCard({ user, onLogout, isLoggingOut }: AccountCardProps) {
   ];
 
   return (
-    <Card className="border-border/80 bg-card/90">
+    <Card>
       <CardHeader className="flex flex-row items-center gap-3 space-y-0">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-[13px] font-semibold text-primary-foreground">
           {getInitials(displayName)}
         </span>
         <div className="min-w-0 flex-1">
@@ -170,7 +170,7 @@ function AccountCard({ user, onLogout, isLoggingOut }: AccountCardProps) {
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <dl className="divide-y divide-border border-y border-border text-[13px]">
+        <dl className="divide-y divide-border border-y border-border text-[15px]">
           {details.map((detail) => (
             <div key={detail.label} className="flex items-baseline justify-between gap-4 py-1.5">
               <dt className="text-muted-foreground">{detail.label}</dt>
@@ -253,7 +253,7 @@ function ThemeCard() {
                   onClick={() => setTheme(option.value)}
                   aria-pressed={active}
                   className={cn(
-                    "flex h-9 items-center justify-center gap-1.5 rounded-md border text-xs font-medium transition-colors active:opacity-80",
+                    "flex h-9 items-center justify-center gap-1.5 rounded-md border text-[13px] font-medium transition-colors active:opacity-80",
                     active
                       ? "border-foreground bg-accent text-foreground"
                       : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -346,15 +346,15 @@ function IntegrationRow({
   const kiStufen = runtime && kiAdresse ? describeStages(runtime) : [];
 
   return (
-    <li className="rounded-md border border-border/70 p-3.5">
+    <li className="border-b border-border py-3 last:border-b-0">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
             <Icon className="h-4 w-4" aria-hidden="true" />
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{integration.name}</p>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            <p className="truncate text-[15px] font-semibold">{integration.name}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[13px] text-muted-foreground">
               <Badge variant="outline">{integration.kind}</Badge>
               <Badge variant={status.variant}>{status.label}</Badge>
               {incomplete ? <Badge variant="warning">{t("Unvollständig")}</Badge> : null}
@@ -394,14 +394,14 @@ function IntegrationRow({
         <dl className="mt-3 grid gap-x-6 gap-y-1 sm:grid-cols-2">
           {entries.map((entry) => (
             <div key={entry.key} className="flex min-w-0 items-baseline justify-between gap-3 border-b border-border/60 py-1">
-              <dt className="text-xs font-medium text-muted-foreground">{entry.label}</dt>
-              <dd className="truncate text-xs font-semibold">{entry.value}</dd>
+              <dt className="text-[13px] font-medium text-muted-foreground">{entry.label}</dt>
+              <dd className="truncate text-[13px] font-semibold">{entry.value}</dd>
             </div>
           ))}
         </dl>
       ) : null}
 
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
           {integration.has_credentials ? t("Zugangsdaten gespeichert ({liste})", { liste: integration.credential_keys.join(", ") }) : t("Keine Zugangsdaten")}
@@ -411,21 +411,21 @@ function IntegrationRow({
       </div>
 
       {incomplete ? (
-        <p className="mt-3 flex items-start gap-2 text-xs font-semibold text-amber-700 dark:text-amber-400">
+        <p className="mt-3 flex items-start gap-2 text-[13px] font-semibold text-amber-700 dark:text-amber-400">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           {t("Es fehlen noch: {liste}", { liste: integration.missing_fields.map(fieldLabel).join(", ") })}
         </p>
       ) : null}
 
       {kiTrap ? (
-        <p className="mt-3 flex items-start gap-2 border border-foreground/25 bg-foreground/10 px-3 py-2 text-xs font-semibold leading-5">
+        <p className="mt-3 flex items-start gap-2 border border-foreground/25 bg-foreground/10 px-3 py-2 text-[13px] font-semibold leading-5">
           <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           {kiTrap}
         </p>
       ) : null}
 
       {kiStufen.length > 0 ? (
-        <ol className="mt-3 space-y-1 border-l-2 border-border pl-3 text-[11px] leading-4 text-muted-foreground">
+        <ol className="mt-3 space-y-1 border-l-2 border-border pl-3 text-[13px] leading-4 text-muted-foreground">
           {kiStufen.map((stufe) => (
             <li key={stufe}>{stufe}</li>
           ))}
@@ -439,7 +439,7 @@ function IntegrationRow({
         übergangener Konflikt wie eine verlorene Änderung aussieht.
       */}
       {conflicts > 0 ? (
-        <p className="mt-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-300">
+        <p className="mt-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] font-medium text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-300">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           {tn(
             conflicts,
@@ -450,14 +450,14 @@ function IntegrationRow({
       ) : null}
 
       {writingBlocked && !awaitingConsent ? (
-        <p className="mt-3 flex items-start gap-2 text-xs font-medium text-muted-foreground">
+        <p className="mt-3 flex items-start gap-2 text-[13px] font-medium text-muted-foreground">
           <KeyRound className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           {t("Gelesen wird ohne weiteres. Geschrieben wird erst mit der Zustimmung oben im Schalter.")}
         </p>
       ) : null}
 
       {integration.last_error ? (
-        <p className="mt-3 rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
+        <p className="mt-3 rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-[13px] font-medium text-destructive">
           {integration.last_error}
         </p>
       ) : null}
@@ -473,7 +473,7 @@ function IntegrationRow({
         {result ? (
           <p
             className={cn(
-              "flex items-start gap-2 rounded-md border px-3 py-2 text-xs font-medium",
+              "flex items-start gap-2 rounded-md border px-3 py-2 text-[13px] font-medium",
               result.ok
                 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/50 dark:text-emerald-300"
                 : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-300",
@@ -631,9 +631,9 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
     if (istKiServer && field === "runtime") {
       return (
         <div key={field} className="space-y-2">
-          <label className="text-sm font-semibold" htmlFor={fieldId}>
+          <label className="text-[15px] font-semibold" htmlFor={fieldId}>
             {fieldLabel(field)}
-            <span className="ml-1 text-xs font-semibold text-muted-foreground">{t("(optional)")}</span>
+            <span className="ml-1 text-[13px] font-semibold text-muted-foreground">{t("(optional)")}</span>
           </label>
           <select
             id={fieldId}
@@ -642,7 +642,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
             onChange={(event) => setConfig((aktuell) => ({ ...aktuell, runtime: event.target.value }))}
             disabled={isSubmitting}
             aria-describedby={`${fieldId}-hinweis`}
-            className="flex h-11 w-full border border-input bg-card px-3.5 py-2 text-sm text-foreground transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex h-11 w-full border border-input bg-card px-3.5 py-2 text-[15px] text-foreground transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {kiAuswahl.map((auswahl) => (
               <option key={auswahl.value} value={auswahl.value}>
@@ -650,7 +650,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
               </option>
             ))}
           </select>
-          <p id={`${fieldId}-hinweis`} className="text-xs leading-5 text-muted-foreground">
+          <p id={`${fieldId}-hinweis`} className="text-[13px] leading-5 text-muted-foreground">
             {t("Leer lassen genügt: Dann erkennt Slearn die Art an der Adresse.")}
           </p>
         </div>
@@ -658,12 +658,12 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
     }
     return (
       <div key={field} className="space-y-2">
-        <label className="text-sm font-semibold" htmlFor={fieldId}>
+        <label className="text-[15px] font-semibold" htmlFor={fieldId}>
           {fieldLabel(field)}
           {isRequired ? (
             <span className="ml-1 text-destructive">*</span>
           ) : (
-            <span className="ml-1 text-xs font-semibold text-muted-foreground">
+            <span className="ml-1 text-[13px] font-semibold text-muted-foreground">
               {isAlternative ? "(alternativ)" : "(optional)"}
             </span>
           )}
@@ -693,8 +693,8 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
     <form onSubmit={handleSubmit} noValidate className="space-y-4 rounded-md border border-border bg-muted/30 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold">{t("Neue Verbindung")}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{t("Zugangsdaten werden verschlüsselt gespeichert und nie im Browser abgelegt.")}</p>
+          <p className="text-[15px] font-semibold">{t("Neue Verbindung")}</p>
+          <p className="mt-1 text-[13px] text-muted-foreground">{t("Zugangsdaten werden verschlüsselt gespeichert und nie im Browser abgelegt.")}</p>
         </div>
         <Button type="button" size="icon" variant="ghost" onClick={onCancel} disabled={isSubmitting} aria-label={t("Abbrechen")}>
           <X aria-hidden="true" />
@@ -702,14 +702,14 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
       </div>
 
       <div className="space-y-2">
-        <label className="text-sm font-semibold" htmlFor="integration-kind">{t("Dienst")}</label>
+        <label className="text-[15px] font-semibold" htmlFor="integration-kind">{t("Dienst")}</label>
         <select
           id="integration-kind"
           name="kind"
           value={kind}
           onChange={(event) => handleKindChange(event.target.value)}
           disabled={isSubmitting}
-          className="flex h-11 w-full rounded-md border border-input bg-card px-3.5 py-2 text-sm text-foreground shadow-sm transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-11 w-full rounded-md border border-input bg-card px-3.5 py-2 text-[15px] text-foreground shadow-sm transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {catalog.map((entry) => (
             <option key={entry.kind} value={entry.kind}>
@@ -717,7 +717,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
             </option>
           ))}
         </select>
-        <p className="text-xs leading-5 text-muted-foreground">{translateServerText(spec.description)}</p>
+        <p className="text-[13px] leading-5 text-muted-foreground">{translateServerText(spec.description)}</p>
       </div>
 
       {/*
@@ -726,15 +726,15 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
       */}
       {istKiServer ? (
         <section className="space-y-3 border border-border/70 bg-muted/40 p-3.5" aria-label={t("Lokale KI-Server")}>
-          <p className="text-xs font-medium text-muted-foreground">{t("Läuft der Server auf deinem Rechner?")}</p>
+          <p className="text-[13px] font-medium text-muted-foreground">{t("Läuft der Server auf deinem Rechner?")}</p>
           {kiVorschlaege.length > 0 ? (
             <>
               <ul className="space-y-2">
                 {kiVorschlaege.map((preset) => (
                   <li key={preset.kind} className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold">{preset.label}</p>
-                      <p className="text-[11px] leading-4 text-muted-foreground">{translateServerText(preset.note)}</p>
+                      <p className="text-[15px] font-semibold">{preset.label}</p>
+                      <p className="text-[13px] leading-4 text-muted-foreground">{translateServerText(preset.note)}</p>
                     </div>
                     <div className="flex shrink-0 gap-1.5">
                       <Button
@@ -759,17 +759,17 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
                   </li>
                 ))}
               </ul>
-              <p className="text-[11px] leading-4 text-muted-foreground">
+              <p className="text-[13px] leading-4 text-muted-foreground">
                 {t("„Docker“ trägt {host} ein, „ohne Docker“ die lokale Adresse. Beides ist dieselbe Verbindung, nur aus einer anderen Bauart heraus.", { host: runtime?.container_host ?? "host.docker.internal" })}
               </p>
             </>
           ) : (
-            <p className="text-xs leading-5 text-muted-foreground">
+            <p className="text-[13px] leading-5 text-muted-foreground">
               {t("Die Vorschläge konnten nicht geladen werden. Trage Adresse und Modell von Hand ein.")}
             </p>
           )}
           {runtime?.container_trap_hint ? (
-            <p className="flex items-start gap-2 border-l-2 border-foreground/30 pl-3 text-[11px] leading-4 font-semibold">
+            <p className="flex items-start gap-2 border-l-2 border-foreground/30 pl-3 text-[13px] leading-4 font-semibold">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               {runtime.container_trap_hint}
             </p>
@@ -778,7 +778,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
       ) : null}
 
       <div className="space-y-2">
-        <label className="text-sm font-semibold" htmlFor="integration-name">{t("Name")}</label>
+        <label className="text-[15px] font-semibold" htmlFor="integration-name">{t("Name")}</label>
         <Input
           id="integration-name"
           name="name"
@@ -793,7 +793,7 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
       {configFields.map((field) => renderField(field, "config"))}
       {alternativeSets.map((gruppe) => (
         <div key={gruppe.join("|")} className="space-y-2 border-l-2 border-border pl-3">
-          <p className="text-xs font-semibold text-muted-foreground">{t("Genau eine Angabe: {liste}", { liste: gruppe.map(fieldLabel).join(` ${t("oder")} `) })}</p>
+          <p className="text-[13px] font-semibold text-muted-foreground">{t("Genau eine Angabe: {liste}", { liste: gruppe.map(fieldLabel).join(` ${t("oder")} `) })}</p>
           {gruppe.map((field) => renderField(field, "config"))}
         </div>
       ))}
@@ -806,14 +806,14 @@ function IntegrationForm({ catalog, runtime, isSubmitting, onSubmit, onCancel }:
         sieht - sondern nur, dass es nicht ging.
       */}
       {trapHinweis ? (
-        <p className="flex items-start gap-2 border border-foreground/25 bg-foreground/10 px-3.5 py-3 text-xs font-semibold leading-5" role="status">
+        <p className="flex items-start gap-2 border border-foreground/25 bg-foreground/10 px-3.5 py-3 text-[13px] font-semibold leading-5" role="status">
           <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           {trapHinweis}
         </p>
       ) : null}
 
       {formError ? (
-        <p id={formErrorId} className="rounded-md border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-sm font-medium text-destructive" role="alert">
+        <p id={formErrorId} className="rounded-md border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-[15px] font-medium text-destructive" role="alert">
           {formError}
         </p>
       ) : null}
@@ -910,13 +910,13 @@ export function IntegrationsCard({
         ) : null}
 
         {integrations.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border px-4 py-5 text-center">
+          <div className="px-4 py-5 text-center">
             <Plug className="mx-auto h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            <p className="mt-1.5 text-[13px] font-medium">{emptyTitle}</p>
-            <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-muted-foreground">{emptyDescription}</p>
+            <p className="mt-1.5 text-[15px] font-medium">{emptyTitle}</p>
+            <p className="mx-auto mt-1 max-w-sm text-[13px] leading-5 text-muted-foreground">{emptyDescription}</p>
           </div>
         ) : (
-          <ul className="space-y-3">
+     <ul className="">
             {integrations.map((integration) => (
               <IntegrationRow
                 key={integration.id}
@@ -962,7 +962,7 @@ function CalendarWritingCard({
   const enabled = writing?.share_calendar_for_writing ?? false;
 
   return (
-    <Card className="border-border/80 bg-card/90">
+    <Card>
       <CardHeader>
         <CardTitle>{t("Termine in verbundene Kalender schreiben")}</CardTitle>
         <CardDescription className="mt-1">
@@ -979,10 +979,10 @@ function CalendarWritingCard({
             onChange={(event) => onToggle(event.target.checked)}
           />
           <span className="min-w-0">
-            <span className="block text-sm font-semibold">
+            <span className="block text-[15px] font-semibold">
               {enabled ? t("Freigegeben") : t("Nicht freigegeben")}
             </span>
-            <span className="mt-1 block text-xs text-muted-foreground">
+            <span className="mt-1 block text-[13px] text-muted-foreground">
               {t("Gespeichert als")}{" "}<code className="font-mono">{writing?.preference_key ?? "share_calendar_for_writing"}</code>{t(". Ein fehlender oder kaputter Eintrag bedeutet immer „aus“.")}
             </span>
           </span>
@@ -990,10 +990,10 @@ function CalendarWritingCard({
 
         {writing && writing.uses.length > 0 ? (
           <div className="space-y-1.5 border-t border-border/70 pt-4">
-            <p className="text-[11px] font-medium text-muted-foreground">{t("Damit wird")}</p>
+            <p className="text-[13px] font-medium text-muted-foreground">{t("Damit wird")}</p>
             <ul className="space-y-1">
               {writing.uses.map((use) => (
-                <li key={use} className="text-xs text-muted-foreground">
+                <li key={use} className="text-[13px] text-muted-foreground">
                   {use}
                 </li>
               ))}
@@ -1046,7 +1046,7 @@ function CalendarFeedCard({
 
   if (isLoading) {
     return (
-      <Card className="border-border/80 bg-card/90">
+      <Card>
         <CardHeader>
           <CardTitle>{t("Kalender abonnieren")}</CardTitle>
         </CardHeader>
@@ -1058,7 +1058,7 @@ function CalendarFeedCard({
   }
 
   return (
-    <Card className="border-border/80 bg-card/90">
+    <Card>
       <CardHeader>
         <CardTitle>{t("Kalender abonnieren")}</CardTitle>
         <CardDescription className="mt-1">
@@ -1068,13 +1068,13 @@ function CalendarFeedCard({
       <CardContent className="space-y-4">
         {feed?.active && adresse() ? (
           <>
-            <p className="break-all border border-border bg-muted/40 px-3 py-2 font-mono text-xs">{adresse()}</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="break-all border border-border bg-muted/40 px-3 py-2 font-mono text-[13px]">{adresse()}</p>
+            <p className="text-[13px] text-muted-foreground">
               {feed.message} {t("Ein neuer Schlüssel macht diese Adresse sofort ungültig.")}
             </p>
           </>
         ) : (
-          <p className="text-xs text-muted-foreground">{feed?.message ?? t("Es ist noch keine Adresse eingerichtet.")}</p>
+          <p className="text-[13px] text-muted-foreground">{feed?.message ?? t("Es ist noch keine Adresse eingerichtet.")}</p>
         )}
 
         <div className="flex flex-wrap items-center gap-2">
@@ -1167,7 +1167,7 @@ function SettingsTabs({ active, onChange }: { active: SettingsTab; onChange: (ta
               aria-controls={`einstellungen-${tab.id}`}
               onClick={() => onChange(tab.id)}
               className={cn(
-                "shrink-0 border-b-2 px-3 py-2 text-[13px] transition-colors",
+                "shrink-0 border-b-2 px-3 py-2 text-[15px] transition-colors",
                 selected ? "border-foreground font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
@@ -1254,19 +1254,15 @@ writing,
 
   return (
     <div className="space-y-4">
-      <header>
-        <h1 className="text-[22px] font-semibold leading-8 tracking-tight">{t("Einstellungen")}</h1>
-        <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
-          {t("Konto, Verbindungen, Kalender, Benachrichtigungen und Sicherung. KI-Dienst, Modelle und Stimmen findest du unter")}{" "}
-          <Link href="/ki" className="underline underline-offset-2 hover:text-foreground">
-            {t("KI & Modelle")}
-          </Link>
-          .
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <h1 className="text-[26px] font-semibold leading-9 tracking-tight">{t("Einstellungen")}</h1>
+        <a href="/einrichtung" className="text-[15px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+          {t("Einrichtung noch einmal durchgehen")}
+        </a>
       </header>
 
       {error ? (
-        <div className="flex flex-col gap-3 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between" role="alert">
+        <div className="flex flex-col gap-3 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-[15px] text-destructive sm:flex-row sm:items-center sm:justify-between" role="alert">
           <span>{error}</span>
           <Button type="button" size="sm" variant="outline" onClick={onRetry}>
             <RefreshCw aria-hidden="true" />
@@ -1276,7 +1272,7 @@ writing,
       ) : null}
 
       {actionError ? (
-        <p className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert">
+        <p className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-[15px] font-medium text-destructive" role="alert">
           {actionError}
         </p>
       ) : null}

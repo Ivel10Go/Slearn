@@ -93,18 +93,18 @@ export function TrainingRunPanel({ status, onStatus }: { status: TrainingStatus;
 
   return (
     <div className="space-y-3 rounded-md border border-border px-3 py-2.5">
-      <p className="text-[13px] font-medium">{t("Training auf diesem Rechner")}</p>
+      <p className="text-[15px] font-medium">{t("Training auf diesem Rechner")}</p>
 
       {fehler ? (
-        <p className="rounded-md border border-foreground/30 bg-muted px-3 py-2 text-[13px]" role="alert">
+        <p className="rounded-md border border-foreground/30 bg-muted px-3 py-2 text-[15px]" role="alert">
           {fehler}
         </p>
       ) : null}
 
-      <label className="flex items-center justify-between gap-3 text-[13px]">
+      <label className="flex items-center justify-between gap-3 text-[15px]">
         <span>
           <span className="font-medium">{t("Automatisch trainieren")}</span>
-          <span className="block text-xs text-muted-foreground">
+          <span className="block text-[13px] text-muted-foreground">
             {t("Nur am Netzteil und wenn du den Rechner zwei Minuten nicht benutzt. Arbeitest du weiter, hält es nach dem laufenden Schritt an und macht beim nächsten Mal dort weiter. Eine neue Runde beginnt nach 20 neuen bewerteten Antworten.")}
           </span>
         </span>
@@ -116,10 +116,10 @@ export function TrainingRunPanel({ status, onStatus }: { status: TrainingStatus;
           onChange={(event) => void ausfuehren(async () => onStatus(await setAutoTraining(event.target.checked)), t("Die Einstellung konnte nicht gespeichert werden."))}
         />
       </label>
-      <label className="flex items-center justify-between gap-3 text-[13px]">
+      <label className="flex items-center justify-between gap-3 text-[15px]">
         <span>
           <span className="font-medium">{t("Aufschriebe und Arbeitsblätter nutzen")}</span>
-          <span className="block text-xs text-muted-foreground">
+          <span className="block text-[13px] text-muted-foreground">
             {t("Das Modell lernt den Aufbau deines Hefts – Überschriften, Stichpunkte, Merke-Kästen, Abkürzungen – und das Antworten mit deinem Material. Der Stoff selbst bleibt in den Dateien: löschst du eine, ist sie weg. Alles bleibt auf diesem Rechner.")}
           </span>
         </span>
@@ -134,17 +134,17 @@ export function TrainingRunPanel({ status, onStatus }: { status: TrainingStatus;
         />
       </label>
       {!status.enabled && !status.materials ? (
-        <p className="text-xs text-muted-foreground">{t("Schalte das Sammeln oder dein Material frei, dann gibt es etwas zu trainieren.")}</p>
+        <p className="text-[13px] text-muted-foreground">{t("Schalte das Sammeln oder dein Material frei, dann gibt es etwas zu trainieren.")}</p>
       ) : null}
 
       {lauf ? (
         <div className="space-y-2 border-t border-border pt-3">
-          <div className="flex items-center justify-between gap-2 text-[13px]">
+          <div className="flex items-center justify-between gap-2 text-[15px]">
             <span className="flex items-center gap-2">
               {aktiv ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}
               {TRAINING_RUN_STATUS[lauf.status]}
             </span>
-            <span className="text-xs tabular-nums text-muted-foreground">
+            <span className="text-[13px] tabular-nums text-muted-foreground">
               {lauf.total_steps > 0 ? t("Schritt {n} von {gesamt}", { n: lauf.step, gesamt: lauf.total_steps }) : null}
               {lauf.seconds_per_step && aktiv ? ` · ${t("{n} s je Schritt", { n: lauf.seconds_per_step.toLocaleString(intlLocale()) })}` : null}
             </span>
@@ -153,30 +153,30 @@ export function TrainingRunPanel({ status, onStatus }: { status: TrainingStatus;
             <div className="h-full bg-foreground transition-[width]" style={{ width: `${anteil}%` }} />
           </div>
           {lauf.qa_total > 0 ? (
-            <p className="text-xs">
+            <p className="text-[13px]">
               {t("Fragen zu deinem Material: {geuebt} von {gesamt} geübt, {behalten} mit Beleg aus dem Material behalten", { geuebt: lauf.qa_done, gesamt: lauf.qa_total, behalten: lauf.qa_kept })}
             </p>
           ) : null}
-          <p className="text-xs text-muted-foreground">
+          <p className="text-[13px] text-muted-foreground">
             {t("{n} Beispiele, {modell}", { n: lauf.example_count, modell: lauf.base_model_id })}
             {lauf.skipped_too_long > 0 ? ` · ${t("{n} zu lang, übersprungen", { n: lauf.skipped_too_long })}` : ""}
           </p>
           {lauf.eval_score_base !== null || lauf.eval_score !== null ? (
-            <p className="text-xs">
+            <p className="text-[13px]">
               {t("Art und Datum richtig: {ohne} ohne, {mit} mit persönlichem Training", { ohne: prozent(lauf.eval_score_base), mit: prozent(lauf.eval_score) })}
             </p>
           ) : null}
           {lauf.status === "done" && lauf.adapter_version !== null ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-[13px] text-muted-foreground">
               {lauf.activated
                 ? t("Version {n} ist aktiv – der Assistent nutzt sie ab der nächsten Antwort.", { n: lauf.adapter_version })
                 : t("Version {n} war auf den Prüfbeispielen schlechter und bleibt aus.", { n: lauf.adapter_version })}
             </p>
           ) : null}
-          {lauf.error ? <p className="text-xs">{lauf.error}</p> : null}
+          {lauf.error ? <p className="text-[13px]">{lauf.error}</p> : null}
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground">{t("Noch keine Trainingsrunde.")}</p>
+        <p className="text-[13px] text-muted-foreground">{t("Noch keine Trainingsrunde.")}</p>
       )}
 
       <div className="flex flex-wrap gap-2">
@@ -202,7 +202,7 @@ export function TrainingRunPanel({ status, onStatus }: { status: TrainingStatus;
       {adapter && adapter.versions.length > 0 ? (
         <div className="space-y-2 border-t border-border pt-3">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-medium">{t("Versionen")}</p>
+            <p className="text-[13px] font-medium">{t("Versionen")}</p>
             <Button
               type="button"
               size="sm"
@@ -216,10 +216,10 @@ export function TrainingRunPanel({ status, onStatus }: { status: TrainingStatus;
           </div>
           <ul className="divide-y divide-border rounded-md border border-border">
             {adapter.versions.map((version) => (
-              <li key={version.version} className="flex items-center justify-between gap-2 px-3 py-2 text-[13px]">
+              <li key={version.version} className="flex items-center justify-between gap-2 px-3 py-2 text-[15px]">
                 <span>
                   {t("Version {n}", { n: version.version })}
-                  <span className="block text-xs text-muted-foreground">
+                  <span className="block text-[13px] text-muted-foreground">
                     {datum(version.created_at)} · {t("{n} Beispiele · Art und Datum {wert}", { n: version.example_count, wert: prozent(version.eval_score) })}
                   </span>
                 </span>
@@ -227,7 +227,7 @@ export function TrainingRunPanel({ status, onStatus }: { status: TrainingStatus;
               </li>
             ))}
           </ul>
-          {adapter.active_version === null ? <p className="text-xs text-muted-foreground">{t("Gerade läuft das Modell ohne persönliches Training.")}</p> : null}
+          {adapter.active_version === null ? <p className="text-[13px] text-muted-foreground">{t("Gerade läuft das Modell ohne persönliches Training.")}</p> : null}
         </div>
       ) : null}
     </div>

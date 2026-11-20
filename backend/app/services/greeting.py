@@ -99,11 +99,11 @@ def build_fallback_greeting(
     if naechste is not None:
         satz = f"Herzlich willkommen. Um {naechste['uhrzeit']} Uhr beginnt {naechste['fach']}."
     elif stunden:
-        satz = "Herzlich willkommen. Für heute sind keine Stunden mehr eingetragen."
+        satz = "Herzlich willkommen. Der Unterricht ist für heute vorbei."
     elif termine:
         satz = "Herzlich willkommen. Heute warten nur Termine auf dich."
     else:
-        satz = "Herzlich willkommen. Für heute ist nichts eingetragen."
+        satz = "Herzlich willkommen. Heute hast du keinen Unterricht."
 
     offen: list[str] = []
     if hausaufgaben:
@@ -126,11 +126,11 @@ def _fallback_english(
     if naechste is not None:
         satz = f"Welcome. {naechste['fach']} starts at {naechste['uhrzeit']}."
     elif stunden:
-        satz = "Welcome. There are no more lessons today."
+        satz = "Welcome. School is over for today."
     elif termine:
         satz = "Welcome. Only appointments are waiting for you today."
     else:
-        satz = "Welcome. Nothing is scheduled for today."
+        satz = "Welcome. You have no lessons today."
 
     offen: list[str] = []
     if hausaufgaben:

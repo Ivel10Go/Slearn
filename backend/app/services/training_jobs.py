@@ -70,9 +70,6 @@ TRAINABLE_BASES: Final[dict[str, TrainableBase]] = {
     "qwen2.5-3b-instruct-q4km": TrainableBase(
         "Qwen/Qwen2.5-3B-Instruct", "aa8e72537993ba99e69dfaafa59ed015b17504d1", "qwen2"
     ),
-    "qwen2.5-1.5b-instruct-q4km": TrainableBase(
-        "Qwen/Qwen2.5-1.5B-Instruct", "989aa7980e4cf806f80c7fef2b1adb7bc71aa306", "qwen2"
-    ),
 }
 
 #: Weniger bewertete Beispiele lohnen keine Runde.

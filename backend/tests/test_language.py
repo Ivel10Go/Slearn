@@ -94,8 +94,9 @@ def test_willkommenssatz_wechselt_mit_der_sprache_und_bleibt_eine_zeile(
     assert englisch["source"] == "fallback"
     assert englisch["text"].startswith("Welcome")
 
-    # Gleiche Sprache: aus dem Cache, nicht neu geschrieben.
-    assert client.get("/api/v1/greeting", headers=ENGLISCH).json()["generated_at"] == englisch["generated_at"]
+    # Gleiche Sprache: dieselbe Zeile, kein neuer Eintrag. Der Ersatzsatz selbst
+    # wird frisch aus den Daten gebaut (er kostet keinen Modelllauf).
+    assert client.get("/api/v1/greeting", headers=ENGLISCH).json()["text"] == englisch["text"]
 
     db.expire_all()
     zeilen = db.scalars(select(GreetingCache).where(GreetingCache.user_id == user.id)).all()

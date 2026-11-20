@@ -1186,6 +1186,7 @@ def test_integration_catalog_lists_all_kinds(app_client: TestClient) -> None:
         "webuntis",
         "ai_provider",
         "documents",
+        "webdav",
         "ical",
         "google_calendar",
         "caldav",
@@ -3368,6 +3369,25 @@ def test_greeting_is_cached_per_day(
 
     assert erster["text"] == zweiter["text"] == "Satz Nummer 1."
     assert anzahl[0] == 1
+
+
+def test_greeting_fallback_follows_new_homework_on_the_same_day(
+    app_context: tuple[TestClient, Session, User],
+) -> None:
+    """Der Ersatzsatz kostet nichts - er darf nicht den Morgenstand bis abends festhalten."""
+    client, _, _ = app_context
+    login(client)
+
+    vorher = client.get("/api/v1/greeting").json()
+    assert vorher["source"] == "fallback"
+    assert "Hausaufgabe" not in vorher["text"]
+
+    morgen = (datetime.now(UTC) + timedelta(days=1)).isoformat()
+    assert client.post("/api/v1/homework", json={"title": "Aufsatz", "due_date": morgen}).status_code == 201
+
+    nachher = client.get("/api/v1/greeting").json()
+    assert nachher["source"] == "fallback"
+    assert "1 Hausaufgabe" in nachher["text"]
 
 
 def test_greeting_refresh_forces_a_new_sentence(
@@ -8323,7 +8343,7 @@ def test_eine_kennung_mit_pfdadelementen_bildet_kein_verzeichnis(tmp_path: Path)
 
 def test_der_modellkatalog_braucht_eine_sitzung(app_client: TestClient) -> None:
     assert app_client.get("/api/v1/models").status_code == 401
-    assert app_client.post("/api/v1/models/whisper-tiny-ggml/download").status_code == 401
+    assert app_client.post("/api/v1/models/whisper-small-q5_1-ggml/download").status_code == 401
 
 
 def test_der_katalog_nennt_groesse_und_ram_schaetzung(app_client: TestClient) -> None:
@@ -8339,14 +8359,14 @@ def test_der_katalog_nennt_groesse_und_ram_schaetzung(app_client: TestClient) ->
     assert "/var/lib/school-assistant/models" not in response.text
 
     eintraege = {entry["id"]: entry for entry in payload["models"]}
-    assert "whisper-tiny-ggml" in eintraege
-    eintrag = eintraege["whisper-tiny-ggml"]
+    assert "whisper-small-q5_1-ggml" in eintraege
+    eintrag = eintraege["whisper-small-q5_1-ggml"]
     assert eintrag["size_bytes"] > 0
     assert eintrag["size_is_estimate"] is False
     assert eintrag["ram_is_estimate"] is True
     assert eintrag["ram_estimate_bytes"] >= eintrag["size_bytes"]
     assert "Dateigröße" in eintrag["ram_basis"]
-    assert eintrag["files"][0]["name"] == "ggml-tiny.bin"
+    assert eintrag["files"][0]["name"] == "ggml-small-q5_1.bin"
     # Die Download-Adresse wird nicht ausgeliefert.
     assert "url" not in eintrag["files"][0]
     assert eintrag["status"]["status"] == "not_downloaded"
@@ -8356,8 +8376,8 @@ def test_ein_textmodell_nennt_seine_ram_schaetzung_aus_den_parametern(app_client
     login(app_client)
     payload = app_client.get("/api/v1/models").json()
     eintraege = {entry["id"]: entry for entry in payload["models"]}
-    eintrag = eintraege["qwen2.5-1.5b-instruct-q4km"]
-    assert eintrag["parameter_count"] == 1543714304
+    eintrag = eintraege["qwen3.5-2b-q4km"]
+    assert eintrag["parameter_count"] == 2274069824
     assert eintrag["quantization"] == "Q4_K_M"
     assert "Parameter" in eintrag["ram_basis"]
     assert eintrag["ram_estimate_gib"] > 0
@@ -8751,7 +8771,7 @@ def _stimmt_installieren(
     return verzeichnis
 
 
-def _whisper_installieren(manager: ModelDownloadManager, model_id: str = "whisper-tiny-ggml") -> ModelSpec:
+def _whisper_installieren(manager: ModelDownloadManager, model_id: str = "whisper-small-q5_1-ggml") -> ModelSpec:
     """Legt ein Whisper-Modell ab, ohne Netz - Manifest und Datei genuegen."""
     spec = model_catalog.model_spec(model_id)
     verzeichnis = manager.model_directory(spec)
@@ -9240,8 +9260,8 @@ def test_eine_stimme_mit_falscher_konfiguration_wird_nicht_gesprochen(app_client
 def test_eingetragene_kennungen_werden_eingehalten(app_client: TestClient, tmp_path: Path) -> None:
     """Whisper und Stimme lassen sich fest verdrahten - und werden dann benutzt."""
     manager = _manager_fuer(app_client, tmp_path)
-    _whisper_installieren(manager, "whisper-base-ggml")
-    _whisper_installieren(manager, "whisper-tiny-ggml")
+    _whisper_installieren(manager, "whisper-large-v3-turbo-q5_0-ggml")
+    _whisper_installieren(manager, "whisper-small-q5_1-ggml")
     kerstin = piper_voices.voice_by_id("de-de-kerstin-low")
     _stimmt_installieren(manager, kerstin)
     _stimmt_installieren(manager, piper_voices.voice_by_id("de-de-thorsten-medium"))
@@ -9249,25 +9269,25 @@ def test_eingetragene_kennungen_werden_eingehalten(app_client: TestClient, tmp_p
         app_client,
         transcriber=_transkribierer(_WhisperServer()),
         synthesizer=_synthese(_Aufrufe(stdout=_wav())),
-        stt_model_id="whisper-base-ggml",
+        stt_model_id="whisper-large-v3-turbo-q5_0-ggml",
         voice_id=kerstin.id,
     )
     login(app_client)
 
     payload = app_client.get("/api/v1/speech/capabilities").json()
-    assert payload["speech_to_text"]["model_id"] == "whisper-base-ggml"
+    assert payload["speech_to_text"]["model_id"] == "whisper-large-v3-turbo-q5_0-ggml"
     assert payload["text_to_speech"]["model_id"] == kerstin.id
 
 
 def test_ohne_eintrag_wird_das_kleinste_geladene_modell_genommen(app_client: TestClient, tmp_path: Path) -> None:
     """tiny vor base: ein knapper Server klebt sonst an der groesseren Variante."""
     manager = _manager_fuer(app_client, tmp_path)
-    _whisper_installieren(manager, "whisper-base-ggml")
-    _whisper_installieren(manager, "whisper-tiny-ggml")
+    _whisper_installieren(manager, "whisper-large-v3-turbo-q5_0-ggml")
+    _whisper_installieren(manager, "whisper-small-q5_1-ggml")
     _bereit(app_client, transcriber=_transkribierer(_WhisperServer()), synthesizer=None)
     login(app_client)
 
-    assert app_client.get("/api/v1/speech/capabilities").json()["speech_to_text"]["model_id"] == "whisper-tiny-ggml"
+    assert app_client.get("/api/v1/speech/capabilities").json()["speech_to_text"]["model_id"] == "whisper-small-q5_1-ggml"
 
 
 def test_ein_eingetragenes_modell_ohne_datei_wird_nicht_stillschweigend_ersetzt(
@@ -9281,18 +9301,18 @@ def test_ein_eingetragenes_modell_ohne_datei_wird_nicht_stillschweigend_ersetzt(
     manager = _manager_fuer(app_client, tmp_path)
     # Nur tiny ist geladen - base steht als Wunsch im Eintrag, nicht auf der
     # Platte. Genau diese Lage soll nicht stillschweigend auf tiny zurueckfallen.
-    _whisper_installieren(manager, "whisper-tiny-ggml")
+    _whisper_installieren(manager, "whisper-small-q5_1-ggml")
     _bereit(
         app_client,
         transcriber=_transkribierer(_WhisperServer()),
         synthesizer=None,
-        stt_model_id="whisper-base-ggml",
+        stt_model_id="whisper-large-v3-turbo-q5_0-ggml",
     )
     login(app_client)
 
     aufgabe = app_client.get("/api/v1/speech/capabilities").json()["speech_to_text"]
     assert aufgabe["available"] is False
-    assert "whisper-base-ggml" in aufgabe["reason"]
+    assert "whisper-large-v3-turbo-q5_0-ggml" in aufgabe["reason"]
 
 
 # --- Aufnehmen --------------------------------------------------------------

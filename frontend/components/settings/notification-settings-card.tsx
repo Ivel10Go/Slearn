@@ -116,7 +116,7 @@ export function NotificationSettingsCard({
 
   if (status === "loading" && !settings) {
     return (
-      <Card className="border-border/80 bg-card/90">
+      <Card>
         <CardHeader>
           <CardTitle>{t("Erinnerungen")}</CardTitle>
           <CardDescription className="mt-1">{t("Einstellungen werden geladen.")}</CardDescription>
@@ -132,12 +132,12 @@ export function NotificationSettingsCard({
 
   if (!settings) {
     return (
-      <Card className="border-border/80 bg-card/90">
+      <Card>
         <CardHeader>
           <CardTitle>{t("Erinnerungen")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="rounded-md border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-sm font-medium text-destructive" role="alert">
+          <p className="rounded-md border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-[15px] font-medium text-destructive" role="alert">
             {error ?? t("Die Einstellungen konnten nicht geladen werden.")}
           </p>
         </CardContent>
@@ -160,7 +160,7 @@ export function NotificationSettingsCard({
   }
 
   return (
-    <Card className="border-border/80 bg-card/90">
+    <Card>
       <CardHeader>
         <CardTitle>{t("Erinnerungen")}</CardTitle>
         <CardDescription className="mt-1">
@@ -171,8 +171,8 @@ export function NotificationSettingsCard({
       <CardContent className="space-y-5">
         <div className="flex items-start justify-between gap-3 border-b border-border/70 pb-4">
           <div className="min-w-0">
-            <p className="text-sm font-semibold">{t("Hauptschalter")}</p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            <p className="text-[15px] font-semibold">{t("Hauptschalter")}</p>
+            <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
               {settings.enabled
                 ? aktive.length > 0
                   ? t("Erinnerungen für {liste}.", { liste: aktive.join(` ${t("und")} `) })
@@ -189,12 +189,12 @@ export function NotificationSettingsCard({
         </div>
 
         <fieldset className="space-y-2" disabled={beschaeftigt || !settings.enabled}>
-          <legend className="text-sm font-semibold">{t("Kanäle")}</legend>
+          <legend className="text-[15px] font-semibold">{t("Kanäle")}</legend>
           {kanaele.length === 0 ? (
-            <p className="text-xs text-muted-foreground">{t("Der Server kennt keine Kanäle.")}</p>
+            <p className="text-[13px] text-muted-foreground">{t("Der Server kennt keine Kanäle.")}</p>
           ) : (
             kanaele.map((kanal) => (
-              <label key={kanal} className="flex items-center justify-between gap-3 border border-border/70 bg-muted/40 px-3.5 py-3 text-sm">
+              <label key={kanal} className="flex items-center justify-between gap-3 border border-border/70 bg-muted/40 px-3.5 py-3 text-[15px]">
                 <span className="font-semibold">{settings.channel_labels[kanal] ?? kanal}</span>
                 <input
                   type="checkbox"
@@ -207,30 +207,30 @@ export function NotificationSettingsCard({
               </label>
             ))
           )}
-          <p className="text-xs leading-5 text-muted-foreground">
+          <p className="text-[13px] leading-5 text-muted-foreground">
             {t("Standardmäßig ist kein Kanal freigegeben: Eine Erinnerung kommt erst, wenn du sie hier einschaltest.")}
           </p>
         </fieldset>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-2">
-            <label className="text-sm font-semibold" htmlFor="erinnerung-uhrzeit">
+            <label className="text-[15px] font-semibold" htmlFor="erinnerung-uhrzeit">
               {t("Uhrzeit")}
             </label>
             <input
               id="erinnerung-uhrzeit"
               type="time"
-              className="flex h-11 w-full border border-input bg-card px-3.5 py-2 text-sm text-foreground focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+              className="flex h-11 w-full border border-input bg-card px-3.5 py-2 text-[15px] text-foreground focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
               value={settings.reminder_time}
               disabled={beschaeftigt || !settings.enabled}
               onChange={(event) => void speichern({ reminder_time: event.target.value })}
             />
-            <p className="text-xs leading-5 text-muted-foreground">{t("Rechnet in {zone}.", { zone: settings.timezone })}</p>
+            <p className="text-[13px] leading-5 text-muted-foreground">{t("Rechnet in {zone}.", { zone: settings.timezone })}</p>
           </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <span className="text-sm font-semibold">{t("Ruhezeit")}</span>
+              <span className="text-[15px] font-semibold">{t("Ruhezeit")}</span>
               <Schalter
                 an={settings.quiet_hours.enabled}
                 label={t("Ruhezeit ein- oder ausschalten")}
@@ -247,12 +247,12 @@ export function NotificationSettingsCard({
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <label className="text-xs font-semibold text-muted-foreground" htmlFor="ruhe-von">
+              <label className="text-[13px] font-semibold text-muted-foreground" htmlFor="ruhe-von">
                 {t("von")}
                 <input
                   id="ruhe-von"
                   type="time"
-                  className="mt-1 flex h-11 w-full border border-input bg-card px-3.5 py-2 text-sm text-foreground focus-visible:border-primary focus-visible:outline-none"
+                  className="mt-1 flex h-11 w-full border border-input bg-card px-3.5 py-2 text-[15px] text-foreground focus-visible:border-primary focus-visible:outline-none"
                   value={settings.quiet_hours.start}
                   disabled={beschaeftigt || !settings.quiet_hours.enabled}
                   onChange={(event) =>
@@ -266,12 +266,12 @@ export function NotificationSettingsCard({
                   }
                 />
               </label>
-              <label className="text-xs font-semibold text-muted-foreground" htmlFor="ruhe-bis">
+              <label className="text-[13px] font-semibold text-muted-foreground" htmlFor="ruhe-bis">
                 {t("bis")}
                 <input
                   id="ruhe-bis"
                   type="time"
-                  className="mt-1 flex h-11 w-full border border-input bg-card px-3.5 py-2 text-sm text-foreground focus-visible:border-primary focus-visible:outline-none"
+                  className="mt-1 flex h-11 w-full border border-input bg-card px-3.5 py-2 text-[15px] text-foreground focus-visible:border-primary focus-visible:outline-none"
                   value={settings.quiet_hours.end}
                   disabled={beschaeftigt || !settings.quiet_hours.enabled}
                   onChange={(event) =>
@@ -286,15 +286,15 @@ export function NotificationSettingsCard({
                 />
               </label>
             </div>
-            <p className="text-xs leading-5 text-muted-foreground">
+            <p className="text-[13px] leading-5 text-muted-foreground">
               {t("Aktuell {ruhezeit}. Eine Erinnerung, die in die Ruhezeit fällt, kommt direkt danach.", { ruhezeit: beschreibeRuhezeit(settings.quiet_hours) })}
             </p>
           </div>
         </div>
 
         <div className="space-y-3 border-t border-border/70 pt-4">
-          <p className="text-sm font-semibold">{t("Web-Push")}</p>
-          <p className="text-xs leading-5 text-muted-foreground">
+          <p className="text-[15px] font-semibold">{t("Web-Push")}</p>
+          <p className="text-[13px] leading-5 text-muted-foreground">
             {permission === "unsupported"
               ? t("Dieser Browser kennt keine Benachrichtigungen. Erinnerungen erscheinen dann nur, solange die Seite geöffnet ist.")
               : !vapid?.configured
@@ -337,9 +337,9 @@ export function NotificationSettingsCard({
           </div>
 
           {subscriptions.length > 0 ? (
-            <ul className="space-y-2">
+      <ul className="">
               {subscriptions.map((eintrag) => (
-                <li key={eintrag.id} className="flex flex-wrap items-center gap-2 border border-border/70 bg-muted/40 px-3.5 py-2.5 text-xs">
+                <li key={eintrag.id} className="flex flex-wrap items-center gap-2 border-b border-border py-3 last:border-b-0 text-[13px]">
                   <Badge variant="outline">{eintrag.endpoint_hint}</Badge>
                   <span className="text-muted-foreground">{t("angemeldet am {datum}", { datum: formatDateTime(eintrag.created_at) })}</span>
                   {eintrag.last_success_at ? (
@@ -352,7 +352,7 @@ export function NotificationSettingsCard({
           ) : null}
 
           {subscriptions.some((eintrag) => eintrag.last_error) ? (
-            <p className="text-xs font-semibold text-muted-foreground">
+            <p className="text-[13px] font-semibold text-muted-foreground">
               {t("Letzter Fehler:")}{" "}{subscriptions.find((eintrag) => eintrag.last_error)?.last_error}
             </p>
           ) : null}
@@ -365,7 +365,7 @@ export function NotificationSettingsCard({
         */}
         <div role="status" aria-live="polite" className="space-y-2">
           {bericht ? (
-            <p className="flex items-start gap-2 border border-border px-3.5 py-2.5 text-xs font-medium">
+            <p className="flex items-start gap-2 border border-border px-3.5 py-2.5 text-[13px] font-medium">
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               <span>
                 {t("{angelegt} Erinnerung(en) angelegt, {zugestellt} davon an einen Push-Dienst gegeben.", { angelegt: bericht.created, zugestellt: bericht.delivered })}
@@ -376,24 +376,24 @@ export function NotificationSettingsCard({
             </p>
           ) : null}
           {pushEingeschaltet ? (
-            <p className="text-xs text-muted-foreground">{t("Push ist für dieses Gerät eingeschaltet.")}</p>
+            <p className="text-[13px] text-muted-foreground">{t("Push ist für dieses Gerät eingeschaltet.")}</p>
           ) : null}
         </div>
 
         {zuletzt.length > 0 ? (
           <div className="space-y-2 border-t border-border/70 pt-4">
-            <p className="text-sm font-semibold">{t("Zuletzt angezeigt")}</p>
-            <ul className="space-y-2">
+            <p className="text-[15px] font-semibold">{t("Zuletzt angezeigt")}</p>
+      <ul className="">
               {zuletzt.map((erinnerung) => (
-                <li key={erinnerung.id} className="border border-border/70 bg-muted/40 px-3.5 py-2.5">
-                  <p className="text-sm font-semibold">{erinnerung.title}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{erinnerung.body}</p>
+                <li key={erinnerung.id} className="border-b border-border py-3 last:border-b-0">
+                  <p className="text-[15px] font-semibold">{erinnerung.title}</p>
+                  <p className="mt-0.5 text-[13px] text-muted-foreground">{erinnerung.body}</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Badge variant="outline">{bezeichnung(erinnerung.kind)}</Badge>
                     <Badge variant={erinnerung.push_status === "sent" ? "success" : "secondary"}>
                       {erinnerung.push_status === "sent" ? t("per Push zugestellt") : t("über diese Seite")}
                     </Badge>
-                    <span className="text-xs text-muted-foreground">{formatDateTime(erinnerung.created_at)}</span>
+                    <span className="text-[13px] text-muted-foreground">{formatDateTime(erinnerung.created_at)}</span>
                     <Button type="button" size="sm" variant="ghost" onClick={() => void onQuittieren([erinnerung.id])}>
                       {t("Aus der Liste nehmen")}
                     </Button>
@@ -405,7 +405,7 @@ export function NotificationSettingsCard({
         ) : null}
 
         {lokalFehler || actionError ? (
-          <p className="border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-sm font-medium text-destructive" role="alert">
+          <p className="border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-[15px] font-medium text-destructive" role="alert">
             {actionError ?? lokalFehler}
           </p>
         ) : null}

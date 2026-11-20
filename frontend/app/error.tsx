@@ -30,10 +30,10 @@ export default function RouteError({ error, reset }: { error: Error & { digest?:
             <AlertTriangle className="h-7 w-7" aria-hidden="true" />
           </span>
           <h1 className="text-xl font-semibold tracking-tight">{t("Hier ist etwas schiefgelaufen")}</h1>
-          <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+          <p className="mt-2 max-w-md text-[15px] leading-6 text-muted-foreground">
             {t("Dein Slearn konnte diese Seite gerade nicht anzeigen. Deine Daten sind davon nicht betroffen.")}
           </p>
-          {error.digest ? <p className="mt-3 text-xs text-muted-foreground">{t("Fehlercode:")}{" "}{error.digest}</p> : null}
+          {error.digest ? <p className="mt-3 text-[13px] text-muted-foreground">{t("Fehlercode:")}{" "}{error.digest}</p> : null}
           <div className="mt-7 flex flex-col gap-2 sm:flex-row">
             <Button type="button" onClick={reset}>
               <RefreshCw aria-hidden="true" />

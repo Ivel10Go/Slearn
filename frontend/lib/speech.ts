@@ -266,6 +266,7 @@ export function bereiteVorlesetext(text: string, maxZeichen = 1200): string {
     .replace(/^\s*Quelle:\s.*$/gim, "")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/\s*\[\d+(?:\s*,\s*\d+)*\]/g, "")
     .replace(/`([^`]*)`/g, "$1")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s.,;:!?)]|$)/g, "$1$2")

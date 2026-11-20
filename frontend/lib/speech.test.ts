@@ -209,6 +209,12 @@ describe("Vorlesetext", () => {
     expect(bereiteVorlesetext("Der Satz gilt.\n\n[1]")).toBe("Der Satz gilt.");
   });
 
+  it("spricht Quellennummern mitten im Satz nicht mit", () => {
+    expect(bereiteVorlesetext("Die Ableitung ist 2x [1]. Das gilt immer [2, 3].")).toBe(
+      "Die Ableitung ist 2x. Das gilt immer.",
+    );
+  });
+
   it("sagt Dezimalzahlen wie ein Mensch", () => {
     expect(bereiteVorlesetext("Der Wert 2.3 und die Grenze 0.75")).toBe("Der Wert 2 Komma 3 und die Grenze 0 Komma 75");
   });

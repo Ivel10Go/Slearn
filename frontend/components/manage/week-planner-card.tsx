@@ -156,7 +156,7 @@ export function WeekPlannerCard({ onApplied }: { onApplied?: () => void }) {
             </Field>
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[15px]">
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -231,7 +231,7 @@ export function WeekPlannerCard({ onApplied }: { onApplied?: () => void }) {
           </div>
           <FormError message={fehler} />
           {meldung ? (
-            <p className="text-[13px] text-muted-foreground" role="status">
+            <p className="text-[15px] text-muted-foreground" role="status">
               {meldung}
             </p>
           ) : null}
@@ -246,7 +246,7 @@ export function WeekPlannerCard({ onApplied }: { onApplied?: () => void }) {
                 description={t("Es gibt keine offenen Aufgaben, Hausaufgaben oder anstehenden Klausuren ohne Termin.")}
               />
             ) : (
-              <p className="text-[13px] text-muted-foreground">
+              <p className="text-[15px] text-muted-foreground">
                 {tn(zusammenfassung.blocks, "{n} Block, zusammen {dauer}", "{n} Blöcke, zusammen {dauer}", { dauer: formatDuration(zusammenfassung.minutes) })}
                 {zusammenfassung.newBlocks > 0 ? ` · ${t("{n} neu", { n: zusammenfassung.newBlocks })}` : ""}
                 {zusammenfassung.late > 0 ? ` · ${t("{n} nach Frist", { n: zusammenfassung.late })}` : ""}
@@ -262,8 +262,8 @@ export function WeekPlannerCard({ onApplied }: { onApplied?: () => void }) {
 
             {vorschlag.unplaced.length > 0 ? (
               <div className="space-y-1.5">
-                <h3 className="text-[13px] font-medium">{t("Ohne Platz")}</h3>
-                <ul className="space-y-1 text-[13px]">
+                <h3 className="text-[15px] font-medium">{t("Ohne Platz")}</h3>
+                <ul className="space-y-1 text-[15px]">
                   {vorschlag.unplaced.map((eintrag, index) => (
                     <li key={`${eintrag.title}-${index}`} className="flex flex-wrap items-baseline gap-x-2">
                       <span>{eintrag.title}</span>
@@ -273,7 +273,7 @@ export function WeekPlannerCard({ onApplied }: { onApplied?: () => void }) {
                     </li>
                   ))}
                 </ul>
-                <p className="text-[12px] text-muted-foreground">{t("Mehr Minuten pro Tag, ein späteres Ende oder 14 Tage schaffen Platz.")}</p>
+                <p className="text-sm text-muted-foreground">{t("Mehr Minuten pro Tag, ein späteres Ende oder 14 Tage schaffen Platz.")}</p>
               </div>
             ) : null}
           </div>
@@ -297,8 +297,8 @@ function PlanTag({ tag }: { tag: PlannerDay }) {
   return (
     <li className="grid gap-2 px-3 py-2.5 sm:grid-cols-[9rem_1fr]">
       <div>
-        <p className="text-[13px] font-medium">{formatDate(tag.date, { weekday: "short", day: "2-digit", month: "2-digit" })}</p>
-        <p className="text-[12px] text-muted-foreground">
+        <p className="text-[15px] font-medium">{formatDate(tag.date, { weekday: "short", day: "2-digit", month: "2-digit" })}</p>
+        <p className="text-sm text-muted-foreground">
           {tag.budget_minutes === 0 ? t("Frei") : t("{geplant} / {budget} Min.", { geplant: tag.planned_minutes, budget: tag.budget_minutes })}
           {schulschluss ? ` · Schule bis ${formatTime(schulschluss)}` : ""}
         </p>
@@ -306,7 +306,7 @@ function PlanTag({ tag }: { tag: PlannerDay }) {
       <div className="min-w-0 space-y-1">
         {zeilen.map((zeile, index) =>
           zeile.art === "fest" ? (
-            <p key={`fest-${index}`} className="flex gap-2 text-[12px] text-muted-foreground">
+            <p key={`fest-${index}`} className="flex gap-2 text-sm text-muted-foreground">
               <span className="w-24 shrink-0 tabular-nums">
                 {formatTime(zeile.eintrag.start)}–{formatTime(zeile.eintrag.end)}
               </span>
@@ -316,19 +316,19 @@ function PlanTag({ tag }: { tag: PlannerDay }) {
               </span>
             </p>
           ) : (
-            <div key={`block-${index}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
+            <div key={`block-${index}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px]">
               <span className="w-24 shrink-0 tabular-nums text-muted-foreground">
                 {formatTime(zeile.block.start)}–{formatTime(zeile.block.end)}
               </span>
               <span className={cn("min-w-0", zeile.block.late && "font-medium")}>{zeile.block.title}</span>
-              {zeile.block.subject_name ? <span className="text-[12px] text-muted-foreground">{zeile.block.subject_name}</span> : null}
+              {zeile.block.subject_name ? <span className="text-sm text-muted-foreground">{zeile.block.subject_name}</span> : null}
               {zeile.block.kind !== "task" ? <Badge variant="outline">{KIND_LABEL[zeile.block.kind]}</Badge> : null}
               {isNewBlock(zeile.block) ? <Badge variant="secondary">{t("Neu")}</Badge> : null}
               {zeile.block.late ? <Badge variant="warning">{t("Nach Frist")}</Badge> : null}
             </div>
           ),
         )}
-        {zeilen.length === 0 ? <p className="text-[12px] text-muted-foreground">{t("Nichts geplant")}</p> : null}
+        {zeilen.length === 0 ? <p className="text-sm text-muted-foreground">{t("Nichts geplant")}</p> : null}
       </div>
     </li>
   );

@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const badgeVariants = cva(
-  "inline-flex h-5 w-fit shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border px-1.5 text-[11px] font-medium leading-none transition-colors [&_svg]:size-3",
+  "inline-flex h-6 w-fit shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 text-[13px] font-medium leading-none transition-colors [&_svg]:size-3",
   {
     variants: {
       variant: {
@@ -22,10 +22,11 @@ const badgeVariants = cva(
   },
 );
 
-export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof badgeVariants> {}
+export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement>, VariantProps<typeof badgeVariants> {}
 
 function Badge({ className, variant, ...props }: BadgeProps) {
-  return <div className={cn(badgeVariants({ variant }), className)} {...props} />;
+  // `span`, nicht `div`: Badges stehen oft in einem `<p>`, ein `div` darin ist ein Hydrationsfehler.
+  return <span className={cn(badgeVariants({ variant }), className)} {...props} />;
 }
 
 export { Badge, badgeVariants };

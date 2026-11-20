@@ -90,6 +90,14 @@ class Document(Base):
     topics: Mapped[list[Topic]] = relationship(secondary="topic_documents", back_populates="documents")
     chunks: Mapped[list[DocumentChunk]] = relationship(back_populates="document", cascade="all, delete-orphan")
 
+    @property
+    def ai_review_fields(self) -> list[str]:
+        """Von der KI eingeordnete Felder, die noch niemand bestaetigt hat (``materials.ai_classify``)."""
+        entry = (self.extra_data or {}).get("ai_classified")
+        if not isinstance(entry, dict) or not entry.get("review"):
+            return []
+        return [str(field) for field in entry.get("fields", [])]
+
 
 class DocumentChunk(Base):
     __tablename__ = "document_chunks"
@@ -186,6 +194,37 @@ class TopicDocument(Base):
     user: Mapped[User] = relationship(viewonly=True)
     topic: Mapped[Topic] = relationship(viewonly=True)
     document: Mapped[Document] = relationship(viewonly=True)
+
+
+class ExamDocument(Base):
+    """Material einer Klassenarbeit (Migration 0017). Primaerschluessel nur das Paar, siehe AGENTS.md."""
+
+    __tablename__ = "exam_documents"
+
+    exam_id: Mapped[int] = mapped_column(ForeignKey("exams.id", ondelete="CASCADE"), primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    #: full | summary (Migration 0018) - ganzer Text oder nur die Kurzfassung im Prompt.
+    mode: Mapped[str] = mapped_column(String(16), nullable=False, default="full", server_default="full")
+
+
+class ExamCreation(Base):
+    """Im Studio einer Klassenarbeit Erzeugtes: Zusammenfassung, Karteikarten, Probeklausur ..."""
+
+    __tablename__ = "exam_creations"
+    __table_args__ = (Index("ix_exam_creations_user_exam", "user_id", "exam_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    exam_id: Mapped[int] = mapped_column(ForeignKey("exams.id", ondelete="CASCADE"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: Rohtext des Modells; bei Karteikarten, Glossar und Probeklausur zusaetzlich zerlegt in ``items``.
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    items: Mapped[list[dict[str, str]] | None] = mapped_column(JSON_TYPE, nullable=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, server_default=text("CURRENT_TIMESTAMP")
+    )
 
 
 class LearningProgress(Base):

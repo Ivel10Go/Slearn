@@ -540,6 +540,9 @@ class LocalRuntimeManager:
                 "-c",
                 str(TEXT_CONTEXT_TOKENS),
                 "--no-webui",
+                # Qwen3.5 denkt sonst vor jeder Antwort laut - das stoert AKTION/MERKE und kostet Sekunden.
+                "--reasoning-budget",
+                "0",
                 *(["--lora", str(self._text_adapters[model_id])] if model_id in self._text_adapters else []),
             ],
             health_path="/health",
@@ -657,6 +660,8 @@ class LocalRuntimeManager:
                 str(directory / projector.name),
                 "--image-max-tokens",
                 str(VISION_MAX_IMAGE_TOKENS),
+                "--reasoning-budget",
+                "0",
                 "--host",
                 "127.0.0.1",
                 "--port",

@@ -158,6 +158,58 @@ def test_korrektur_von_hand_bleibt_bestehen(app_context: tuple[TestClient, Sessi
     assert client.patch(url, json={"subject_id": fremdes_fach.id}).status_code == 404
 
 
+# --- KI-Einordnung ---------------------------------------------------------------
+
+
+def test_ki_ordnet_unsicheres_ein_und_wartet_auf_bestaetigung(app_context: tuple[TestClient, Session, User]) -> None:
+    client, db, user = app_context
+    login(client)
+    physik = _fach(db, user, "Physik", "Ph")
+    hochgeladen = _hochladen(client, "scan_0042.md", b"Ohmsches Gesetz U = R * I", "text/markdown")
+    eintrag = client.get("/api/v1/documents").json()[0]
+    assert (eintrag["subject_id"], eintrag["ai_review_fields"]) == (None, [])
+
+    # Ohne lokales Modell bleibt es offen und wird spaeter erneut versucht.
+    assert _indexer(db, materials.MaterialTools()).run_once() is False
+
+    prompts: list[str] = []
+
+    def modell(system: str, prompt: str, max_tokens: int) -> tuple[str, str]:
+        prompts.append(prompt)
+        return "FACH: Physik\nART: arbeitsblatt\nTHEMA: Ohmsches Gesetz", "local"
+
+    assert _indexer(db, materials.MaterialTools(classify=modell)).run_once() is True
+    assert "Physik" in prompts[0] and "Ohmsches Gesetz U = R * I" in prompts[0]
+    eintrag = client.get("/api/v1/documents").json()[0]
+    # Das Thema hatte die Regel schon (erste Zeile) - die KI fuellt nur, was unsicher war.
+    assert (eintrag["subject_id"], eintrag["material_kind"], eintrag["material_topic"]) == (
+        physik.id,
+        "arbeitsblatt",
+        "Ohmsches Gesetz U = R * I",
+    )
+    assert sorted(eintrag["ai_review_fields"]) == ["material_kind", "subject_id"]
+
+    # Einmal gefragt reicht: kein zweiter Aufruf.
+    assert _indexer(db, materials.MaterialTools(classify=modell)).run_once() is False
+    assert len(prompts) == 1
+
+    # Leerer PATCH = "Stimmt so".
+    antwort = client.patch(f"/api/v1/documents/{hochgeladen['id']}/material", json={})
+    assert antwort.status_code == 200 and antwort.json()["ai_review_fields"] == []
+
+
+def test_ki_antwort_ausserhalb_der_liste_wird_verworfen(app_context: tuple[TestClient, Session, User]) -> None:
+    _, db, user = app_context
+    _fach(db, user, "Mathematik", "M")
+    subjects = db.scalars(select(Subject)).all()
+    assert materials.parse_classification("FACH: Chemie\nART: Quatsch\nTHEMA: -", subjects) == {}
+    assert materials.parse_classification("**FACH:** m\nART: Lösung\nTHEMA: Brüche", subjects) == {
+        "subject_id": subjects[0].id,
+        "material_kind": "loesung",
+        "material_topic": "Brüche",
+    }
+
+
 # --- Bedeutungssuche -----------------------------------------------------------
 
 WOERTER = ("steigung", "gedicht", "zelle")

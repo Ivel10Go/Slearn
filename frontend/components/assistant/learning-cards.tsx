@@ -89,13 +89,13 @@ export function AbfrageCard({ onErgebnis }: { onErgebnis?: () => void }) {
         <CardTitle>{t("Abfragen")}</CardTitle>
         <CardDescription>{t("Fragen aus deinen Aufschrieben und Arbeitsblättern. Das Ergebnis zählt für deinen Lernstand.")}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3 text-[13px]">
-        <div className="flex gap-2">
+      <CardContent className="space-y-3 text-[15px]">
+        <div className="flex flex-wrap gap-2">
           <select
             aria-label={t("Fach für die Abfrage")}
             value={fach}
             onChange={(event) => setFach(event.target.value)}
-            className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-[13px]"
+            className="h-9 min-w-[8rem] flex-1 rounded-md border border-input bg-card px-2 text-[15px]"
           >
             <option value="">{t("Alle Fächer")}</option>
             {faecher.map((eintrag) => (
@@ -119,14 +119,14 @@ export function AbfrageCard({ onErgebnis }: { onErgebnis?: () => void }) {
         {frage ? (
           <form onSubmit={(event) => void pruefen(event)} className="space-y-2 border-t border-border pt-3">
             <p className="font-medium">{frage.question}</p>
-            <p className="text-xs text-muted-foreground">{t("aus {datei}", { datei: frage.filename })}</p>
+            <p className="text-[13px] text-muted-foreground">{t("aus {datei}", { datei: frage.filename })}</p>
             <textarea
               aria-label={t("Deine Antwort")}
               value={antwort}
               onChange={(event) => setAntwort(event.target.value)}
               rows={3}
               disabled={beschaeftigt || ergebnis !== null}
-              className="w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 text-[13px]"
+              className="w-full resize-y rounded-md border border-input bg-card px-2 py-1.5 text-[15px]"
             />
             {ergebnis === null ? (
               <Button type="submit" size="sm" variant="outline" disabled={beschaeftigt || !antwort.trim()}>
@@ -142,15 +142,15 @@ export function AbfrageCard({ onErgebnis }: { onErgebnis?: () => void }) {
             <div className="flex items-center gap-2">
               <Badge variant={ergebnis.verdict === "richtig" ? "default" : "outline"}>{URTEIL[ergebnis.verdict]}</Badge>
               {ergebnis.topic && ergebnis.confidence_label ? (
-                <span className="text-xs text-muted-foreground">
+                <span className="text-[13px] text-muted-foreground">
                   {t("{thema}: jetzt „{stufe}“", { thema: ergebnis.topic, stufe: translateServerText(ergebnis.confidence_label) })}
                 </span>
               ) : null}
             </div>
             <p>{ergebnis.explanation}</p>
-            {ergebnis.verdict !== "richtig" ? <p className="text-xs">{t("Musterlösung:")}{" "}{ergebnis.reference}</p> : null}
+            {ergebnis.verdict !== "richtig" ? <p className="text-[13px]">{t("Musterlösung:")}{" "}{ergebnis.reference}</p> : null}
             {ergebnis.excerpt ? (
-              <details className="text-xs text-muted-foreground">
+              <details className="text-[13px] text-muted-foreground">
                 <summary className="cursor-pointer">{t("Stelle in {datei}", { datei: ergebnis.filename })}</summary>
                 <p className="mt-1 whitespace-pre-line">{ergebnis.excerpt}</p>
               </details>
@@ -185,9 +185,9 @@ export function LernprofilCard({ refreshKey }: { refreshKey: number }) {
         <CardTitle>{t("Wie du lernst")}</CardTitle>
         <CardDescription>{t("Steht bei jeder Frage im Kontext. Es kommt aus deinem Lernstand, deinen Lernzeiten und Abfragen.")}</CardDescription>
       </CardHeader>
-      <CardContent className="text-[13px]">
+      <CardContent className="text-[15px]">
         {zeilen === null ? null : zeilen.length === 0 ? (
-          <p className="text-xs text-muted-foreground">{t("Noch nichts – das füllt sich, wenn du lernst, Themen einschätzt oder dich abfragen lässt.")}</p>
+          <p className="text-[13px] text-muted-foreground">{t("Noch nichts – das füllt sich, wenn du lernst, Themen einschätzt oder dich abfragen lässt.")}</p>
         ) : (
           <ul className="space-y-1.5">
             {zeilen.map((zeile) => (

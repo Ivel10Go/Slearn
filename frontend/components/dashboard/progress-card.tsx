@@ -57,9 +57,9 @@ function Balken({ anteil, label, className }: { anteil: number; label: string; c
 function Kennzahl({ titel, wert, zusatz, balken }: { titel: string; wert: string; zusatz: string; balken?: number }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] font-medium text-muted-foreground">{titel}</p>
+      <p className="text-[13px] font-medium text-muted-foreground">{titel}</p>
       <p className="mt-1 truncate text-base font-semibold tracking-tight">{wert}</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">{zusatz}</p>
+      <p className="mt-0.5 text-[13px] text-muted-foreground">{zusatz}</p>
       {balken === undefined ? null : <Balken anteil={balken} label={`${titel}: ${wert}`} className="mt-2" />}
     </div>
   );
@@ -98,7 +98,7 @@ function WochenzielFormular({ ziel, laeuft, onSpeichern }: { ziel: number; laeuf
 
   return (
     <form onSubmit={absenden} noValidate className="space-y-2 border border-border p-3">
-      <label htmlFor="fortschritt-wochenziel" className="block text-xs font-semibold">
+      <label htmlFor="fortschritt-wochenziel" className="block text-[13px] font-semibold">
         {t("Wochenziel in Minuten")}
       </label>
       <div className="flex flex-wrap items-end gap-2">
@@ -120,7 +120,7 @@ function WochenzielFormular({ ziel, laeuft, onSpeichern }: { ziel: number; laeuf
           {t("Abbrechen")}
         </Button>
       </div>
-      <p className="text-xs leading-5 text-muted-foreground">
+      <p className="text-[13px] leading-5 text-muted-foreground">
         {t("Gilt von Montag bis Sonntag für die ganze Woche, nicht anteilig für die Tage, die schon vorbei sind.")}
       </p>
       <FormError message={fehler} />
@@ -140,15 +140,15 @@ function ThemenZeile({
   onBewerten: (topicId: number, confidence: number) => void;
 }) {
   return (
-    <li className="flex flex-wrap items-center gap-x-3 gap-y-2 border border-border bg-card/60 px-3 py-2.5">
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border py-3 last:border-b-0">
       <div className="min-w-0 flex-1">
-        <p className={cn("truncate text-sm font-semibold", thema.is_due && "underline underline-offset-4")}>{thema.name}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
+        <p className={cn("truncate text-[15px] font-semibold", thema.is_due && "underline underline-offset-4")}>{thema.name}</p>
+        <p className="mt-0.5 text-[13px] text-muted-foreground">
           {[thema.subject_name, wiederholungLabel(thema)].filter(Boolean).join(" · ")}
         </p>
       </div>
       {thema.studied_minutes > 0 ? (
-        <span className="shrink-0 text-xs font-semibold text-muted-foreground">{lernzeit(thema.studied_minutes)} {t("gelernt")}</span>
+        <span className="shrink-0 text-[13px] font-semibold text-muted-foreground">{lernzeit(thema.studied_minutes)} {t("gelernt")}</span>
       ) : null}
       <Badge variant={thema.is_due ? "default" : "outline"}>{thema.is_due ? t("Fällig") : translateServerText(thema.confidence_label)}</Badge>
       <label className="sr-only" htmlFor={`fortschritt-thema-${thema.topic_id}`}>
@@ -162,7 +162,7 @@ function ThemenZeile({
         value={String(thema.confidence_step)}
         disabled={laeuft}
         onChange={(event) => onBewerten(thema.topic_id, Number(event.target.value))}
-        className="h-9 w-48 shrink-0 text-xs"
+        className="h-9 w-48 shrink-0 text-[13px]"
       >
         {stufen.map((stufe) => (
           <option key={stufe.value} value={stufe.value}>
@@ -232,7 +232,7 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
 
       <CardContent className="space-y-4">
         {error ? (
-          <p className="border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+          <p className="border border-destructive/20 bg-destructive/10 px-3 py-2 text-[15px] text-destructive" role="alert">
             {error}
           </p>
         ) : null}
@@ -258,7 +258,7 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
         </div>
 
         {laufend ? (
-          <p className="flex items-start gap-2 border border-border bg-muted/40 px-3 py-2 text-xs leading-5 text-muted-foreground">
+          <p className="flex items-start gap-2 border border-border bg-muted/40 px-3 py-2 text-[13px] leading-5 text-muted-foreground">
             <Timer className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             {laufend}
           </p>
@@ -272,13 +272,13 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
         */}
         <div>
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-            <h3 className="text-xs font-medium text-muted-foreground">{t("Lernzeit nach Wochentag")}</h3>
-            <p className="text-xs text-muted-foreground">{t("Letzte {n} Tage", { n: insights.weekday_window_days })}</p>
+            <h3 className="text-[13px] font-medium text-muted-foreground">{t("Lernzeit nach Wochentag")}</h3>
+            <p className="text-[13px] text-muted-foreground">{t("Letzte {n} Tage", { n: insights.weekday_window_days })}</p>
           </div>
           <div className="flex items-end gap-2">
             {weekdayBalken(insights.by_weekday).map((tag) => (
               <div key={tag.weekday} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
-                <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">{tag.minutes > 0 ? tag.minutes : "–"}</span>
+                <span className="text-[13px] font-semibold tabular-nums text-muted-foreground">{tag.minutes > 0 ? tag.minutes : "–"}</span>
                 {/*
                   Die Schiene ist die Haarlinie, der Balken darin. Die
                   aria-Werte nennen die echten Minuten gegen den groessten
@@ -298,7 +298,7 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
                   {/* Ein Tag mit Lernzeit behaelt eine sichtbare Mindesthoehe, sonst waere er leer. */}
                   <div className="w-full bg-primary" style={{ height: `${Math.max(tag.anteil, tag.minutes > 0 ? 6 : 0)}%` }} />
                 </div>
-                <span className="text-[11px] font-medium text-muted-foreground">{weekdayKurz(translateServerText(tag.label))}</span>
+                <span className="text-[13px] font-medium text-muted-foreground">{weekdayKurz(translateServerText(tag.label))}</span>
               </div>
             ))}
           </div>
@@ -312,17 +312,17 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
               nicht. Beides aneinander zu schreiben wuerde beides falsch.
             */}
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="text-xs font-medium text-muted-foreground">{t("Lernzeit je Fach")}</h3>
-              <p className="text-xs text-muted-foreground">
+              <h3 className="text-[13px] font-medium text-muted-foreground">{t("Lernzeit je Fach")}</h3>
+              <p className="text-[13px] text-muted-foreground">
                 {t("{zeit} aus {n} Lernsessions gesamt", { zeit: lernzeit(insights.total_minutes), n: insights.total_sessions })}
               </p>
             </div>
-            <ul className="space-y-2.5">
+      <ul className="">
               {insights.by_subject.map((fach) => (
                 <li key={fach.subject_id ?? "ohne-fach"}>
                   <div className="flex items-baseline justify-between gap-3">
-                    <p className="truncate text-sm font-semibold">{fach.subject_name}</p>
-                    <p className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">
+                    <p className="truncate text-[15px] font-semibold">{fach.subject_name}</p>
+                    <p className="shrink-0 text-[13px] font-semibold tabular-nums text-muted-foreground">
                       {lernzeit(fach.minutes)} · {fach.share_percent.toLocaleString(intlLocale(), { maximumFractionDigits: 1 })} %
                     </p>
                   </div>
@@ -335,8 +335,8 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
 
         <div>
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-            <h3 className="text-xs font-medium text-muted-foreground">{t("Nächste Wiederholungen")}</h3>
-            <p className="text-xs text-muted-foreground">
+            <h3 className="text-[13px] font-medium text-muted-foreground">{t("Nächste Wiederholungen")}</h3>
+            <p className="text-[13px] text-muted-foreground">
               {faellig.length > 0 ? t("{n} fällig", { n: faellig.length }) : t("Nichts fällig")}
               {unbewertet > 0 ? ` · ${t("{n} noch nicht eingeschätzt", { n: unbewertet })}` : ""}
             </p>
@@ -349,7 +349,7 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
               description={t("Sobald ein Fach Themen hat, steht hier, was als Nächstes wiederholt wird. Das Datum ergibt sich aus deiner Einschätzung.")}
             />
           ) : (
-            <ul className="max-h-96 space-y-2 overflow-y-auto pr-1">
+      <ul className="max-h-96 overflow-y-auto pr-1">
               {topics.map((thema) => (
                 <ThemenZeile
                   key={thema.topic_id}
@@ -368,7 +368,7 @@ export function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }) {
             Auswahlfeld nach einer Punktbewertung aus. Der Text entsteht aus
             derselben Tabelle, nach der das Backend rechnet.
           */}
-          <p className="mt-3 text-xs leading-5 text-muted-foreground">
+          <p className="mt-3 text-[13px] leading-5 text-muted-foreground">
             {intervallRegel(insights.confidence_steps)} {t("Die Einschätzung zählt zugleich als Wiederholung — deshalb steht das Datum auf heute.")}
           </p>
         </div>

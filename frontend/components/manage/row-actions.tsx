@@ -90,7 +90,7 @@ export function SectionHeader({ title, count, loading, onReload, formOpen, onTog
     <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 py-3">
       <CardTitle>{title}</CardTitle>
       <div className="-mr-1.5 flex items-center gap-0.5">
-        <span className="mr-1.5 text-xs tabular-nums text-muted-foreground">{count}</span>
+        <span className="mr-1.5 text-[13px] tabular-nums text-muted-foreground">{count}</span>
         <Button type="button" size="icon" variant="ghost" onClick={onReload} aria-label={t("{titel} neu laden", { titel: title })} title={t("Neu laden")} disabled={loading}>
           <RefreshCw className={cn(loading && "animate-spin")} aria-hidden="true" />
         </Button>
@@ -128,7 +128,7 @@ export function SectionBanner({ error, actionError, onRetry }: SectionBannerProp
     <>
       {error ? (
         <div
-          className="flex flex-col gap-3 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between"
+          className="flex flex-col gap-3 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-[15px] text-destructive sm:flex-row sm:items-center sm:justify-between"
           role="alert"
         >
           <span>{error}</span>
@@ -140,7 +140,7 @@ export function SectionBanner({ error, actionError, onRetry }: SectionBannerProp
         </div>
       ) : null}
       {actionError && !error ? (
-        <p className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert">
+        <p className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-[15px] font-medium text-destructive" role="alert">
           {actionError}
         </p>
       ) : null}

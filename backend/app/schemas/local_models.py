@@ -92,6 +92,25 @@ class ModelStorageRead(UTCResponseModel):
     message: str
 
 
+class RecommendedItemRead(UTCResponseModel):
+    """Ein empfohlener Download: Modell oder Stimme, mit Zweck und Stand."""
+
+    kind: Literal["model", "voice"]
+    id: str
+    label: str
+    #: Wofuer man es braucht, als deutscher Satz (``model_recommendation.PURPOSES``).
+    purpose: str
+    size_bytes: int
+    status: ModelStatusRead
+
+
+class ModelRecommendationRead(UTCResponseModel):
+    """Antwort von ``GET /api/v1/models/recommendation``."""
+
+    hardware: str
+    items: list[RecommendedItemRead] = Field(default_factory=list)
+
+
 class ModelCatalogRead(UTCResponseModel):
     """Antwort von ``GET /api/v1/models``: der Katalog und die Ablage.
 

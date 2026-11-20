@@ -78,11 +78,11 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
         Berechtigung ist eine gueltige Antwort und unterbricht niemanden.
       */}
       <div role="status" aria-live="polite" className="space-y-1.5">
-        <p className={cn("inline-flex items-center gap-2 text-xs font-medium [&_svg]:size-3.5", laeuft && "underline decoration-2 underline-offset-4")}>
+        <p className={cn("inline-flex items-center gap-2 text-[13px] font-medium [&_svg]:size-3.5", laeuft && "underline decoration-2 underline-offset-4")}>
           {wartet ? <RefreshCw className="animate-spin" aria-hidden="true" /> : laeuft ? <Square aria-hidden="true" /> : <Mic aria-hidden="true" />}
           <span>{beschreibeAufnahme(sprache.aufnahmeZustand, sprache.sekunden)}</span>
         </p>
-        {laeuft ? <p className="text-xs leading-5 text-muted-foreground">{t("Zum Beenden loslassen oder auf „Aufnahme beenden“ tippen.")}</p> : null}
+        {laeuft ? <p className="text-[13px] leading-5 text-muted-foreground">{t("Zum Beenden loslassen oder auf „Aufnahme beenden“ tippen.")}</p> : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -160,8 +160,8 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
 
       {aufgenommen ? (
         <div className="rounded-md border border-border px-3 py-2.5">
-          <p className="text-[11px] font-medium text-muted-foreground">{t("Erkannter Text")}</p>
-          <p className="mt-1.5 text-sm leading-6">{sprache.transkript}</p>
+          <p className="text-[13px] font-medium text-muted-foreground">{t("Erkannter Text")}</p>
+          <p className="mt-1.5 text-[15px] leading-6">{sprache.transkript}</p>
         </div>
       ) : null}
 
@@ -171,7 +171,7 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
         Mikrofonzugriff kommt **nicht** hierher, sondern in `hinweis`.
       */}
       {sprache.fehler ? (
-        <p className="rounded-md border border-foreground/30 bg-muted px-3 py-2 text-xs font-medium" role="alert">
+        <p className="rounded-md border border-foreground/30 bg-muted px-3 py-2 text-[13px] font-medium" role="alert">
           {sprache.fehler}
         </p>
       ) : null}
@@ -182,7 +182,7 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
         Tastenkuerzel bleibt trotzdem im DOM, weil der Aufnahmeknopf per
         `aria-describedby` darauf zeigt.
       */}
-      <details className="group text-[11px] leading-4 text-muted-foreground">
+      <details className="group text-[13px] leading-4 text-muted-foreground">
         <summary className="cursor-pointer select-none hover:text-foreground">{t("Hinweise zur Sprache")}</summary>
         <div className="mt-2 space-y-1.5">
           <p>{sprachHinweis(sprache.sprechZustand)}</p>
@@ -194,7 +194,7 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
             Menueklammer aendert. `lib/speech.ts` prueft zusaetzlich, ob gerade in
             einem Eingabefeld getippt wird, und laesst es dann in Ruhe.
           */}
-          <p id="sprache-kuerzel-hinweis" className="text-[11px] leading-4 text-muted-foreground">
+          <p id="sprache-kuerzel-hinweis" className="text-[13px] leading-4 text-muted-foreground">
             {t("Zum Diktieren {taste} halten. Aufgezeichnet wird nur, wenn gerade kein Eingabefeld den Fokus hat.", { taste: tastenname })}
           </p>
 
@@ -202,7 +202,7 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
             Der Mikrofonhinweis ist ein Satz und kein Dialog. Er steht auch dann da,
             wenn gar nichts passiert ist - dann sagt er, dass getippt werden kann.
           */}
-          <p className="text-[11px] leading-4 text-muted-foreground">{sprache.hinweis}</p>
+          <p className="text-[13px] leading-4 text-muted-foreground">{sprache.hinweis}</p>
 
           {/*
             Das Formatproblem der Aufnahme, **bevor** es auftritt. Chrome nimmt WebM
@@ -212,7 +212,7 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
             drei Minuten lang aufnimmt.
           */}
           {sprache.faehigkeiten?.speech_to_text.available && sprache.faehigkeiten.runtime.ffmpeg_present === false ? (
-            <p className="text-[11px] leading-4 text-muted-foreground">{sprache.faehigkeiten.runtime.ffmpeg_note}</p>
+            <p className="text-[13px] leading-4 text-muted-foreground">{sprache.faehigkeiten.runtime.ffmpeg_note}</p>
           ) : null}
 
           {/*
@@ -221,8 +221,8 @@ export function SpeechControls({ onText, antwort }: SpeechControlsProps) {
             schon sagt - sonst waere es dieselbe Information zweimal.
           */}
           <div className="space-y-1">
-            {!sprache.kannEingabe && sprache.grundEingabe ? <p className="text-[11px] leading-4 text-muted-foreground">{t("Eingabe: {grund}", { grund: sprache.grundEingabe })}</p> : null}
-            {!sprache.kannAusgabe && sprache.grundAusgabe ? <p className="text-[11px] leading-4 text-muted-foreground">{t("Ausgabe: {grund}", { grund: sprache.grundAusgabe })}</p> : null}
+            {!sprache.kannEingabe && sprache.grundEingabe ? <p className="text-[13px] leading-4 text-muted-foreground">{t("Eingabe: {grund}", { grund: sprache.grundEingabe })}</p> : null}
+            {!sprache.kannAusgabe && sprache.grundAusgabe ? <p className="text-[13px] leading-4 text-muted-foreground">{t("Ausgabe: {grund}", { grund: sprache.grundAusgabe })}</p> : null}
           </div>
           <p>
             {tSplit("Modelle und Stimmen richtest du unter {link} ein.")[0]}

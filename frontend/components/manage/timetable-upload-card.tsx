@@ -95,7 +95,7 @@ export function TimetableUploadCard({ onApplied, open, onToggle }: TimetableUplo
   })).filter((tag) => tag.stunden.length > 0);
 
   return (
-    <Card className="border-border/80 bg-card/90">
+    <Card>
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
           <CardTitle>{t("Stundenplan hochladen")}</CardTitle>
@@ -116,7 +116,7 @@ export function TimetableUploadCard({ onApplied, open, onToggle }: TimetableUplo
               type="file"
               accept={ERLAUBT}
               aria-label={t("Stundenplan als PDF oder Bild wählen")}
-              className="max-w-full text-[13px] file:mr-3 file:rounded-md file:border file:border-border file:bg-card file:px-3 file:py-1.5 file:text-[13px] file:font-medium"
+              className="max-w-full text-[15px] file:mr-3 file:rounded-md file:border file:border-border file:bg-card file:px-3 file:py-1.5 file:text-[15px] file:font-medium"
               disabled={arbeitet !== null}
               onChange={(event) => {
                 setDatei(event.target.files?.[0] ?? null);
@@ -130,14 +130,14 @@ export function TimetableUploadCard({ onApplied, open, onToggle }: TimetableUplo
               {arbeitet === "lesen" ? t("Wird gelesen …") : t("Auslesen")}
             </Button>
           </div>
-          <p className="text-xs leading-5 text-muted-foreground">
+          <p className="text-[13px] leading-5 text-muted-foreground">
             {t("Das Auslesen läuft über deinen KI-Anbieter (unter „KI & Modelle“). Für Bilder braucht das Modell Bildeingabe.")}
           </p>
 
           <FormError message={fehler} />
 
           {ergebnis ? (
-            <p className="text-[13px] text-muted-foreground" role="status">
+            <p className="text-[15px] text-muted-foreground" role="status">
               {t("{faecher} neue Fächer und {stunden} Stunden übernommen.", { faecher: ergebnis.created_subjects, stunden: ergebnis.imported_lessons })}
             </p>
           ) : null}
@@ -145,11 +145,11 @@ export function TimetableUploadCard({ onApplied, open, onToggle }: TimetableUplo
           {vorschlag ? (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-semibold">{t("Gelesen: {n} Stunden", { n: eintraege.length })}</p>
+                <p className="text-[15px] font-semibold">{t("Gelesen: {n} Stunden", { n: eintraege.length })}</p>
                 {neueFaecher.length > 0 ? <Badge variant="secondary">{t("{n} neue Fächer", { n: neueFaecher.length })}</Badge> : null}
               </div>
               {neueFaecher.length > 0 ? (
-                <p className="text-xs leading-5 text-muted-foreground">
+                <p className="text-[13px] leading-5 text-muted-foreground">
                   {t("Neu angelegt werden: {liste}.", { liste: neueFaecher.map((fach) => fach.name).join(", ") })}
                 </p>
               ) : null}
@@ -157,15 +157,15 @@ export function TimetableUploadCard({ onApplied, open, onToggle }: TimetableUplo
               <div className="space-y-3">
                 {nachTag.map((tag) => (
                   <div key={tag.name}>
-                    <p className="text-xs font-semibold text-muted-foreground">{tag.name}</p>
+                    <p className="text-[13px] font-semibold text-muted-foreground">{tag.name}</p>
                     <ul className="mt-1 divide-y divide-border border border-border">
                       {tag.stunden.map((stunde) => (
-                        <li key={`${stunde.weekday}-${stunde.start}-${stunde.subject}`} className="flex items-center gap-3 px-3 py-1.5 text-[13px]">
-                          <span className="font-mono text-xs text-muted-foreground">
+                        <li key={`${stunde.weekday}-${stunde.start}-${stunde.subject}`} className="flex items-center gap-3 px-3 py-1.5 text-[15px]">
+                          <span className="font-mono text-[13px] text-muted-foreground">
                             {stunde.start}–{stunde.end}
                           </span>
                           <span className="min-w-0 flex-1 truncate font-medium">{stunde.subject}</span>
-                          {stunde.room ? <span className="text-xs text-muted-foreground">{t("Raum {raum}", { raum: stunde.room })}</span> : null}
+                          {stunde.room ? <span className="text-[13px] text-muted-foreground">{t("Raum {raum}", { raum: stunde.room })}</span> : null}
                           <Button
                             type="button"
                             size="icon"
@@ -192,7 +192,7 @@ export function TimetableUploadCard({ onApplied, open, onToggle }: TimetableUplo
                   {t("Verwerfen")}
                 </Button>
               </div>
-              <p className="text-xs leading-5 text-muted-foreground">
+              <p className="text-[13px] leading-5 text-muted-foreground">
                 {t("Der Plan gilt für die nächsten 8 Wochen. Stunden aus dem Schulportal bleiben unberührt.")}
               </p>
             </div>

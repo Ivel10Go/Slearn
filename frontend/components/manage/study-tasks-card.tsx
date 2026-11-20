@@ -227,7 +227,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
   }
 
   return (
-    <Card className="border-border/80 bg-card/90">
+    <Card>
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div>
           <CardTitle>{t("Lernaufgaben")}</CardTitle>
@@ -250,7 +250,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
       <CardContent className="space-y-4">
         <SectionBanner error={sammlung.error} actionError={sammlung.actionError} onRetry={() => void sammlung.reload()} />
 
-        <label className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+        <label className="flex items-center gap-2 text-[13px] font-semibold text-muted-foreground">
           {t("Sortieren")}
           <Select
             value={ordnung}
@@ -272,7 +272,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
         </label>
 
         {plans.length === 0 ? (
-          <p className="border border-dashed border-border bg-muted/30 px-4 py-3 text-xs leading-5 text-muted-foreground">
+          <p className="border border-dashed border-border bg-muted/30 px-4 py-3 text-[13px] leading-5 text-muted-foreground">
             {t("Jede Lernaufgabe gehört zu einem Lernplan. Lege oben zuerst einen Plan an.")}
           </p>
         ) : null}
@@ -280,7 +280,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
         {formularOffen && plans.length > 0 ? (
           <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-semibold">{bearbeitet === null ? t("Neue Lernaufgabe") : t("Lernaufgabe bearbeiten")}</p>
+              <p className="text-[15px] font-semibold">{bearbeitet === null ? t("Neue Lernaufgabe") : t("Lernaufgabe bearbeiten")}</p>
               <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label={t("Formular schließen")}>
                 <X aria-hidden="true" />
               </Button>
@@ -431,7 +431,7 @@ export function StudyTasksCard({ plans, onChanged, refreshKey = 0 }: { plans: St
             description={t("Lege deine ersten Fokusblöcke an. Einen ganzen Plan aus den Themen einer Prüfung erzeugt die Kachel „Prüfungen“ auf dem Dashboard.")}
           />
         ) : (
-          <ul className="space-y-2.5">
+     <ul className="">
             {sammlung.items.map((aufgabe) => (
               <AufgabenZeile
                 key={aufgabe.id}
@@ -495,7 +495,7 @@ function AufgabenZeile({
     now !== null && !erledigt && aufgabe.status !== "cancelled" && aufgabe.due_date !== null && new Date(aufgabe.due_date).getTime() < now;
 
   return (
-    <li className="border border-border bg-card/60 p-3.5">
+    <li className="border-b border-border py-3 last:border-b-0">
       <div className="flex items-start gap-3">
         <span className={cn("mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center", erledigt ? "bg-foreground text-background" : "bg-secondary text-secondary-foreground")}>
           {erledigt ? <Check className="h-4 w-4" aria-hidden="true" /> : <BookOpen className="h-4 w-4" aria-hidden="true" />}
@@ -503,7 +503,7 @@ function AufgabenZeile({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className={cn("truncate text-sm font-semibold", erledigt && "text-muted-foreground line-through")}>{aufgabe.title}</p>
+            <p className={cn("truncate text-[15px] font-semibold", erledigt && "text-muted-foreground line-through")}>{aufgabe.title}</p>
             <Badge variant={zustandsVariante(aufgabe.status)}>{ZUSTANDS_LABEL[aufgabe.status]}</Badge>
             {aufgabe.priority > 0 ? <Badge variant="warning">{t("Priorität {n}", { n: aufgabe.priority })}</Badge> : null}
             {/*
@@ -515,7 +515,7 @@ function AufgabenZeile({
             {aufgabe.subject_average !== null ? (
               <span
                 className={cn(
-                  "text-[11px] font-semibold text-muted-foreground",
+                  "text-[13px] font-semibold text-muted-foreground",
                   aufgabe.subject_passed === false && "underline underline-offset-4",
                 )}
               >
@@ -525,13 +525,13 @@ function AufgabenZeile({
           </div>
 
           {aufgabe.subject_name || aufgabe.topic_name || aufgabe.exam_title ? (
-            <p className="mt-1 text-xs font-semibold text-muted-foreground">
+            <p className="mt-1 text-[13px] font-semibold text-muted-foreground">
               {[aufgabe.subject_name, aufgabe.topic_name, aufgabe.exam_title].filter(Boolean).join(" · ")}
             </p>
           ) : null}
-          {aufgabe.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{aufgabe.description}</p> : null}
+          {aufgabe.description ? <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-muted-foreground">{aufgabe.description}</p> : null}
 
-          <p className="mt-1.5 text-xs font-semibold text-muted-foreground">
+          <p className="mt-1.5 text-[13px] font-semibold text-muted-foreground">
             {formatDuration(aufgabe.duration_minutes)}
             {aufgabe.scheduled_for ? (
               <>
@@ -558,7 +558,7 @@ function AufgabenZeile({
           </p>
 
           {blockiert.length > 0 ? (
-            <p className="mt-2 flex items-start gap-1.5 text-xs font-semibold text-muted-foreground">
+            <p className="mt-2 flex items-start gap-1.5 text-[13px] font-semibold text-muted-foreground">
               <Link2 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>
                 {t("Blockiert durch {liste}", { liste: blockiert.map((voraussetzung) => voraussetzung.title).join(", ") })}
@@ -583,7 +583,7 @@ function AufgabenZeile({
           }
         }}
       >
-        <summary className="cursor-pointer list-none text-xs font-medium text-muted-foreground hover:text-foreground">
+        <summary className="cursor-pointer list-none text-[13px] font-medium text-muted-foreground hover:text-foreground">
           {t("Voraussetzungen verwalten")}
         </summary>
         <div className="mt-3">
@@ -710,19 +710,19 @@ function AbhaengigkeitsBereich({
 
   return (
     <div className="space-y-2.5">
-      <p className="text-xs font-medium text-muted-foreground">{t("Voraussetzungen")}</p>
+      <p className="text-[13px] font-medium text-muted-foreground">{t("Voraussetzungen")}</p>
 
       {laeuft && voraussetzungen.length === 0 ? (
         <Skeleton className="h-8 w-full" />
       ) : voraussetzungen.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{t("Diese Aufgabe kann ohne Vorbedingung gestartet werden.")}</p>
+        <p className="text-[13px] text-muted-foreground">{t("Diese Aufgabe kann ohne Vorbedingung gestartet werden.")}</p>
       ) : (
         <ul className="space-y-1.5">
           {voraussetzungen.map((voraussetzung) => {
             const quelle = alle.find((kandidat) => kandidat.id === voraussetzung.depends_on_task_id);
             const erfuellt = quelle?.status === "completed";
             return (
-              <li key={voraussetzung.depends_on_task_id} className="flex items-center gap-2 border border-border bg-muted/30 px-2.5 py-1.5 text-xs">
+              <li key={voraussetzung.depends_on_task_id} className="flex items-center gap-2 border border-border bg-muted/30 px-2.5 py-1.5 text-[13px]">
                 <span className={cn("min-w-0 flex-1 truncate font-semibold", erfuellt && "text-muted-foreground line-through")}>
                   {titelVon(voraussetzung.depends_on_task_id)}
                 </span>
@@ -746,7 +746,7 @@ function AbhaengigkeitsBereich({
       {kandidaten.length > 0 ? (
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-[12rem] flex-1 space-y-1.5">
-            <label htmlFor={`voraussetzung-${aufgabe.id}`} className="block text-xs font-semibold">
+            <label htmlFor={`voraussetzung-${aufgabe.id}`} className="block text-[13px] font-semibold">
               {t("Neue Voraussetzung")}
             </label>
             <Select id={`voraussetzung-${aufgabe.id}`} value={auswahl} onChange={(event) => setAuswahl(event.target.value)} disabled={laeuft}>
@@ -773,7 +773,7 @@ function AbhaengigkeitsBereich({
           </Button>
         </div>
       ) : alle.length > 1 ? (
-        <p className="text-xs leading-5 text-muted-foreground">
+        <p className="text-[13px] leading-5 text-muted-foreground">
           {t("Keine weitere Aufgabe in diesem Plan, die als Voraussetzung taugt. Das Backend lässt Abhängigkeiten nur innerhalb eines Plans zu.")}
         </p>
       ) : null}

@@ -395,8 +395,13 @@ def sync_documents(
     source: SyncSource,
     folder: str,
     settings: Settings,
+    prefix: str = "",
 ) -> DocumentSyncOutcome:
-    """Scannt den Ablageordner einer ``documents``-Integration und ersetzt den Index."""
+    """Scannt den Ablageordner einer ``documents``-Integration und ersetzt den Index.
+
+    ``prefix`` haelt die ``external_id`` verschiedener Quellen auseinander (WebDAV-Spiegel):
+    sonst traefen sich zwei Ordner mit derselben Datei ``Mathe/a.pdf`` an der Eindeutigkeit.
+    """
     from app.services.integrations import IntegrationConnectionError
 
     root = Path(folder)
@@ -423,7 +428,7 @@ def sync_documents(
     for file_path in sorted(root.rglob("*")):
         if not file_path.is_file():
             continue
-        rel_path = file_path.relative_to(root).as_posix()
+        rel_path = prefix + file_path.relative_to(root).as_posix()
         if not is_supported(file_path):
             skipped += 1
             continue

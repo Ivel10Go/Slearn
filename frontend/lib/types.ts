@@ -266,6 +266,8 @@ export interface DocumentRecord {
   subject_id: number | null;
   /** text | pdf | ocr_local | ocr_online */
   text_source: string | null;
+  /** Von der KI eingeordnete, noch unbestätigte Felder (subject_id, material_kind, material_topic). */
+  ai_review_fields: string[];
 }
 
 export interface DocumentSource {

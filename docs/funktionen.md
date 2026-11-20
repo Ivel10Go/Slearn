@@ -171,7 +171,7 @@ Der Lernstand fließt in Klausur-Generator, Wochenplaner und das Lernprofil des 
 
 Auf `/dokumente`:
 
-- **Hochladen** von Text, PDFs und Fotos. Die Textebene von PDFs wird sofort gelesen; Fotos und Scanseiten werden im Hintergrund von einem lokalen Bildmodell (Qwen2.5-VL) abgeschrieben – oder, falls keins da ist, vom Online-KI-Dienst. Ohne beides bleibt das Dokument als „braucht Modell“ markiert, statt zu raten.
+- **Hochladen** von Text, PDFs und Fotos. Die Textebene von PDFs wird sofort gelesen; Fotos und Scanseiten werden im Hintergrund von einem lokalen Bildmodell (Qwen3.5 4B mit Bildteil) abgeschrieben – oder, falls keins da ist, vom Online-KI-Dienst. Ohne beides bleibt das Dokument als „braucht Modell“ markiert, statt zu raten.
 - **Automatische Einordnung** nach festen Regeln: Art (Aufschrieb, Arbeitsblatt, Lösung, Sonstiges), Fach, Thema (erste Überschrift) und Datum – aus Dateiname und Textanfang. Eigene Korrekturen werden nie überschrieben.
 - **Bedeutungssuche:** Texte werden in Abschnitte geteilt und lokal mit bge-m3 eingebettet, sodass der Assistent passende Stellen auch ohne exakte Stichworte findet.
 - Dokumente lassen sich auch aus einem lokalen Ordner abrufen (Integration „Dokumente“).

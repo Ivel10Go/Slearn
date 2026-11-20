@@ -161,7 +161,7 @@ def test_zu_wenige_beispiele_und_unbekanntes_modell_sind_422(
     assert antwort.status_code == 422
     assert f"von {MIN_TRAIN_EXAMPLES}" in antwort.json()["detail"]
 
-    antwort = client.post("/api/v1/assistant/training/run", json={"model_id": "llama-3.2-1b-instruct-q4km"})
+    antwort = client.post("/api/v1/assistant/training/run", json={"model_id": "qwen3.5-4b-q4km"})
     assert antwort.status_code == 422
     assert client.get("/api/v1/assistant/training/run").json() is None
 

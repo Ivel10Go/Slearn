@@ -8,9 +8,31 @@ import {
   formatModelBytes,
   modelFitsFreeSpace,
   modelProgress,
+  missingItems,
   parseModelCatalog,
+  parseRecommendation,
   type ModelStatusPayload,
 } from "./models";
+
+describe("Empfehlung nach Hardware", () => {
+  it("liest Eintraege und laesst kaputte weg", () => {
+    const empfehlung = parseRecommendation({
+      hardware: "16 GB Arbeitsspeicher",
+      items: [
+        { kind: "model", id: "a", label: "A", purpose: "Antworten", size_bytes: 10, status: { status: "installed" } },
+        { kind: "voice", id: "b", label: "B", purpose: "Vorlesen", size_bytes: 5, status: { status: "not_downloaded" } },
+        { kind: "model", id: "c", status: { status: "downloading" } },
+        { kind: "anderes", id: "d" },
+        { kind: "model" },
+      ],
+    });
+    expect(empfehlung?.hardware).toBe("16 GB Arbeitsspeicher");
+    expect(empfehlung?.items.map((item) => item.id)).toEqual(["a", "b", "c"]);
+    // "Alles herunterladen" startet nur, was weder da ist noch laeuft.
+    expect(missingItems(empfehlung?.items ?? []).map((item) => item.id)).toEqual(["b"]);
+    expect(parseRecommendation("kaputt")).toBeNull();
+  });
+});
 
 const KATALOG_ANTWORT = {
   models: [

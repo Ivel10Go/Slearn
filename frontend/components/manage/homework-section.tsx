@@ -169,7 +169,7 @@ export function HomeworkSection({ reference }: { reference: Date }) {
         {formularOffen ? (
           <form onSubmit={absenden} noValidate className="space-y-4 rounded-md border border-border bg-muted/40 p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-semibold">{bearbeitet === null ? t("Neue Hausaufgabe") : t("Hausaufgabe bearbeiten")}</p>
+              <p className="text-[15px] font-semibold">{bearbeitet === null ? t("Neue Hausaufgabe") : t("Hausaufgabe bearbeiten")}</p>
               <Button type="button" size="icon" variant="ghost" onClick={schliessen} disabled={istSpeichern} aria-label={t("Formular schließen")}>
                 <X aria-hidden="true" />
               </Button>
@@ -275,7 +275,7 @@ export function HomeworkSection({ reference }: { reference: Date }) {
 
             {uebersicht.erledigt.length > 0 ? (
               <details className="group border-t border-border first:border-t-0">
-                <summary className="cursor-pointer list-none px-4 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+                <summary className="cursor-pointer list-none px-4 py-2.5 text-[13px] font-medium text-muted-foreground hover:text-foreground">
                   {uebersicht.erledigt.length} {t("erledigt")}
                 </summary>
                 <ul className="divide-y divide-border border-t border-border">
@@ -343,8 +343,8 @@ function AufgabenZeile({
       </button>
 
       <div className="min-w-0 flex-1">
-        <p className={cn("truncate text-[13px] font-medium", aufgabe.completed && "text-muted-foreground line-through")}>{aufgabe.title}</p>
-        <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+        <p className={cn("truncate text-[15px] font-medium", aufgabe.completed && "text-muted-foreground line-through")}>{aufgabe.title}</p>
+        <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-[13px] text-muted-foreground">
           {fachname ? (
             <>
               <span className="font-medium text-foreground/80">{fachname}</span>
@@ -362,7 +362,7 @@ function AufgabenZeile({
             </>
           ) : null}
         </p>
-        {aufgabe.description ? <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-muted-foreground">{aufgabe.description}</p> : null}
+        {aufgabe.description ? <p className="mt-0.5 line-clamp-1 text-[13px] leading-5 text-muted-foreground">{aufgabe.description}</p> : null}
       </div>
 
       <RowActions label={aufgabe.title} onEdit={onEdit} onDelete={onDelete} busy={busy} />

@@ -73,8 +73,9 @@ function Onboarding() {
       await completeSetup({ name: trimmed, timezone: localTimezone() });
       // Neu laden statt Zustand umschalten: jede Karte holt ihre Daten dann
       // frisch und mit dem neuen Konto, ohne dass eine von ihnen den 503 von
-      // eben noch im Speicher hat.
-      window.location.replace("/");
+      // eben noch im Speicher hat. Ziel ist die Einrichtung (KI, Stundenplan,
+      // Unterlagen), nicht gleich die Übersicht.
+      window.location.replace("/einrichtung");
     } catch (submitError) {
       setError(submitError instanceof ApiError ? submitError.message : t("Das hat nicht geklappt. Bitte versuche es noch einmal."));
       setPending(false);
@@ -91,12 +92,12 @@ function Onboarding() {
         <div className="w-full max-w-sm">
           <BrandMark className="h-9 w-9 rounded-[7px] text-lg" />
           <h1 className="mt-6 text-2xl font-semibold tracking-tight">{t("Willkommen in Slearn")}</h1>
-          <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
+          <p className="mt-2 text-[15px] leading-5 text-muted-foreground">
             {t("Stundenplan, Hausaufgaben, Prüfungen und Lernzeit an einem Ort. Alles bleibt auf diesem Rechner.")}
           </p>
 
           <form onSubmit={(event) => void submit(event)} className="mt-8 space-y-3">
-            <label htmlFor="setup-name" className="block text-[13px] font-medium">
+            <label htmlFor="setup-name" className="block text-[15px] font-medium">
               {t("Wie sollen wir dich nennen?")}
             </label>
             <Input
@@ -111,7 +112,7 @@ function Onboarding() {
               aria-describedby={error ? "setup-error" : undefined}
             />
             {error ? (
-              <p id="setup-error" className="text-xs text-foreground underline decoration-foreground/40 underline-offset-2" role="alert">
+              <p id="setup-error" className="text-[13px] text-foreground underline decoration-foreground/40 underline-offset-2" role="alert">
                 {error}
               </p>
             ) : null}
@@ -122,8 +123,8 @@ function Onboarding() {
             </Button>
           </form>
 
-          <p className="mt-8 text-xs leading-5 text-muted-foreground">
-            {t("Stundenplan aus WebUntis, Kalender und KI-Dienste kannst du später in den Einstellungen verbinden.")}
+          <p className="mt-8 text-[13px] leading-5 text-muted-foreground">
+            {t("Danach richtest du in wenigen Schritten KI, Stundenplan und Unterlagen ein.")}
           </p>
         </div>
       </div>

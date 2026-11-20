@@ -424,6 +424,88 @@ class MaterialTools:
     transcribe_source: str = SOURCE_OCR_LOCAL
     embed: Embedder | None = None
     embed_model_id: str | None = None
+    #: (System, Nutzer, max. Token) -> (Text, Herkunft) oder ``None``. Nur lokale Wege.
+    classify: Callable[[str, str, int], tuple[str, str] | None] | None = None
+
+
+# --- KI-Einordnung fuer das, was die Regeln nicht sicher erkennen ---------------
+
+#: ``extra_data``-Schluessel: {"fields": [...], "review": bool}. Gesetzt nach dem
+#: ersten Versuch - auch ohne Ergebnis, sonst fragte der Indexer jede Runde neu.
+AI_CLASSIFIED_KEY: Final[str] = "ai_classified"
+CLASSIFY_SYSTEM: Final[str] = (
+    "Du ordnest Schulmaterial ein. Antworte nur mit genau drei Zeilen und ohne weiteren Text:\n"
+    "FACH: <eines der genannten Faecher oder ->\n"
+    "ART: <aufschrieb | arbeitsblatt | loesung | sonstiges>\n"
+    "THEMA: <das Thema in hoechstens fuenf Woertern oder ->"
+)
+_CLASSIFY_LINE_RE = re.compile(r"^\s*\**(FACH|ART|THEMA)\**\s*:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
+
+
+def needs_ai_classification(document: Document) -> bool:
+    """Die Regeln waren unsicher, von Hand ist nichts davon gesetzt, die KI hat es noch nicht versucht."""
+    extra = document.extra_data or {}
+    if AI_CLASSIFIED_KEY in extra or document.status != "indexed":
+        return False
+    manual = set(extra.get("manual_fields", []))
+    return (
+        (document.subject_id is None and "subject_id" not in manual)
+        or (document.material_kind in (None, KIND_OTHER) and "material_kind" not in manual)
+        or (not document.material_topic and "material_topic" not in manual)
+    )
+
+
+def parse_classification(raw: str, subjects: Sequence[Subject]) -> dict[str, object]:
+    """Antwort -> nur gueltige Felder. Ein Fach ausserhalb der Liste oder "-" faellt weg."""
+    found = {key.upper(): value.strip().strip("\"'<>* ") for key, value in _CLASSIFY_LINE_RE.findall(raw)}
+    result: dict[str, object] = {}
+    name = found.get("FACH", "").casefold()
+    for subject in subjects:
+        if name and name in {subject.name.casefold(), (subject.short_name or "").casefold()}:
+            result["subject_id"] = subject.id
+            break
+    kind = found.get("ART", "").casefold().replace("ö", "oe")
+    if kind in MATERIAL_KINDS:
+        result["material_kind"] = kind
+    topic = found.get("THEMA", "")
+    if topic and topic != "-" and len(topic) <= 80:
+        result["material_topic"] = topic
+    return result
+
+
+def ai_classify(
+    db: Session, document: Document, generate: Callable[[str, str, int], tuple[str, str] | None]
+) -> bool:
+    """Fragt das Modell nach den unsicheren Feldern. ``False`` = kein Modell, spaeter erneut versuchen."""
+    subjects = db.scalars(select(Subject).where(Subject.user_id == document.user_id).order_by(Subject.name)).all()
+    text = "\n".join(
+        db.scalars(
+            select(DocumentChunk.content)
+            .where(DocumentChunk.document_id == document.id)
+            .order_by(DocumentChunk.chunk_index)
+            .limit(3)
+        ).all()
+    )[:1500]
+    names = ", ".join(subject.name for subject in subjects) or "-"
+    outcome = generate(CLASSIFY_SYSTEM, f"Faecher: {names}\nDatei: {document.filename}\n\nText:\n{text}", 60)
+    if outcome is None:
+        return False
+    suggestion = parse_classification(outcome[0], subjects)
+    extra = dict(document.extra_data or {})
+    manual = set(extra.get("manual_fields", []))
+    changed: list[str] = []
+    for field, value in suggestion.items():
+        unsure = {
+            "subject_id": document.subject_id is None,
+            "material_kind": document.material_kind in (None, KIND_OTHER),
+            "material_topic": not document.material_topic,
+        }[field]
+        if unsure and field not in manual and getattr(document, field) != value:
+            setattr(document, field, value)
+            changed.append(field)
+    extra[AI_CLASSIFIED_KEY] = {"fields": changed, "review": bool(changed)}
+    document.extra_data = extra
+    return True
 
 
 def process_queued_document(db: Session, document: Document, tools: MaterialTools, *, today: date) -> bool:
@@ -516,9 +598,42 @@ class MaterialIndexer:
                     return True
                 db.commit()
             self.release()
-            return self._embed_backlog(db)
+            return self._embed_backlog(db) or self._classify_backlog(db)
         finally:
             db.close()
+
+    def _classify_backlog(self, db: Session) -> bool:
+        """Ein unsicher erkanntes Dokument von der KI einordnen lassen. Laeuft nach dem Abschreiben."""
+        candidates = db.scalars(
+            select(Document)
+            .where(
+                Document.status == "indexed",
+                (Document.subject_id.is_(None))
+                | (Document.material_kind.is_(None))
+                | (Document.material_kind == KIND_OTHER)
+                | (Document.material_topic.is_(None)),
+            )
+            .order_by(Document.id)
+        ).all()
+        generators: dict[int, Callable[[str, str, int], tuple[str, str] | None] | None] = {}
+        for document in candidates:
+            if not needs_ai_classification(document):
+                continue
+            if document.user_id not in generators:
+                generators[document.user_id] = self.tools_for(db, document.user_id).classify
+            generate = generators[document.user_id]
+            if generate is None:
+                continue
+            try:
+                done = ai_classify(db, document, generate)
+            except (httpx.HTTPError, ValueError) as exc:
+                logger.warning("Einordnung von %s fehlgeschlagen: %s", document.filename, exc)
+                db.rollback()
+                return False
+            db.commit()
+            if done:
+                return True
+        return False
 
     def _embed_backlog(self, db: Session) -> bool:
         for user_id in db.scalars(select(DocumentChunk.user_id).distinct()).all():
@@ -535,6 +650,33 @@ class MaterialIndexer:
             if stored:
                 return True
         return False
+
+
+def _local_generator(
+    db: Session, user_id: int, settings: object
+) -> Callable[[str, str, int], tuple[str, str] | None] | None:
+    """Nur lokale KI-Wege: das Einordnen laeuft ungefragt im Hintergrund, Unterlagen bleiben auf dem Rechner.
+
+    Genommen wird das Textmodell, das ohnehin laeuft - ein zweites, kleineres
+    hiesse den Assistenten bei jedem Wechsel neu laden. Fuer drei Zeilen reicht jedes.
+    """
+    from app.core.config import Settings
+    from app.services import ai_routing
+
+    assert isinstance(settings, Settings)
+    routes = tuple(route for route in ai_routing.resolve_ai_routes(db, user_id, settings) if route.source == ai_routing.SOURCE_LOCAL)
+    if not routes:
+        return None
+
+    def generate(system: str, prompt: str, max_tokens: int) -> tuple[str, str] | None:
+        outcome = ai_routing.generate_with_routes(
+            routes, system, prompt, max_tokens=max_tokens, local_timeout=settings.ai_local_timeout_seconds
+        )
+        if outcome is None or not outcome.text.strip():
+            return None
+        return outcome.text, outcome.source
+
+    return generate
 
 
 def tools_factory(settings: object, runtimes: object | None) -> Callable[[Session, int], MaterialTools]:
@@ -580,6 +722,7 @@ def tools_factory(settings: object, runtimes: object | None) -> Callable[[Sessio
                     max_tokens=TRANSCRIBE_MAX_TOKENS,
                 )
                 tools.transcribe_source = SOURCE_OCR_ONLINE
+        tools.classify = _local_generator(db, user_id, settings)
         return tools
 
     return tools_for

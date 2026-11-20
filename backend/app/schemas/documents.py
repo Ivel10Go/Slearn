@@ -22,10 +22,15 @@ class DocumentRead(UTCResponseModel):
     subject_id: int | None = None
     #: text | pdf | ocr_local | ocr_online - woher der Text stammt.
     text_source: str | None = None
+    #: Von der KI eingeordnet und noch nicht bestaetigt. Ein PATCH (auch leer) bestaetigt.
+    ai_review_fields: list[str] = []
 
 
 class DocumentMaterialUpdate(BaseModel):
-    """Korrektur der Erkennung. Gesetzte Felder gelten danach als von Hand und bleiben."""
+    """Korrektur der Erkennung. Gesetzte Felder gelten danach als von Hand und bleiben.
+
+    Ein leerer Rumpf bestaetigt nur den KI-Vorschlag.
+    """
 
     material_kind: Literal["aufschrieb", "arbeitsblatt", "loesung", "sonstiges"] | None = None
     material_topic: str | None = Field(default=None, max_length=240)

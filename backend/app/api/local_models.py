@@ -20,20 +20,23 @@ bereits geladenes Modell startet nichts, und der zweite Klick auf denselben
 Knopf ist damit ein No-Op statt eines zweiten Threads.
 """
 
-from typing import cast
+import platform
+from typing import Literal, cast
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.api.deps import CurrentUser, ModelDownloads
+from app.api.deps import CurrentUser, ModelDownloads, RequestLanguage
 from app.schemas.common import MessageResponse
 from app.schemas.local_models import (
     ModelCatalogRead,
     ModelFileRead,
     ModelRead,
+    ModelRecommendationRead,
     ModelStatus,
     ModelStatusRead,
     ModelStorageRead,
     ModelTask,
+    RecommendedItemRead,
 )
 from app.services.model_catalog import ModelCatalogError, ModelSpec, catalog_models, model_spec, ram_estimate
 from app.services.model_downloads import (
@@ -44,6 +47,8 @@ from app.services.model_downloads import (
     ModelSpaceError,
     ModelStorageError,
 )
+from app.services.model_recommendation import PURPOSES, describe_hardware, measure, recommend
+from app.services.piper_voices import DEFAULT_VOICE_ID, sorted_voices, voice_by_id
 
 router = APIRouter(prefix="/api/v1/models", tags=["models"])
 
@@ -143,6 +148,35 @@ def list_models(_user: CurrentUser, downloads: ModelDownloads) -> ModelCatalogRe
         models=[_read(downloads, spec) for spec in catalog_models()],
         storage=_storage_read(downloads),
     )
+
+
+@router.get("/recommendation", response_model=ModelRecommendationRead)
+def get_recommendation(
+    _user: CurrentUser, downloads: ModelDownloads, language: RequestLanguage
+) -> ModelRecommendationRead:
+    """Was zu diesem Rechner passt - Regeln in ``app/services/model_recommendation.py``.
+
+    Steht vor ``/{model_id}``, sonst fiele ``recommendation`` dort als Modell-Id hinein.
+    """
+    ram_gb, gpus = measure()
+    # Die Standardstimme, wenn sie zur Sprache passt; sonst die erste in dieser Sprache.
+    voices = [voice.id for voice in sorted_voices() if voice.language.lower().startswith(language)]
+    voice_id = DEFAULT_VOICE_ID if DEFAULT_VOICE_ID in voices or not voices else voices[0]
+    specs = catalog_models()
+    items: list[RecommendedItemRead] = []
+    for pick in recommend(ram_gb, platform.system(), specs, voice_id):
+        spec = voice_by_id(pick.id).as_model_spec() if pick.kind == "voice" else model_spec(pick.id)
+        items.append(
+            RecommendedItemRead(
+                kind=cast(Literal["model", "voice"], pick.kind),
+                id=spec.id,
+                label=spec.label,
+                purpose=PURPOSES[pick.task],
+                size_bytes=spec.size_bytes,
+                status=_status_read(downloads.status(spec)),
+            )
+        )
+    return ModelRecommendationRead(hardware=describe_hardware(ram_gb, gpus), items=items)
 
 
 @router.get("/{model_id}", response_model=ModelRead)
